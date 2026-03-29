@@ -60,12 +60,16 @@ async def seed():
             Setting(key="late_cancel_refund_pct", value=50, description="Refund % for late cancellations"),
             Setting(key="company_phone", value="5550000000", description="Company contact phone"),
             Setting(key="company_name", value="RideFlow", description="Company display name"),
+            Setting(key="company_logo_url", value="", description="Company logo URL. Leave empty for default icon."),
+            Setting(key="available_countries", value=["US", "ET", "GB", "CA"], description="Available country codes for phone input. First is default. Format: JSON array of ISO codes."),
             Setting(key="sms_enabled", value=True, description="Enable SMS notifications"),
             Setting(key="unassigned_alert_minutes", value=15, description="Alert admin if run unassigned after X minutes"),
             Setting(key="driver_payout_schedule", value="weekly", description="How often drivers are paid"),
+            Setting(key="sms_cashier_referral", value="Hi {cashier_name}, you earned ${amount} from a new booking by {client_name} ({route}). Total earnings: ${total_earnings}.", description="SMS to cashier on referral. Vars: {cashier_name}, {amount}, {client_name}, {route}, {total_earnings}, {booking_number}"),
+            Setting(key="sms_cashier_payout", value="Hi {cashier_name}, your commission of ${amount} for booking {booking_number} has been processed.", description="SMS to cashier on payout. Vars: {cashier_name}, {amount}, {booking_number}"),
         ]
         db.add_all(settings)
-        print("Created 11 settings")
+        print("Created settings")
 
         # --- Sample Common Routes ---
         common_routes = [

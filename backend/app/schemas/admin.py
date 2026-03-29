@@ -5,19 +5,50 @@ from pydantic import BaseModel
 
 # ── Dashboard ──
 
+class PeriodStats(BaseModel):
+    rides: int = 0
+    total_revenue: float = 0       # total collected from clients
+    company_revenue: float = 0     # company keeps (after driver + cashier)
+    driver_payouts: float = 0      # paid/owed to drivers
+    cashier_payouts: float = 0     # paid to cashiers
+
 class DashboardStats(BaseModel):
-    today_rides: int
-    today_revenue: float
-    today_company: float
-    week_rides: int
-    week_revenue: float
-    month_rides: int
-    month_revenue: float
-    pending_payouts: int
-    pending_driver_approvals: int
-    pending_cashier_approvals: int
-    active_drivers: int
-    total_drivers: int
+    today: PeriodStats
+    this_week: PeriodStats
+    this_month: PeriodStats
+
+    # Booking status counts
+    pending_bookings: int = 0
+    paid_bookings: int = 0
+    assigned_bookings: int = 0
+    in_progress_bookings: int = 0
+    completed_bookings: int = 0
+
+    # Pending actions
+    pending_payouts: int = 0
+    pending_driver_approvals: int = 0
+    pending_cashier_approvals: int = 0
+
+    # Fleet
+    active_drivers: int = 0
+    total_drivers: int = 0
+    total_cashiers: int = 0
+    total_hotels: int = 0
+
+    # Rides per day (last 14 days) for chart
+    rides_per_day: list[dict] = []
+
+    # Revenue per day (last 14 days) for chart
+    revenue_per_day: list[dict] = []
+
+    # Top drivers (by rides this month)
+    top_drivers: list[dict] = []
+
+    # Top hotels (by referrals this month)
+    top_hotels: list[dict] = []
+
+    # Recent activity
+    recent_bookings: list[dict] = []
 
 
 # ── Payout Requests ──
@@ -30,6 +61,7 @@ class PayoutRequestOut(BaseModel):
     dropoff_name: str
     pickup_date: date
     pickup_time: time
+    ordered_at: datetime | None
     completed_at: datetime | None
     driver_name: str
     driver_phone: str
@@ -39,11 +71,14 @@ class PayoutRequestOut(BaseModel):
     vehicle_type: str
     total_fare: float
     driver_amount: float
-    company_amount: float
+    company_profit: float
     cashier_amount: float
     start_location: dict | None = None
     end_location: dict | None = None
     payout_status: str
+    # Client feedback
+    client_rating: int | None = None
+    client_comment: str | None = None
 
 
 class PayoutActionRequest(BaseModel):
@@ -65,7 +100,6 @@ class AdminDriverOut(BaseModel):
     has_insurance: bool
     payout_method: str
     status: str
-    is_online: bool
     pay_percentage: float
     rating_avg: float
     total_rides: int
@@ -77,9 +111,21 @@ class AdminDriverOut(BaseModel):
 
 
 class DriverUpdateRequest(BaseModel):
-    pay_percentage: float | None = None
-    status: str | None = None
+    name: str | None = None
+    phone: str | None = None
+    email: str | None = None
     vehicle_type: str | None = None
+    vehicle_make: str | None = None
+    vehicle_plate: str | None = None
+    vehicle_color: str | None = None
+    license_number: str | None = None
+    license_expiry: str | None = None
+    has_insurance: bool | None = None
+    pay_percentage: float | None = None
+    payout_method: str | None = None
+    payout_details: dict | None = None
+    stripe_connect_id: str | None = None
+    status: str | None = None
 
 
 class ApproveRejectRequest(BaseModel):
@@ -211,6 +257,8 @@ class AdminBookingOut(BaseModel):
     driver_name: str | None = None
     hotel_name: str | None = None
     cashier_name: str | None = None
+    client_rating: int | None = None
+    client_comment: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

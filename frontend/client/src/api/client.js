@@ -13,6 +13,9 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  // Settings
+  getPublicSettings: () => request('/settings/public'),
+
   // Pricing
   getVehicleRates: () => request('/vehicle-rates'),
   getExtras: () => request('/extras'),

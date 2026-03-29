@@ -1,0 +1,95 @@
+const BASE = '/api'
+
+function getToken() {
+  return localStorage.getItem('admin_token')
+}
+
+async function request(path, options = {}) {
+  const token = getToken()
+  const headers = { 'Content-Type': 'application/json', ...options.headers }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${BASE}${path}`, { ...options, headers })
+  if (res.status === 401) {
+    localStorage.removeItem('admin_token')
+    window.location.href = '/login'
+    return
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Request failed' }))
+    throw new Error(err.detail || 'Request failed')
+  }
+  return res.json()
+}
+
+export const api = {
+  // Auth
+  login: (data) => request('/auth/admin/login', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Dashboard
+  getStats: () => request('/admin/dashboard/stats'),
+  getNotifications: (page = 1, perPage = 10) => request(`/admin/notifications?page=${page}&per_page=${perPage}`),
+
+  // Bookings
+  getBookings: (page = 1, perPage = 10, status = '') =>
+    request(`/admin/bookings?page=${page}&per_page=${perPage}${status ? `&status=${status}` : ''}`),
+
+  // Payouts
+  getPayouts: (status = 'pending_review', page = 1, perPage = 10) => request(`/admin/payouts?status=${status}&page=${page}&per_page=${perPage}`),
+  releasePayout: (id, note) => request(`/admin/payouts/${id}/release`, { method: 'PUT', body: JSON.stringify({ note }) }),
+  flagPayout: (id, note) => request(`/admin/payouts/${id}/flag`, { method: 'PUT', body: JSON.stringify({ note }) }),
+  rejectPayout: (id, note) => request(`/admin/payouts/${id}/reject`, { method: 'PUT', body: JSON.stringify({ note }) }),
+
+  // Drivers
+  getDrivers: (status, page = 1, perPage = 10) => request(`/admin/drivers?page=${page}&per_page=${perPage}${status ? `&status=${status}` : ''}`),
+  getDriverDetail: (id) => request(`/admin/drivers/${id}`),
+  createDriver: (params) => request(`/admin/drivers?${new URLSearchParams(params)}`, { method: 'POST' }),
+  updateDriver: (id, data) => request(`/admin/drivers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteDriver: (id) => request(`/admin/drivers/${id}`, { method: 'DELETE' }),
+
+  // Cashiers
+  getCashiers: (status, page = 1, perPage = 10) => request(`/admin/cashiers?page=${page}&per_page=${perPage}${status ? `&status=${status}` : ''}`),
+  getCashierDetail: (id) => request(`/admin/cashiers/${id}`),
+  createCashier: (params) => request(`/admin/cashiers?${new URLSearchParams(params)}`, { method: 'POST' }),
+  toggleCashier: (id) => request(`/admin/cashiers/${id}/toggle`, { method: 'PUT' }),
+  updateCashier: (id, params) => request(`/admin/cashiers/${id}?${new URLSearchParams(params)}`, { method: 'PUT' }),
+  deleteCashier: (id) => request(`/admin/cashiers/${id}`, { method: 'DELETE' }),
+  resetCashierPassword: (id) => request(`/admin/cashiers/${id}/reset-password`, { method: 'PUT' }),
+  getCashierQR: (id) => request(`/admin/cashiers/${id}/qr`),
+
+  // Hotels
+  getHotels: (page = 1, perPage = 10) => request(`/admin/hotels?page=${page}&per_page=${perPage}`),
+  createHotel: (data) => request('/admin/hotels', { method: 'POST', body: JSON.stringify(data) }),
+  updateHotel: (id, data) => request(`/admin/hotels/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  activateHotel: (id) => request(`/admin/hotels/${id}/activate`, { method: 'PUT' }),
+
+  // Vehicle Rates
+  getVehicleRates: () => request('/admin/vehicle-rates'),
+  createRate: (params) => request(`/admin/vehicle-rates?${new URLSearchParams(params)}`, { method: 'POST' }),
+  updateRate: (id, params) => request(`/admin/vehicle-rates/${id}?${new URLSearchParams(params)}`, { method: 'PUT' }),
+  deleteRate: (id) => request(`/admin/vehicle-rates/${id}`, { method: 'DELETE' }),
+
+  // Extras
+  getExtras: () => request('/admin/extras'),
+  createExtra: (params) => request(`/admin/extras?${new URLSearchParams(params)}`, { method: 'POST' }),
+  updateExtra: (id, params) => request(`/admin/extras/${id}?${new URLSearchParams(params)}`, { method: 'PUT' }),
+  deleteExtra: (id) => request(`/admin/extras/${id}`, { method: 'DELETE' }),
+
+  // Routes
+  getRoutes: () => request('/admin/common-routes'),
+  createRoute: (data) => request('/admin/common-routes', { method: 'POST', body: JSON.stringify(data) }),
+  updateRoute: (id, data) => request(`/admin/common-routes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteRoute: (id) => request(`/admin/common-routes/${id}`, { method: 'DELETE' }),
+  activateRoute: (id) => request(`/admin/common-routes/${id}/activate`, { method: 'PUT' }),
+
+  // Upsales
+  getUpsales: () => request('/admin/upsales'),
+  createUpsale: (data) => request('/admin/upsales', { method: 'POST', body: JSON.stringify(data) }),
+  updateUpsale: (id, data) => request(`/admin/upsales/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  toggleUpsale: (id) => request(`/admin/upsales/${id}/toggle`, { method: 'PUT' }),
+  deleteUpsale: (id) => request(`/admin/upsales/${id}`, { method: 'DELETE' }),
+
+  // Settings
+  getSettings: () => request('/admin/settings'),
+  updateSetting: (key, value) => request('/admin/settings', { method: 'PUT', body: JSON.stringify({ key, value }) }),
+}

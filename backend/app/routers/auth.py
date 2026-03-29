@@ -60,4 +60,4 @@ async def cashier_login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid phone or password")
 
     token = create_access_token({"sub": str(cashier.id), "role": "cashier"})
-    return TokenResponse(access_token=token, role="cashier", name=cashier.name)
+    return TokenResponse(access_token=token, role="cashier", name=cashier.name, password_changed=cashier.password_changed)

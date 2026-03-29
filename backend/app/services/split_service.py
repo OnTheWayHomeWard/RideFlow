@@ -58,6 +58,17 @@ async def create_splits_for_booking(db: AsyncSession, booking: Booking, payment:
             cashier.total_referrals = (cashier.total_referrals or 0) + 1
             cashier.total_earnings = float(cashier.total_earnings or 0) + cashier_amount
 
+            # Send SMS notification to cashier
+            from app.services.sms_service import notify_cashier_referral
+            await notify_cashier_referral(db, cashier.phone, {
+                "cashier_name": cashier.name,
+                "amount": f"{cashier_amount:.2f}",
+                "client_name": booking.client_name,
+                "route": f"{booking.pickup_name} → {booking.dropoff_name}",
+                "booking_number": booking.booking_number,
+                "total_earnings": f"{float(cashier.total_earnings):.2f}",
+            })
+
     # 2. Driver cut (calculated now, paid after admin releases)
     default_driver_pct = await get_setting_value(db, "default_driver_pay_pct", 70)
     driver_pct = float(default_driver_pct)

@@ -12,3 +12,4 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     role: str
     name: str
+    password_changed: bool = True

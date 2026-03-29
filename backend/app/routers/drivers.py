@@ -56,19 +56,6 @@ async def get_my_profile(driver: Driver = Depends(get_current_driver)):
     return driver
 
 
-@router.put("/me/online")
-async def toggle_online(
-    online: bool,
-    driver: Driver = Depends(get_current_driver),
-    db: AsyncSession = Depends(get_db),
-):
-    """Toggle driver online/offline status."""
-    driver.is_online = online
-    if online:
-        driver.last_online_at = datetime.now(timezone.utc)
-    await db.commit()
-    return {"is_online": driver.is_online}
-
 
 # ── Available Runs ──
 

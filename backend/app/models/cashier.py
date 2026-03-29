@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Boolean, DateTime, Numeric, Integer, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, DateTime, Numeric, Integer, Text, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -21,6 +21,10 @@ class Cashier(Base):
     ref_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
     commission_pct: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="pending")
+    payout_method: Mapped[str] = mapped_column(String(20), default="bank")
+    payout_details: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    stripe_connect_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    password_changed: Mapped[bool] = mapped_column(Boolean, default=False)
     total_referrals: Mapped[int] = mapped_column(Integer, default=0)
     total_earnings: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

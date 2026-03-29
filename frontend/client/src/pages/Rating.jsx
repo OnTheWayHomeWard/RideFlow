@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
+import { useSettings } from '../hooks/useSettings.jsx'
 
 export default function Rating() {
   const { bookingNumber } = useParams()
   const [searchParams] = useSearchParams()
+  const settings = useSettings()
   const [booking, setBooking] = useState(null)
   const [rating, setRating] = useState(0)
   const [hover, setHover] = useState(0)
@@ -66,7 +68,7 @@ export default function Rating() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
           </svg>
         </div>
-        <span className="font-bold text-lg text-slate-800">RideFlow</span>
+        <span className="font-bold text-lg text-slate-800">{settings.company_name || 'RideFlow'}</span>
       </div>
 
       <h1 className="text-2xl font-bold text-slate-900 mb-1">How was your ride?</h1>
@@ -125,7 +127,7 @@ export default function Rating() {
 
       <div className="text-center mt-6">
         <p className="text-sm text-slate-400">
-          Had a problem? <a href="tel:5550000000" className="text-blue-600 font-medium">Contact us</a>
+          Had a problem? {settings.company_phone && <a href={`tel:${settings.company_phone}`} className="text-blue-600 font-medium">Contact us</a>}
         </p>
       </div>
     </div>

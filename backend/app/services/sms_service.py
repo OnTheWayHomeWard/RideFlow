@@ -1,0 +1,91 @@
+"""
+SMS Notification Service — sends templated messages to cashiers, drivers, and clients.
+Templates are stored in the settings table and support variable interpolation.
+
+Variables: {cashier_name}, {driver_name}, {client_name}, {amount}, {route},
+           {booking_number}, {total_earnings}, {pickup_date}, {pickup_time}
+"""
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import settings as app_settings
+from app.models.setting import Setting
+from app.models.notification_log import NotificationLog
+from sqlalchemy import select
+
+
+async def get_template(db: AsyncSession, key: str) -> str:
+    """Get an SMS template from settings."""
+    result = await db.execute(select(Setting).where(Setting.key == key))
+    setting = result.scalar_one_or_none()
+    if setting:
+        return str(setting.value)
+    return ""
+
+
+def render_template(template: str, variables: dict) -> str:
+    """Replace {variable} placeholders with actual values."""
+    message = template
+    for key, value in variables.items():
+        message = message.replace(f"{{{key}}}", str(value))
+    return message
+
+
+async def send_sms(db: AsyncSession, to: str, message: str, related_type: str = None, related_id: str = None):
+    """
+    Send an SMS message. In dev mode, just logs it. In production, uses Twilio.
+    Always logs to notification_log table.
+    """
+    # Log the notification
+    log = NotificationLog(
+        recipient=to,
+        channel="sms",
+        message=message,
+        status="sent",
+        related_type=related_type,
+        related_id=related_id,
+    )
+    db.add(log)
+
+    # Check if SMS is enabled
+    sms_enabled_r = await db.execute(select(Setting).where(Setting.key == "sms_enabled"))
+    sms_setting = sms_enabled_r.scalar_one_or_none()
+    if sms_setting and not sms_setting.value:
+        log.status = "disabled"
+        return
+
+    # Dev mode — just print
+    if not app_settings.TWILIO_ACCOUNT_SID or app_settings.TWILIO_ACCOUNT_SID == "placeholder":
+        print(f"[SMS DEV] To: {to} | Message: {message}")
+        return
+
+    # Production — send via Twilio
+    try:
+        from twilio.rest import Client
+        client = Client(app_settings.TWILIO_ACCOUNT_SID, app_settings.TWILIO_AUTH_TOKEN)
+        client.messages.create(
+            body=message,
+            from_=app_settings.TWILIO_PHONE_NUMBER,
+            to=to,
+        )
+        log.status = "delivered"
+    except Exception as e:
+        log.status = "failed"
+        print(f"[SMS ERROR] {e}")
+
+
+async def notify_cashier_referral(db: AsyncSession, cashier_phone: str, variables: dict):
+    """Notify cashier when a booking comes through their QR code."""
+    template = await get_template(db, "sms_cashier_referral")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, cashier_phone, message, "cashier_referral")
+
+
+async def notify_cashier_payout(db: AsyncSession, cashier_phone: str, variables: dict):
+    """Notify cashier when their commission is processed."""
+    template = await get_template(db, "sms_cashier_payout")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, cashier_phone, message, "cashier_payout")

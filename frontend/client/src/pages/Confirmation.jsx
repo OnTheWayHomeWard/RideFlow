@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../api/client'
+import { useSettings } from '../hooks/useSettings.jsx'
 
 export default function Confirmation() {
   const { bookingNumber } = useParams()
+  const settings = useSettings()
   const [booking, setBooking] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -58,7 +60,7 @@ export default function Confirmation() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
           </svg>
         </div>
-        <span className="font-bold text-lg">RideFlow</span>
+        <span className="font-bold text-lg">{settings.company_name || 'RideFlow'}</span>
         <span className="ml-auto text-xs bg-white/20 px-2.5 py-1 rounded-full">Confirmation</span>
       </header>
 
@@ -157,20 +159,22 @@ export default function Confirmation() {
         <div className="border-t border-slate-100 pt-5 mb-5">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Need help?</p>
           <div className="space-y-2">
-            <a
-              href="tel:5550000000"
-              className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-all"
-            >
-              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-slate-900">Call us</p>
-                <p className="text-xs text-slate-500">(555) 000-0000</p>
-              </div>
-            </a>
+            {settings.company_phone && (
+              <a
+                href={`tel:${settings.company_phone}`}
+                className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-all"
+              >
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Call us</p>
+                  <p className="text-xs text-slate-500">{settings.company_phone}</p>
+                </div>
+              </a>
+            )}
             <a
               href="mailto:support@rideflow.com"
               className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-all"

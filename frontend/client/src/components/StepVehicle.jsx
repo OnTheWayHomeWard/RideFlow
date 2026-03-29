@@ -12,12 +12,16 @@ const VEHICLE_COLORS = {
   large_van: { card: 'from-violet-50 to-white border-violet-100', badge: 'bg-violet-100 text-violet-700' },
 }
 
+import { useSettings } from '../hooks/useSettings.jsx'
+
 export default function StepVehicle({ prices, pickup, dropoff, onSelect }) {
+  const settings = useSettings()
+
   if (!prices || prices.length === 0) {
     return (
       <div className="p-4 text-center py-16">
         <p className="text-slate-500">No vehicles available for this route.</p>
-        <p className="text-sm text-slate-400 mt-1">Call us at (555) 000-0000 for assistance.</p>
+        {settings.company_phone && <p className="text-sm text-slate-400 mt-1">Call us at {settings.company_phone} for assistance.</p>}
       </div>
     )
   }

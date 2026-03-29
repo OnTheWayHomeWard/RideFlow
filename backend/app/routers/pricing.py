@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models.vehicle_rate import VehicleRate
 from app.models.extra import Extra
 from app.models.common_route import CommonRoute
+from app.models.setting import Setting
 from app.schemas.pricing import (
     VehicleRateOut, ExtraOut, CommonRouteOut,
     PriceCalculateRequest, PriceCalculateResponse,
@@ -83,3 +84,22 @@ async def calculate_all_prices(req: AllVehiclePricesRequest, db: AsyncSession = 
         req.dropoff_lat, req.dropoff_lng,
         req.extras,
     )
+
+
+@router.get("/settings/public")
+async def get_public_settings(db: AsyncSession = Depends(get_db)):
+    """Public company settings — no auth needed. Used by client app for branding."""
+    keys = ["company_name", "company_phone", "company_logo_url", "available_countries"]
+    result = await db.execute(select(Setting).where(Setting.key.in_(keys)))
+    settings = {s.key: s.value for s in result.scalars().all()}
+    countries = settings.get("available_countries", ["US"])
+    if isinstance(countries, str):
+        import json
+        try: countries = json.loads(countries)
+        except: countries = ["US"]
+    return {
+        "company_name": str(settings.get("company_name", "RideFlow")),
+        "company_phone": str(settings.get("company_phone", "")),
+        "company_logo_url": str(settings.get("company_logo_url", "")),
+        "available_countries": countries,
+    }

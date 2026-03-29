@@ -119,12 +119,21 @@ async def calculate_price(
         db, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng
     )
 
-    if common_route and vehicle_type in common_route.prices:
-        base_amount = float(common_route.prices[vehicle_type])
-        route_distance = float(common_route.distance_miles) if common_route.distance_miles else None
-    else:
+    if common_route and common_route.prices:
+        # New format: _base key = single route amount + vehicle base fare
+        if "_base" in common_route.prices:
+            base_amount = float(common_route.prices["_base"]) + float(rate.base_fare)
+        # Legacy format: per-vehicle prices
+        elif vehicle_type in common_route.prices:
+            base_amount = float(common_route.prices[vehicle_type])
+        else:
+            common_route = None  # no price for this vehicle, fall through to distance calc
+
+        if common_route:
+            route_distance = float(common_route.distance_miles) if common_route.distance_miles else None
+
+    if not common_route:
         # Calculate from distance
-        common_route = None
         if distance_miles is None:
             # TODO: call Google Maps Distance Matrix API
             # For now, estimate from coordinates (rough)
