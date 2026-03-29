@@ -63,11 +63,15 @@ export default function Rating() {
     <div className="max-w-lg mx-auto min-h-screen p-4">
       {/* Header */}
       <div className="flex items-center gap-2 mb-8 pt-2">
-        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-          </svg>
-        </div>
+        {settings.company_logo_url ? (
+          <img src={settings.company_logo_url} alt="" className="w-8 h-8 object-contain rounded-lg" />
+        ) : (
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+            </svg>
+          </div>
+        )}
         <span className="font-bold text-lg text-slate-800">{settings.company_name || 'RideFlow'}</span>
       </div>
 

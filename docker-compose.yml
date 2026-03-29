@@ -37,5 +37,61 @@ services:
       db:
         condition: service_healthy
 
+  client:
+    build:
+      context: ./frontend/client
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/client:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://backend:8000
+    depends_on:
+      - backend
+
+  driver:
+    build:
+      context: ./frontend/driver
+      dockerfile: Dockerfile
+    ports:
+      - "5174:5174"
+    volumes:
+      - ./frontend/driver:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://backend:8000
+    depends_on:
+      - backend
+
+  admin:
+    build:
+      context: ./frontend/admin
+      dockerfile: Dockerfile
+    ports:
+      - "5175:5175"
+    volumes:
+      - ./frontend/admin:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://backend:8000
+    depends_on:
+      - backend
+
+  cashier:
+    build:
+      context: ./frontend/cashier
+      dockerfile: Dockerfile
+    ports:
+      - "5176:5176"
+    volumes:
+      - ./frontend/cashier:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://backend:8000
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:

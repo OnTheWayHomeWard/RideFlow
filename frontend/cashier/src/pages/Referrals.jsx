@@ -18,10 +18,13 @@ function getDateKey(isoStr) {
 
 export default function Referrals() {
   const [referrals, setReferrals] = useState([])
+  const [earnings, setEarnings] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.getReferrals().then(setReferrals).catch(() => {}).finally(() => setLoading(false))
+    Promise.all([api.getReferrals(), api.getEarnings()])
+      .then(([r, e]) => { setReferrals(r); setEarnings(e) })
+      .catch(() => {}).finally(() => setLoading(false))
   }, [])
 
   if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 border-3 border-purple-600 border-t-transparent rounded-full animate-spin"></div></div>
@@ -63,9 +66,6 @@ export default function Referrals() {
               <div className="flex items-center gap-3 mb-2">
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{formatGroupDate(group.date)}</p>
                 <div className="flex-1 h-px bg-slate-200"></div>
-                <p className="text-xs text-green-600 font-semibold">
-                  ${group.items.reduce((s, r) => s + r.commission, 0).toFixed(2)}
-                </p>
               </div>
 
               {/* Items */}
@@ -97,10 +97,10 @@ export default function Referrals() {
             <div className="max-w-lg mx-auto px-4">
               <div className="bg-purple-600 text-white rounded-xl px-4 py-3 flex items-center justify-between shadow-lg">
                 <div>
-                  <p className="text-xs text-purple-200">{referrals.length} referrals</p>
-                  <p className="text-sm font-medium">Total Earned</p>
+                  <p className="text-xs text-purple-200">{earnings?.today?.referrals || 0} referrals today</p>
+                  <p className="text-sm font-medium">Today's Earnings</p>
                 </div>
-                <p className="text-2xl font-bold">${totalEarned.toFixed(2)}</p>
+                <p className="text-2xl font-bold">${(earnings?.today?.amount || 0).toFixed(2)}</p>
               </div>
             </div>
           </div>

@@ -38,13 +38,8 @@ export default function Settings() {
 
       {/* Group settings by category */}
       <SettingsGroup title="Company" settings={otherSettings.filter(s => s.key.startsWith('company_'))} saving={saving} onSave={handleSave} />
-      <SettingsGroup title="Payment & Commissions" settings={otherSettings.filter(s => ['default_driver_pay_pct','default_cashier_commission_pct','cashier_commission_enabled','driver_payout_schedule','late_cancel_refund_pct'].includes(s.key))} saving={saving} onSave={handleSave} />
-      <SettingsGroup title="Booking" settings={otherSettings.filter(s => ['booking_window_days','cancellation_window_hours','unassigned_alert_minutes'].includes(s.key))} saving={saving} onSave={handleSave} />
-
-      {/* Countries — special visual selector */}
-      {settings.find(s => s.key === 'available_countries') && (
-        <CountriesSelector setting={settings.find(s => s.key === 'available_countries')} saving={saving === 'available_countries'} onSave={handleSave} />
-      )}
+      <SettingsGroup title="Payment & Commissions" settings={otherSettings.filter(s => ['default_driver_pay_pct','default_cashier_commission_pct','cashier_commission_enabled','driver_payout_schedule','late_cancel_refund_pct','max_active_runs_per_driver'].includes(s.key))} saving={saving} onSave={handleSave} />
+      <SettingsGroup title="Booking" settings={otherSettings.filter(s => ['booking_window_days','cancellation_window_hours','unassigned_alert_minutes','review_expiry_days'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Notifications" settings={otherSettings.filter(s => s.key === 'sms_enabled')} saving={saving} onSave={handleSave} />
       <SmsTemplates settings={otherSettings.filter(s => s.key.startsWith('sms_') && s.key !== 'sms_enabled')} saving={saving} onSave={handleSave} />
     </div>
@@ -94,14 +89,18 @@ const FRIENDLY_NAMES = {
   default_driver_pay_pct: 'Driver Pay %',
   default_cashier_commission_pct: 'Cashier Commission %',
   cashier_commission_enabled: 'Cashier Commissions',
+  max_active_runs_per_driver: 'Max Active Runs / Driver',
   booking_window_days: 'Booking Window (days)',
   cancellation_window_hours: 'Free Cancellation (hours)',
   late_cancel_refund_pct: 'Late Cancel Refund %',
   sms_enabled: 'SMS Notifications',
   unassigned_alert_minutes: 'Unassigned Alert (min)',
   driver_payout_schedule: 'Driver Payout Schedule',
+  review_expiry_days: 'Review Expiry (days)',
   sms_cashier_referral: 'Cashier Referral SMS',
   sms_cashier_payout: 'Cashier Payout SMS',
+  sms_client_booking: 'Client Booking Confirmation SMS',
+  sms_client_ride_started: 'Client Ride Started SMS',
   available_countries: 'Available Countries',
 }
 
@@ -122,6 +121,8 @@ function SettingsGroup({ title, settings, saving, onSave }) {
 const SMS_VARIABLES = {
   sms_cashier_referral: ['cashier_name', 'amount', 'client_name', 'route', 'total_earnings', 'booking_number'],
   sms_cashier_payout: ['cashier_name', 'amount', 'booking_number'],
+  sms_client_booking: ['client_name', 'pickup_name', 'dropoff_name', 'pickup_date', 'booking_number', 'confirmation_url'],
+  sms_client_ride_started: ['client_name', 'driver_name', 'pickup_name', 'dropoff_name', 'booking_number', 'confirmation_url'],
 }
 
 function SmsTemplates({ settings, saving, onSave }) {

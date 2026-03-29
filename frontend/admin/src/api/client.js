@@ -33,6 +33,10 @@ export const api = {
   // Bookings
   getBookings: (page = 1, perPage = 10, status = '') =>
     request(`/admin/bookings?page=${page}&per_page=${perPage}${status ? `&status=${status}` : ''}`),
+  getBookingDetail: (id) => request(`/admin/bookings/${id}`),
+
+  // Reviews
+  getReviews: (page = 1, perPage = 10) => request(`/admin/reviews?page=${page}&per_page=${perPage}`),
 
   // Payouts
   getPayouts: (status = 'pending_review', page = 1, perPage = 10) => request(`/admin/payouts?status=${status}&page=${page}&per_page=${perPage}`),

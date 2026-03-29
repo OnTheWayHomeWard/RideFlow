@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
+import { useSettings } from '../hooks/useSettings.jsx'
 import Toast from './Toast'
+import PhoneInput from './PhoneInput'
 
 export default function StepConfirm({ booking, setBooking, cashierRef, onBack }) {
   const navigate = useNavigate()
+  const settings = useSettings()
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState(null)
   const [extrasList, setExtrasList] = useState([])
@@ -217,12 +220,10 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
             onChange={e => setBooking(prev => ({ ...prev, clientName: e.target.value }))}
             className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
           />
-          <input
-            type="tel"
-            placeholder="Phone number"
+          <PhoneInput
             value={booking.clientPhone}
-            onChange={e => setBooking(prev => ({ ...prev, clientPhone: e.target.value }))}
-            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
+            onChange={v => setBooking(prev => ({ ...prev, clientPhone: v }))}
+            placeholder="Phone number"
           />
         </div>
       </Section>

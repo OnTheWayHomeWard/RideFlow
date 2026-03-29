@@ -114,6 +114,10 @@ async def get_available_runs(
             luggage=b.luggage,
             vehicle_type=b.vehicle_type,
             driver_earnings=driver_earnings,
+            extras_chosen=b.extras_chosen,
+            client_name=b.client_name,
+            client_phone=b.client_phone,
+            client_room=b.client_room,
         ))
 
     return runs
@@ -128,6 +132,26 @@ async def accept_run(
     db: AsyncSession = Depends(get_db),
 ):
     """First-accept-wins. Accept an available run."""
+    # Check max active runs limit
+    from app.models.setting import Setting
+    max_r = await db.execute(select(Setting).where(Setting.key == "max_active_runs_per_driver"))
+    max_setting = max_r.scalar_one_or_none()
+    max_runs = int(max_setting.value) if max_setting else 5
+
+    active_count_r = await db.execute(
+        select(func.count()).select_from(Booking).where(
+            Booking.driver_id == driver.id,
+            Booking.status.in_(["assigned", "in_progress"]),
+        )
+    )
+    active_count = active_count_r.scalar()
+
+    if active_count >= max_runs:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You already have {active_count} active runs. Maximum allowed is {max_runs}. Complete some runs before accepting new ones.",
+        )
+
     result = await db.execute(
         select(Booking).where(
             Booking.id == booking_id,
@@ -220,6 +244,28 @@ async def start_ride(
     booking.status = "in_progress"
     booking.started_at = datetime.now(timezone.utc)
     booking.start_location = {"lat": location.lat, "lng": location.lng}
+
+    # Log notification for admin
+    from app.models.notification_log import NotificationLog
+    db.add(NotificationLog(
+        recipient="admin",
+        channel="in_app",
+        message=f"Ride started: {driver.name} picked up {booking.client_name} ({booking.pickup_name} → {booking.dropoff_name})",
+        status="sent",
+        related_type="ride_started",
+    ))
+
+    # Send SMS to client with rating link
+    from app.services.sms_service import notify_client_ride_started
+    confirmation_url = f"http://localhost:5173/confirmation/{booking.booking_number}"
+    await notify_client_ride_started(db, booking.client_phone, {
+        "client_name": booking.client_name,
+        "driver_name": driver.name,
+        "pickup_name": booking.pickup_name,
+        "dropoff_name": booking.dropoff_name,
+        "booking_number": booking.booking_number,
+        "confirmation_url": confirmation_url,
+    })
 
     await db.commit()
 

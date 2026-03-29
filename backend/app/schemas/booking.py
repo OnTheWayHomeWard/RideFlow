@@ -84,3 +84,4 @@ class BookingStatusOut(BaseModel):
     driver_plate: str | None = None
     driver_color: str | None = None
     driver_phone: str | None = None
+    has_rated: bool = False

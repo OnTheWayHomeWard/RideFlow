@@ -33,7 +33,7 @@ export default function Payouts() {
 
   return (
     <div className="p-4 lg:p-6">
-      <h1 className="text-xl lg:text-2xl font-bold text-slate-900 mb-4">Payout Requests</h1>
+      <h1 className="text-xl lg:text-2xl font-bold text-slate-900 mb-4">Completed Runs</h1>
 
       <div className="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-4 px-4 lg:mx-0 lg:px-0">
         {TABS.map(t => (

@@ -79,6 +79,8 @@ async def get_my_profile(cashier: Cashier = Depends(get_current_cashier), db: As
         "total_earnings": float(cashier.total_earnings),
         "status": cashier.status,
         "password_changed": cashier.password_changed,
+        "payout_method": cashier.payout_method,
+        "payout_details": cashier.payout_details,
     }
 
 

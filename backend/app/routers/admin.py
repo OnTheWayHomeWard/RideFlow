@@ -636,6 +636,52 @@ async def list_bookings(
     }
 
 
+@router.get("/bookings/{booking_id}")
+async def get_booking_detail(booking_id: str, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Booking).where(Booking.id == booking_id))
+    b = result.scalar_one_or_none()
+    if not b: raise HTTPException(status_code=404, detail="Booking not found")
+    driver_data = None
+    if b.driver_id:
+        dr = await db.execute(select(Driver).where(Driver.id == b.driver_id))
+        d = dr.scalar_one_or_none()
+        if d: driver_data = {"id": str(d.id), "name": d.name, "phone": d.phone, "vehicle_type": d.vehicle_type, "vehicle_make": d.vehicle_make, "vehicle_plate": d.vehicle_plate, "vehicle_color": d.vehicle_color}
+    hotel_name = cashier_name = None
+    if b.hotel_id: hotel_name = (await db.execute(select(Hotel.name).where(Hotel.id == b.hotel_id))).scalar_one_or_none()
+    if b.cashier_id: cashier_name = (await db.execute(select(Cashier.name).where(Cashier.id == b.cashier_id))).scalar_one_or_none()
+    from app.models.rating import Rating as RatingModel
+    rating_obj = (await db.execute(select(RatingModel).where(RatingModel.booking_id == b.id))).scalar_one_or_none()
+    splits = [{"type": s.recipient_type, "amount": float(s.amount), "status": s.payout_status} for s in (await db.execute(select(PaymentSplit).where(PaymentSplit.booking_id == b.id))).scalars().all()]
+    return {
+        "id": str(b.id), "booking_number": b.booking_number, "client_name": b.client_name, "client_phone": b.client_phone, "client_room": b.client_room,
+        "pickup_name": b.pickup_name, "pickup_address": b.pickup_address, "dropoff_name": b.dropoff_name, "dropoff_address": b.dropoff_address,
+        "distance_miles": float(b.distance_miles) if b.distance_miles else None, "pickup_date": str(b.pickup_date), "pickup_time": str(b.pickup_time),
+        "vehicle_type": b.vehicle_type, "extras_chosen": b.extras_chosen,
+        "base_amount": float(b.base_amount), "extras_amount": float(b.extras_amount), "upsale_amount": float(b.upsale_amount), "total_amount": float(b.total_amount),
+        "status": b.status, "created_at": b.created_at.isoformat() if b.created_at else None, "paid_at": b.paid_at.isoformat() if b.paid_at else None,
+        "assigned_at": b.assigned_at.isoformat() if b.assigned_at else None, "started_at": b.started_at.isoformat() if b.started_at else None,
+        "completed_at": b.completed_at.isoformat() if b.completed_at else None,
+        "start_location": b.start_location, "end_location": b.end_location,
+        "driver": driver_data, "hotel_name": hotel_name, "cashier_name": cashier_name, "splits": splits,
+        "rating": rating_obj.rating if rating_obj else None, "comment": rating_obj.comment if rating_obj else None,
+    }
+
+
+@router.get("/reviews")
+async def list_reviews(page: int = Query(1, ge=1), per_page: int = Query(10, ge=1, le=100), admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    from app.models.rating import Rating as RatingModel
+    total = (await db.execute(select(func.count(RatingModel.id)).where(RatingModel.comment.isnot(None), RatingModel.comment != ""))).scalar()
+    result = await db.execute(select(RatingModel).where(RatingModel.comment.isnot(None), RatingModel.comment != "").order_by(RatingModel.created_at.desc()).offset((page - 1) * per_page).limit(per_page))
+    reviews = []
+    for r in result.scalars().all():
+        b = (await db.execute(select(Booking).where(Booking.id == r.booking_id))).scalar_one_or_none()
+        driver_name = (await db.execute(select(Driver.name).where(Driver.id == r.driver_id))).scalar_one_or_none()
+        reviews.append({"id": str(r.id), "booking_id": str(r.booking_id), "booking_number": b.booking_number if b else None,
+            "client_name": b.client_name if b else None, "route": f"{b.pickup_name} → {b.dropoff_name}" if b else None,
+            "driver_name": driver_name, "rating": r.rating, "comment": r.comment, "created_at": r.created_at.isoformat() if r.created_at else None})
+    return {"items": reviews, "total": total, "page": page, "per_page": per_page, "total_pages": (total + per_page - 1) // per_page}
+
+
 # ═══════════════════════════════════════════
 # DRIVERS
 # ═══════════════════════════════════════════

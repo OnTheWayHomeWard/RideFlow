@@ -26,10 +26,10 @@ export default function Dashboard() {
 
       {/* Earnings cards */}
       <div className="grid grid-cols-2 gap-3 mb-5">
+        <EarnCard label="All Time" amount={earnings?.total?.amount} referrals={earnings?.total?.referrals} accent />
         <EarnCard label="Today" amount={earnings?.today?.amount} referrals={earnings?.today?.referrals} />
         <EarnCard label="This Week" amount={earnings?.this_week?.amount} referrals={earnings?.this_week?.referrals} />
         <EarnCard label="This Month" amount={earnings?.this_month?.amount} referrals={earnings?.this_month?.referrals} />
-        <EarnCard label="All Time" amount={earnings?.total?.amount} referrals={earnings?.total?.referrals} accent />
       </div>
 
       {/* Quick actions */}
@@ -72,6 +72,24 @@ export default function Dashboard() {
           <div><p className="text-xs text-slate-400">Commission</p><p className="font-medium">{profile.commission_pct}%</p></div>
           <div><p className="text-xs text-slate-400">Status</p><p className="font-medium capitalize">{profile.status}</p></div>
         </div>
+
+        {/* Payout info */}
+        {profile.payout_method && (
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <p className="text-xs text-slate-400 mb-1">Payout Method</p>
+            <p className="font-medium text-sm capitalize">{profile.payout_method}</p>
+            {profile.payout_details && Object.keys(profile.payout_details).length > 0 && (
+              <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                {Object.entries(profile.payout_details).map(([k, v]) => (
+                  <div key={k}>
+                    <p className="text-slate-400 capitalize">{k.replace(/_/g, ' ')}</p>
+                    <p className="font-medium text-slate-700">{String(v)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <Link to="/change-password" className="mt-3 flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
           <div className="flex items-center gap-2">

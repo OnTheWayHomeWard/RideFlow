@@ -89,3 +89,21 @@ async def notify_cashier_payout(db: AsyncSession, cashier_phone: str, variables:
         return
     message = render_template(template, variables)
     await send_sms(db, cashier_phone, message, "cashier_payout")
+
+
+async def notify_client_booking(db: AsyncSession, client_phone: str, variables: dict):
+    """Notify client after successful booking with confirmation link."""
+    template = await get_template(db, "sms_client_booking")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, client_phone, message, "client_booking")
+
+
+async def notify_client_ride_started(db: AsyncSession, client_phone: str, variables: dict):
+    """Notify client when ride starts with rating link."""
+    template = await get_template(db, "sms_client_ride_started")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, client_phone, message, "client_ride_started")

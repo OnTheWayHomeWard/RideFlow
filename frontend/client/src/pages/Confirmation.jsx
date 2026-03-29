@@ -8,6 +8,21 @@ export default function Confirmation() {
   const settings = useSettings()
   const [booking, setBooking] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [rating, setRating] = useState(0)
+  const [hover, setHover] = useState(0)
+  const [comment, setComment] = useState('')
+  const [ratingSubmitted, setRatingSubmitted] = useState(false)
+  const [submittingRating, setSubmittingRating] = useState(false)
+
+  const handleSubmitRating = async () => {
+    if (rating === 0) return
+    setSubmittingRating(true)
+    try {
+      await api.submitRating(bookingNumber, { rating, comment })
+      setRatingSubmitted(true)
+    } catch (e) { /* already rated or error */ setRatingSubmitted(true) }
+    finally { setSubmittingRating(false) }
+  }
 
   useEffect(() => {
     const fetchStatus = () => {
@@ -55,25 +70,47 @@ export default function Confirmation() {
     <div className="max-w-lg mx-auto min-h-screen bg-white">
       {/* Header */}
       <header className="bg-blue-600 text-white px-4 py-4 flex items-center gap-2">
-        <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-          </svg>
-        </div>
+        {settings.company_logo_url ? (
+          <img src={settings.company_logo_url} alt="" className="w-8 h-8 object-contain rounded-lg" />
+        ) : (
+          <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+            </svg>
+          </div>
+        )}
         <span className="font-bold text-lg">{settings.company_name || 'RideFlow'}</span>
         <span className="ml-auto text-xs bg-white/20 px-2.5 py-1 rounded-full">Confirmation</span>
       </header>
 
-      {/* Success banner */}
-      <div className="bg-green-50 border-b border-green-100 px-4 py-4 flex items-center gap-3">
-        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center shrink-0 animate-[bounceIn_0.5s_ease]">
-          <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-          </svg>
+      {/* Dynamic status banner */}
+      <div className={`border-b px-4 py-3 flex items-center gap-3 ${
+        booking.status === 'in_progress' ? 'bg-amber-50 border-amber-100' :
+        booking.status === 'completed' ? 'bg-green-50 border-green-100' :
+        booking.status === 'assigned' ? 'bg-blue-50 border-blue-100' :
+        'bg-green-50 border-green-100'
+      }`}>
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+          booking.status === 'in_progress' ? 'bg-amber-100' :
+          booking.status === 'completed' ? 'bg-green-100' :
+          booking.status === 'assigned' ? 'bg-blue-100' :
+          'bg-green-100'
+        }`}>
+          {booking.status === 'in_progress' ? '🚗' : booking.status === 'completed' ? '✓' : booking.status === 'assigned' ? '👤' : '✓'}
         </div>
         <div>
-          <p className="font-bold text-green-900">Ride Booked!</p>
-          <p className="text-xs text-green-700">Your confirmation receipt</p>
+          <p className={`font-bold text-sm ${
+            booking.status === 'in_progress' ? 'text-amber-900' :
+            booking.status === 'completed' ? 'text-green-900' :
+            booking.status === 'assigned' ? 'text-blue-900' :
+            'text-green-900'
+          }`}>
+            {booking.status === 'in_progress' ? 'Ride in Progress' :
+             booking.status === 'completed' ? 'Ride Completed' :
+             booking.status === 'assigned' ? 'Driver Assigned' :
+             'Ride Booked'}
+          </p>
+          <p className="text-xs text-slate-500">Booking #{bookingNumber}</p>
         </div>
       </div>
 
@@ -152,6 +189,42 @@ export default function Confirmation() {
             </div>
             <p className="text-xs text-green-700 mt-1 ml-7">Your driver will contact you before the pickup time.</p>
             <p className="text-xs text-green-600 mt-1 ml-7">This page will update automatically when a driver is assigned.</p>
+          </div>
+        )}
+
+        {/* Rating form — shows when ride is in_progress or completed and not yet rated */}
+        {(booking.status === 'in_progress' || booking.status === 'completed') && !booking.has_rated && !ratingSubmitted && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-5">
+            <h3 className="font-semibold text-sm text-amber-900 mb-3">How was your ride?</h3>
+            <div className="flex justify-center gap-2 mb-3">
+              {[1,2,3,4,5].map(s => (
+                <button key={s} onMouseEnter={() => setHover(s)} onMouseLeave={() => setHover(0)} onClick={() => setRating(s)} className="transition-transform hover:scale-110 active:scale-95">
+                  <svg className={`w-10 h-10 ${(hover || rating) >= s ? 'text-amber-400' : 'text-slate-200'} transition-colors`} fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+            {rating > 0 && (
+              <>
+                <textarea value={comment}
+                  onChange={e => { setComment(e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px' }}
+                  rows={1}
+                  placeholder="Any comments? (optional)"
+                  className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none mb-3 placeholder:text-slate-400 overflow-hidden" />
+                <button onClick={handleSubmitRating} disabled={submittingRating}
+                  className="w-full py-2.5 bg-amber-500 text-white rounded-xl text-sm font-semibold hover:bg-amber-600 disabled:opacity-60">
+                  {submittingRating ? 'Submitting...' : 'Submit Rating'}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Rating thank you */}
+        {(ratingSubmitted || booking.has_rated) && (
+          <div className="bg-green-50 border border-green-200 rounded-2xl p-4 mb-5 text-center">
+            <p className="text-green-700 font-medium text-sm">Thank you for your feedback!</p>
           </div>
         )}
 

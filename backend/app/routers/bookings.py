@@ -1,11 +1,13 @@
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.booking import Booking
 from app.models.cashier import Cashier
 from app.models.driver import Driver
+from app.models.rating import Rating
 from app.schemas.booking import BookingCreateRequest, BookingOut, BookingStatusOut
 from app.services.pricing_service import calculate_price
 from app.services.geofence_service import validate_location
@@ -145,4 +147,64 @@ async def get_booking_status(booking_number: str, db: AsyncSession = Depends(get
         driver_plate=driver_plate,
         driver_color=driver_color,
         driver_phone=driver_phone,
+        has_rated=bool((await db.execute(select(Rating).where(Rating.booking_id == booking.id))).scalar_one_or_none()),
     )
+
+
+class RatingRequest(BaseModel):
+    rating: int
+    comment: str = ""
+
+
+@router.post("/bookings/{booking_number}/rate")
+async def rate_booking(booking_number: str, req: RatingRequest, db: AsyncSession = Depends(get_db)):
+    """Client rates a completed/in-progress ride. Only one rating per booking."""
+    result = await db.execute(select(Booking).where(Booking.booking_number == booking_number))
+    booking = result.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if booking.status not in ("in_progress", "completed"):
+        raise HTTPException(status_code=400, detail="Can only rate rides that are in progress or completed")
+    if not booking.driver_id:
+        raise HTTPException(status_code=400, detail="No driver assigned yet")
+
+    # Check review expiry
+    from app.models.setting import Setting as SettingModel
+    from datetime import datetime, timezone, timedelta
+    expiry_r = await db.execute(select(SettingModel).where(SettingModel.key == "review_expiry_days"))
+    expiry_setting = expiry_r.scalar_one_or_none()
+    expiry_days = int(expiry_setting.value) if expiry_setting else 3
+
+    if booking.started_at:
+        expiry_date = booking.started_at + timedelta(days=expiry_days)
+        if datetime.now(timezone.utc) > expiry_date:
+            raise HTTPException(status_code=400, detail=f"Review period has expired ({expiry_days} days after ride)")
+
+    # Check if already rated
+    existing = await db.execute(select(Rating).where(Rating.booking_id == booking.id))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="You have already rated this ride")
+
+    rating = Rating(
+        booking_id=booking.id,
+        driver_id=booking.driver_id,
+        rating=max(1, min(5, req.rating)),
+        comment=req.comment or None,
+    )
+    db.add(rating)
+
+    # Update driver average rating
+    driver = await db.execute(select(Driver).where(Driver.id == booking.driver_id))
+    driver_obj = driver.scalar_one_or_none()
+    if driver_obj:
+        avg_r = await db.execute(
+            select(func.avg(Rating.rating))
+            .join(Booking, Rating.booking_id == Booking.id)
+            .where(Booking.driver_id == driver_obj.id)
+        )
+        new_avg = avg_r.scalar()
+        if new_avg:
+            driver_obj.rating_avg = round(float(new_avg), 2)
+
+    await db.commit()
+    return {"message": "Thank you for your rating!"}

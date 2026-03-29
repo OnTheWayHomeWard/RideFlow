@@ -64,9 +64,12 @@ async def seed():
             Setting(key="available_countries", value=["US", "ET", "GB", "CA"], description="Available country codes for phone input. First is default. Format: JSON array of ISO codes."),
             Setting(key="sms_enabled", value=True, description="Enable SMS notifications"),
             Setting(key="unassigned_alert_minutes", value=15, description="Alert admin if run unassigned after X minutes"),
+            Setting(key="max_active_runs_per_driver", value=5, description="Max active (assigned + in_progress) runs per driver at once"),
             Setting(key="driver_payout_schedule", value="weekly", description="How often drivers are paid"),
             Setting(key="sms_cashier_referral", value="Hi {cashier_name}, you earned ${amount} from a new booking by {client_name} ({route}). Total earnings: ${total_earnings}.", description="SMS to cashier on referral. Vars: {cashier_name}, {amount}, {client_name}, {route}, {total_earnings}, {booking_number}"),
             Setting(key="sms_cashier_payout", value="Hi {cashier_name}, your commission of ${amount} for booking {booking_number} has been processed.", description="SMS to cashier on payout. Vars: {cashier_name}, {amount}, {booking_number}"),
+            Setting(key="sms_client_booking", value="Hi {client_name}, your ride is booked! {pickup_name} → {dropoff_name} on {pickup_date}. View your receipt: {confirmation_url}", description="SMS to client after booking. Vars: {client_name}, {pickup_name}, {dropoff_name}, {pickup_date}, {booking_number}, {confirmation_url}"),
+            Setting(key="sms_client_ride_started", value="Hi {client_name}, your ride has started! {driver_name} is taking you from {pickup_name} to {dropoff_name}. Rate your experience: {confirmation_url}", description="SMS to client when ride starts. Vars: {client_name}, {driver_name}, {pickup_name}, {dropoff_name}, {confirmation_url}, {booking_number}"),
         ]
         db.add_all(settings)
         print("Created settings")

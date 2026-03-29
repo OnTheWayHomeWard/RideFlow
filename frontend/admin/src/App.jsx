@@ -13,6 +13,8 @@ import CashierDetail from './pages/CashierDetail'
 import Hotels from './pages/Hotels'
 import Pricing from './pages/Pricing'
 import Upsales from './pages/Upsales'
+import RunDetail from './pages/RunDetail'
+import Reviews from './pages/Reviews'
 import Notifications from './pages/Notifications'
 import Settings from './pages/Settings'
 
@@ -39,7 +41,9 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/runs" element={<Runs />} />
+          <Route path="/runs/:bookingId" element={<RunDetail />} />
           <Route path="/payouts" element={<Payouts />} />
+          <Route path="/reviews" element={<Reviews />} />
           <Route path="/drivers" element={<Drivers />} />
           <Route path="/drivers/:driverId" element={<DriverDetail />} />
           <Route path="/cashiers" element={<Cashiers />} />

@@ -34,6 +34,8 @@ class DriverOut(BaseModel):
     rating_avg: float
     total_rides: int
     total_earnings: float
+    payout_method: str | None = None
+    payout_details: dict | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -51,7 +53,11 @@ class AvailableRunOut(BaseModel):
     passengers: int
     luggage: str
     vehicle_type: str
-    driver_earnings: float  # only show what driver earns, never total
+    driver_earnings: float
+    extras_chosen: list | None = None
+    client_name: str | None = None
+    client_phone: str | None = None
+    client_room: str | None = None
 
     model_config = {"from_attributes": True}
 

@@ -33,5 +33,5 @@ export const api = {
   createCheckout: (bookingNumber) => request(`/payments/create-checkout?booking_number=${bookingNumber}`, { method: 'POST' }),
 
   // Ratings
-  submitRating: (bookingNumber, data) => request(`/ratings/${bookingNumber}`, { method: 'POST', body: JSON.stringify(data) }),
+  submitRating: (bookingNumber, data) => request(`/bookings/${bookingNumber}/rate`, { method: 'POST', body: JSON.stringify(data) }),
 }

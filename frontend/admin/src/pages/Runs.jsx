@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import StatusBadge, { STATUS_LABELS } from '../components/StatusBadge'
 import Pagination from '../components/Pagination'
@@ -78,7 +79,7 @@ export default function Runs() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {bookings.map(b => (
-                    <tr key={b.id} className={`hover:bg-slate-50 ${b.client_rating && b.client_rating <= 2 ? 'bg-red-50/50' : ''}`}>
+                    <tr key={b.id} onClick={() => window.location.href = `/runs/${b.id}`} className={`hover:bg-slate-50 cursor-pointer ${b.client_rating && b.client_rating <= 2 ? 'bg-red-50/50' : ''}`}>
                       <td className="px-4 py-3 font-mono text-xs">{b.booking_number}</td>
                       <td className="px-4 py-3">
                         <p className="font-medium">{b.client_name}</p>
@@ -115,7 +116,7 @@ export default function Runs() {
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
             {bookings.map(b => (
-              <div key={b.id} className={`bg-white border rounded-xl overflow-hidden ${b.client_rating && b.client_rating <= 2 ? 'border-red-200' : 'border-slate-200'}`}>
+              <Link key={b.id} to={`/runs/${b.id}`} className={`block bg-white border rounded-xl overflow-hidden hover:shadow-sm transition-all ${b.client_rating && b.client_rating <= 2 ? 'border-red-200' : 'border-slate-200'}`}>
                 <div className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-mono text-xs text-slate-500">{b.booking_number}</span>
@@ -150,7 +151,7 @@ export default function Runs() {
                     )}
                   </div>
                 )}
-              </div>
+              </Link>
             ))}
             {bookings.length === 0 && (
               <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">

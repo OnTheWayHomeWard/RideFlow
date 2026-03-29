@@ -97,6 +97,18 @@ async def confirm_payment(db: AsyncSession, booking: Booking, stripe_payment_id:
     booking.status = "paid"
     booking.paid_at = datetime.now(timezone.utc)
 
+    # Send confirmation SMS to client
+    from app.services.sms_service import notify_client_booking
+    confirmation_url = f"http://localhost:5173/confirmation/{booking.booking_number}"
+    await notify_client_booking(db, booking.client_phone, {
+        "client_name": booking.client_name,
+        "pickup_name": booking.pickup_name,
+        "dropoff_name": booking.dropoff_name,
+        "pickup_date": str(booking.pickup_date),
+        "booking_number": booking.booking_number,
+        "confirmation_url": confirmation_url,
+    })
+
     await db.commit()
 
     return payment
