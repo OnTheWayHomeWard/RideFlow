@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
+import { useSettings } from '../hooks/useSettings.jsx'
 import Pagination from '../components/Pagination'
+import PhoneInput from '../components/PhoneInput'
 
 function initials(name) {
   const parts = name.trim().split(/\s+/)
@@ -9,10 +11,14 @@ function initials(name) {
 }
 
 export default function Drivers() {
+  const settings = useSettings()
   const [data, setData] = useState({ items: [], total: 0, page: 1, total_pages: 0 })
   const [filter, setFilter] = useState('')
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ name: '', phone: '', email: '', vehicle_type: 'sedan', vehicle_make: '', vehicle_plate: '', vehicle_color: '', license_number: '', has_insurance: false })
+  const [creating, setCreating] = useState(false)
 
   const load = (p, f) => {
     setLoading(true)
@@ -40,10 +46,90 @@ export default function Drivers() {
     if (!confirm(`Deactivate driver "${name}"? This will prevent them from accepting runs.`)) return
     try { await api.deleteDriver(id); load(page, filter) } catch (e) { alert(e.message) }
   }
+  const handlePermanentDelete = async (id, name) => {
+    if (!confirm(`Permanently delete driver "${name}"? This cannot be undone.`)) return
+    try { await api.deleteDriver(id, true); load(page, filter) } catch (e) { alert(e.message) }
+  }
 
   return (
     <div className="p-4 lg:p-6">
-      <h1 className="text-xl lg:text-2xl font-bold text-slate-900 mb-4 lg:mb-6">Drivers</h1>
+      <div className="flex items-center justify-between mb-4 lg:mb-6">
+        <h1 className="text-xl lg:text-2xl font-bold text-slate-900">Drivers</h1>
+        <button onClick={() => setShowForm(!showForm)}
+          className="px-3 lg:px-4 py-2 bg-blue-600 text-white rounded-lg text-xs lg:text-sm font-medium hover:bg-blue-700">
+          {showForm ? 'Cancel' : '+ Add Driver'}
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={async (e) => {
+          e.preventDefault(); setCreating(true)
+          try {
+            const res = await api.createDriver(form)
+            alert(`Driver created!\nDefault password: ${res.default_password} (last 4 digits of phone)`)
+            setShowForm(false); setForm({ name: '', phone: '', email: '', vehicle_type: 'sedan', vehicle_make: '', vehicle_plate: '', vehicle_color: '', license_number: '', has_insurance: false })
+            load(1, filter)
+          } catch (err) { alert(err.message) }
+          finally { setCreating(false) }
+        }} className="bg-white border border-slate-200 rounded-xl p-4 lg:p-5 mb-5">
+          <h3 className="font-semibold text-sm text-slate-900 mb-3">New Driver</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="text-xs text-slate-500">Name</label>
+              <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} required
+                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Full name" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500">Phone</label>
+              <div className="mt-1">
+                <PhoneInput value={form.phone} onChange={v => setForm(p => ({ ...p, phone: v }))} availableCountries={settings.available_countries} placeholder="Phone number" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-slate-500">Email (optional)</label>
+              <input value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
+                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Optional" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500">Vehicle Type</label>
+              <select value={form.vehicle_type} onChange={e => setForm(p => ({ ...p, vehicle_type: e.target.value }))}
+                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm">
+                <option value="sedan">Sedan</option><option value="suv">SUV</option>
+                <option value="van">Van</option><option value="large_van">Large Van</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-slate-500">Vehicle Make</label>
+              <input value={form.vehicle_make} onChange={e => setForm(p => ({ ...p, vehicle_make: e.target.value }))}
+                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. Toyota Camry 2023" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500">License Plate</label>
+              <input value={form.vehicle_plate} onChange={e => setForm(p => ({ ...p, vehicle_plate: e.target.value }))}
+                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. ABC-1234" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500">Vehicle Color</label>
+              <input value={form.vehicle_color} onChange={e => setForm(p => ({ ...p, vehicle_color: e.target.value }))}
+                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. White" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500">License Number</label>
+              <input value={form.license_number} onChange={e => setForm(p => ({ ...p, license_number: e.target.value }))}
+                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. DL-123456" />
+            </div>
+            <div className="flex items-center gap-2 mt-4">
+              <input type="checkbox" checked={form.has_insurance} onChange={e => setForm(p => ({ ...p, has_insurance: e.target.checked }))} />
+              <label className="text-sm text-slate-700">Has commercial transport insurance</label>
+            </div>
+          </div>
+          <p className="text-xs text-slate-400 mb-3">Default password will be the last 4 digits of the phone number. Driver will be prompted to change it on first login.</p>
+          <button type="submit" disabled={creating}
+            className="w-full lg:w-auto px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
+            {creating ? 'Creating...' : 'Create Driver'}
+          </button>
+        </form>
+      )}
 
       <div className="flex gap-2 mb-5 overflow-x-auto pb-1 -mx-4 px-4 lg:mx-0 lg:px-0">
         {['', 'pending', 'active', 'inactive'].map(s => (
@@ -100,24 +186,6 @@ export default function Drivers() {
                 </div>
               </Link>
 
-              {/* Action bar */}
-              <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50 flex items-center gap-2 flex-wrap">
-                {d.status === 'pending' && (
-                  <>
-                    <button onClick={() => handleApprove(d.id)} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700">Approve</button>
-                    <button onClick={() => handleReject(d.id)} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700">Reject</button>
-                  </>
-                )}
-                {d.status === 'active' && (
-                  <button onClick={() => handleToggleStatus(d.id, d.status)} className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-300">Deactivate</button>
-                )}
-                {d.status === 'inactive' && (
-                  <button onClick={() => handleToggleStatus(d.id, d.status)} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">Activate</button>
-                )}
-                <Link to={`/drivers/${d.id}`} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-medium hover:bg-slate-50 ml-auto">
-                  View Details
-                </Link>
-              </div>
             </div>
           ))}
           {drivers.length === 0 && <p className="text-center text-slate-400 py-8">No drivers found</p>}

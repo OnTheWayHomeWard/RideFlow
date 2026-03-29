@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
+import { useSettings } from '../hooks/useSettings.jsx'
 import StatusBadge from '../components/StatusBadge'
+import PhoneInput from '../components/PhoneInput'
 
 function initials(name) {
   const parts = name.trim().split(/\s+/)
@@ -23,6 +25,8 @@ function Stars({ rating, size = 'sm' }) {
 
 export default function DriverDetail() {
   const { driverId } = useParams()
+  const navigate = useNavigate()
+  const settings = useSettings()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('info')
@@ -125,17 +129,18 @@ export default function DriverDetail() {
           {/* Actions — top right */}
           <div className="flex gap-2 shrink-0">
             {d.status === 'pending' && (
-              <>
-                <button onClick={() => handleStatusChange('active')} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700">Approve</button>
-                <button onClick={() => handleStatusChange('inactive')} className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200">Reject</button>
-              </>
+              <button onClick={() => handleStatusChange('active')} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700">Approve</button>
             )}
             {d.status === 'active' && (
-              <button onClick={handleDelete} className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200">Deactivate</button>
+              <button onClick={handleDelete} className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-300">Deactivate</button>
             )}
             {d.status === 'inactive' && (
               <button onClick={() => handleStatusChange('active')} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700">Activate</button>
             )}
+            <button onClick={async () => {
+              if (!confirm(`Permanently delete "${d.name}"? This cannot be undone.`)) return
+              try { await api.deleteDriver(driverId, true); navigate('/drivers') } catch (e) { alert(e.message) }
+            }} className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200">Delete</button>
           </div>
         </div>
 
@@ -177,7 +182,7 @@ export default function DriverDetail() {
               <SectionLabel text="Personal" />
               <div className="grid grid-cols-2 gap-3 text-sm mb-5">
                 <Field label="Name" value={d.name} />
-                <Field label="Phone" value={d.phone} />
+                <PhoneDisplay phone={d.phone} />
                 <Field label="Email" value={d.email || '—'} />
                 <Field label="Registered" value={d.created_at ? new Date(d.created_at).toLocaleDateString() : '—'} />
                 <Field label="Approved" value={d.approved_at ? new Date(d.approved_at).toLocaleDateString() : '—'} />
@@ -222,6 +227,22 @@ export default function DriverDetail() {
                   <p className="text-sm text-red-800">{d.rejection_reason}</p>
                 </div>
               )}
+
+              {/* Password section */}
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <div className="bg-slate-50 rounded-lg p-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-slate-400">{d.password_changed ? 'Password was changed by driver' : 'Using default password'}</p>
+                    {!d.password_changed && <p className="text-sm font-mono font-bold text-slate-900 mt-0.5">{d.default_password}</p>}
+                  </div>
+                  <button onClick={async () => {
+                    if (!confirm(`Reset password to default (${d.default_password})?`)) return
+                    try { await api.resetDriverPassword(driverId); alert(`Password reset to: ${d.default_password}`); load() } catch (e) { alert(e.message) }
+                  }} className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-300 shrink-0">
+                    Reset to Default
+                  </button>
+                </div>
+              </div>
             </>
           ) : (
             /* ═══ EDIT MODE ═══ */
@@ -234,7 +255,10 @@ export default function DriverDetail() {
               <SectionLabel text="Personal" />
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-5">
                 <EditField label="Name" value={editForm.name} onChange={v => setEditForm(p => ({ ...p, name: v }))} />
-                <EditField label="Phone" value={editForm.phone} onChange={v => setEditForm(p => ({ ...p, phone: v }))} />
+                <div>
+                  <label className="text-xs text-slate-500">Phone</label>
+                  <div className="mt-1"><PhoneInput value={editForm.phone} onChange={v => setEditForm(p => ({ ...p, phone: v }))} availableCountries={settings.available_countries} /></div>
+                </div>
                 <EditField label="Email" value={editForm.email} onChange={v => setEditForm(p => ({ ...p, email: v }))} />
               </div>
 
@@ -441,6 +465,27 @@ function MiniStat({ label, value, color }) {
 
 function SectionLabel({ text }) {
   return <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2 mt-1">{text}</p>
+}
+
+function PhoneDisplay({ phone }) {
+  const ALL = [
+    { code: 'US', dial: '+1', flag: '🇺🇸' }, { code: 'ET', dial: '+251', flag: '🇪🇹' },
+    { code: 'GB', dial: '+44', flag: '🇬🇧' }, { code: 'CA', dial: '+1', flag: '🇨🇦' },
+    { code: 'AU', dial: '+61', flag: '🇦🇺' }, { code: 'DE', dial: '+49', flag: '🇩🇪' },
+    { code: 'FR', dial: '+33', flag: '🇫🇷' }, { code: 'IN', dial: '+91', flag: '🇮🇳' },
+    { code: 'KE', dial: '+254', flag: '🇰🇪' }, { code: 'NG', dial: '+234', flag: '🇳🇬' },
+    { code: 'AE', dial: '+971', flag: '🇦🇪' }, { code: 'SA', dial: '+966', flag: '🇸🇦' },
+  ].sort((a, b) => b.dial.length - a.dial.length)
+  let flag = '📞', display = phone || '—'
+  for (const c of ALL) {
+    if (phone?.startsWith(c.dial)) { flag = c.flag; display = `${c.dial} ${phone.slice(c.dial.length)}`; break }
+  }
+  return (
+    <div>
+      <p className="text-xs text-slate-400">Phone</p>
+      <p className="font-medium text-slate-900 flex items-center gap-1.5"><span className="text-base">{flag}</span> {display}</p>
+    </div>
+  )
 }
 
 function Field({ label, value, mono }) {

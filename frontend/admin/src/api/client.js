@@ -45,7 +45,8 @@ export const api = {
   getDriverDetail: (id) => request(`/admin/drivers/${id}`),
   createDriver: (params) => request(`/admin/drivers?${new URLSearchParams(params)}`, { method: 'POST' }),
   updateDriver: (id, data) => request(`/admin/drivers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteDriver: (id) => request(`/admin/drivers/${id}`, { method: 'DELETE' }),
+  deleteDriver: (id, permanent = false) => request(`/admin/drivers/${id}?permanent=${permanent}`, { method: 'DELETE' }),
+  resetDriverPassword: (id) => request(`/admin/drivers/${id}/reset-password`, { method: 'PUT' }),
 
   // Cashiers
   getCashiers: (status, page = 1, perPage = 10) => request(`/admin/cashiers?page=${page}&per_page=${perPage}${status ? `&status=${status}` : ''}`),
@@ -53,7 +54,7 @@ export const api = {
   createCashier: (params) => request(`/admin/cashiers?${new URLSearchParams(params)}`, { method: 'POST' }),
   toggleCashier: (id) => request(`/admin/cashiers/${id}/toggle`, { method: 'PUT' }),
   updateCashier: (id, params) => request(`/admin/cashiers/${id}?${new URLSearchParams(params)}`, { method: 'PUT' }),
-  deleteCashier: (id) => request(`/admin/cashiers/${id}`, { method: 'DELETE' }),
+  deleteCashier: (id, permanent = false) => request(`/admin/cashiers/${id}?permanent=${permanent}`, { method: 'DELETE' }),
   resetCashierPassword: (id) => request(`/admin/cashiers/${id}/reset-password`, { method: 'PUT' }),
   getCashierQR: (id) => request(`/admin/cashiers/${id}/qr`),
 

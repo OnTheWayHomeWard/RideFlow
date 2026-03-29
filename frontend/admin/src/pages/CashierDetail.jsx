@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
+import { useSettings } from '../hooks/useSettings.jsx'
 import StatusBadge from '../components/StatusBadge'
+import PhoneInput from '../components/PhoneInput'
 
 function initials(name) {
   const parts = name.trim().split(/\s+/)
@@ -10,6 +12,8 @@ function initials(name) {
 
 export default function CashierDetail() {
   const { cashierId } = useParams()
+  const navigate = useNavigate()
+  const settings = useSettings()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('info')
@@ -123,18 +127,19 @@ export default function CashierDetail() {
             {c.status === 'active' && (
               <>
                 <button onClick={handleQR} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">QR Code</button>
-                <button onClick={() => handleStatusChange('inactive')} className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200">Deactivate</button>
+                <button onClick={() => handleStatusChange('inactive')} className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-300">Deactivate</button>
               </>
             )}
             {c.status === 'pending' && (
-              <>
-                <button onClick={() => handleStatusChange('active')} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700">Approve</button>
-                <button onClick={() => handleStatusChange('inactive')} className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200">Reject</button>
-              </>
+              <button onClick={() => handleStatusChange('active')} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700">Approve</button>
             )}
             {c.status === 'inactive' && (
               <button onClick={() => handleStatusChange('active')} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700">Activate</button>
             )}
+            <button onClick={async () => {
+              if (!confirm(`Permanently delete "${c.name}"? This cannot be undone.`)) return
+              try { await api.deleteCashier(cashierId, true); navigate('/cashiers') } catch (e) { alert(e.message) }
+            }} className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200">Delete</button>
           </div>
         </div>
 
@@ -170,7 +175,7 @@ export default function CashierDetail() {
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <Field label="Name" value={c.name} />
-                <Field label="Phone" value={c.phone} />
+                <PhoneDisplay phone={c.phone} />
                 <Field label="Email" value={c.email || '—'} />
                 <Field label="Hotel" value={c.hotel_name || '—'} />
                 <Field label="QR Code" value={c.ref_code} mono />
@@ -223,7 +228,10 @@ export default function CashierDetail() {
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
                 <EditField label="Name" value={editForm.name} onChange={v => setEditForm(p => ({ ...p, name: v }))} />
-                <EditField label="Phone" value={editForm.phone} onChange={v => setEditForm(p => ({ ...p, phone: v }))} />
+                <div>
+                  <label className="text-xs text-slate-500">Phone</label>
+                  <div className="mt-1"><PhoneInput value={editForm.phone} onChange={v => setEditForm(p => ({ ...p, phone: v }))} availableCountries={settings.available_countries} /></div>
+                </div>
                 <EditField label="Email" value={editForm.email} onChange={v => setEditForm(p => ({ ...p, email: v }))} />
                 <div>
                   <label className="text-xs text-slate-500">Hotel</label>
@@ -376,6 +384,27 @@ function MiniStat({ label, value, color }) {
     <div className="bg-slate-50 rounded-lg p-2 text-center">
       <p className="text-xs text-slate-400">{label}</p>
       <p className={`text-sm font-bold ${color ? colors[color] : 'text-slate-900'}`}>{value}</p>
+    </div>
+  )
+}
+
+function PhoneDisplay({ phone }) {
+  const ALL = [
+    { code: 'US', dial: '+1', flag: '🇺🇸' }, { code: 'ET', dial: '+251', flag: '🇪🇹' },
+    { code: 'GB', dial: '+44', flag: '🇬🇧' }, { code: 'CA', dial: '+1', flag: '🇨🇦' },
+    { code: 'AU', dial: '+61', flag: '🇦🇺' }, { code: 'DE', dial: '+49', flag: '🇩🇪' },
+    { code: 'FR', dial: '+33', flag: '🇫🇷' }, { code: 'IN', dial: '+91', flag: '🇮🇳' },
+    { code: 'KE', dial: '+254', flag: '🇰🇪' }, { code: 'NG', dial: '+234', flag: '🇳🇬' },
+    { code: 'AE', dial: '+971', flag: '🇦🇪' }, { code: 'SA', dial: '+966', flag: '🇸🇦' },
+  ].sort((a, b) => b.dial.length - a.dial.length)
+  let flag = '📞', display = phone || '—'
+  for (const c of ALL) {
+    if (phone?.startsWith(c.dial)) { flag = c.flag; display = `${c.dial} ${phone.slice(c.dial.length)}`; break }
+  }
+  return (
+    <div>
+      <p className="text-xs text-slate-400">Phone</p>
+      <p className="font-medium text-slate-900 flex items-center gap-1.5"><span className="text-base">{flag}</span> {display}</p>
     </div>
   )
 }

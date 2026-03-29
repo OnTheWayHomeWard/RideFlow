@@ -43,6 +43,7 @@ class Driver(Base):
     # Status
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     is_online: Mapped[bool] = mapped_column(Boolean, default=False)
+    password_changed: Mapped[bool] = mapped_column(Boolean, default=False)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Stats

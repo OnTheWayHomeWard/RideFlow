@@ -3,11 +3,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pydantic import BaseModel as PydanticBaseModel
 from app.database import get_db
 from app.models.driver import Driver
 from app.models.booking import Booking
 from app.models.payment_split import PaymentSplit
 from app.middleware.auth import get_current_driver
+from app.utils.security import hash_password as do_hash, verify_password
 from app.schemas.driver import (
     DriverRegisterRequest, DriverOut, AvailableRunOut,
     DriverRunOut, DriverEarningsOut, LocationUpdate,
@@ -54,6 +56,23 @@ async def register_driver(req: DriverRegisterRequest, db: AsyncSession = Depends
 @router.get("/me", response_model=DriverOut)
 async def get_my_profile(driver: Driver = Depends(get_current_driver)):
     return driver
+
+
+class DriverChangePassword(PydanticBaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.post("/me/change-password")
+async def change_password(req: DriverChangePassword, driver: Driver = Depends(get_current_driver), db: AsyncSession = Depends(get_db)):
+    if not verify_password(req.current_password, driver.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if len(req.new_password) < 4:
+        raise HTTPException(status_code=400, detail="New password must be at least 4 characters")
+    driver.password_hash = do_hash(req.new_password)
+    driver.password_changed = True
+    await db.commit()
+    return {"message": "Password changed successfully"}
 
 
 

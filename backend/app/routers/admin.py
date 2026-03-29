@@ -645,33 +645,36 @@ async def create_driver(
     admin: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
     name: str = Query(...), phone: str = Query(...), email: str = Query(""),
-    password: str = Query(...),
     vehicle_type: str = Query(...), vehicle_make: str = Query(""), vehicle_plate: str = Query(""),
     vehicle_color: str = Query(""), license_number: str = Query(""),
-    has_insurance: bool = Query(False), pay_percentage: float = Query(70),
+    has_insurance: bool = Query(False), pay_percentage: float = Query(0),
     payout_method: str = Query("bank"),
 ):
-    """Admin creates a driver — active immediately, no approval needed."""
+    """Admin creates a driver — active immediately. Default password = last 4 digits of phone."""
     existing = await db.execute(select(Driver).where(Driver.phone == phone))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Phone number already registered")
 
+    digits = ''.join(c for c in phone if c.isdigit())
+    default_password = digits[-4:] if len(digits) >= 4 else digits or "0000"
+
     default_pct = float(await get_setting_value(db, "default_driver_pay_pct", 70))
     driver = Driver(
         name=name, phone=phone, email=email or None,
-        password_hash=hash_password(password),
+        password_hash=hash_password(default_password),
         vehicle_type=vehicle_type, vehicle_make=vehicle_make or None,
         vehicle_plate=vehicle_plate or None, vehicle_color=vehicle_color or None,
         license_number=license_number or None, has_insurance=has_insurance,
         pay_percentage=pay_percentage or default_pct,
         payout_method=payout_method,
+        password_changed=False,
         status="active",
         approved_at=datetime.now(timezone.utc),
         approved_by=admin.id,
     )
     db.add(driver)
     await db.commit()
-    return {"message": f"Driver {name} created", "id": str(driver.id)}
+    return {"message": f"Driver {name} created", "id": str(driver.id), "default_password": default_password}
 
 
 @router.get("/drivers")
@@ -873,6 +876,8 @@ async def get_driver_detail(
             "pay_percentage": float(driver.pay_percentage),
             "status": driver.status,
             "rejection_reason": driver.rejection_reason,
+            "password_changed": driver.password_changed,
+            "default_password": ''.join(c for c in driver.phone if c.isdigit())[-4:],
             "created_at": driver.created_at.isoformat() if driver.created_at else None,
             "approved_at": driver.approved_at.isoformat() if driver.approved_at else None,
         },
@@ -930,6 +935,7 @@ async def update_driver(
 @router.delete("/drivers/{driver_id}")
 async def delete_driver(
     driver_id: str,
+    permanent: bool = Query(False),
     admin: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -937,10 +943,32 @@ async def delete_driver(
     driver = result.scalar_one_or_none()
     if not driver:
         raise HTTPException(status_code=404, detail="Driver not found")
-    # Soft delete — set inactive
+    if permanent:
+        await db.delete(driver)
+        await db.commit()
+        return {"message": f"Driver {driver.name} permanently deleted"}
     driver.status = "inactive"
     await db.commit()
     return {"message": f"Driver {driver.name} deactivated"}
+
+
+@router.put("/drivers/{driver_id}/reset-password")
+async def reset_driver_password(
+    driver_id: str,
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin resets driver password back to default (last 4 digits of phone)."""
+    result = await db.execute(select(Driver).where(Driver.id == driver_id))
+    driver = result.scalar_one_or_none()
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
+    digits = ''.join(c for c in driver.phone if c.isdigit())
+    default_password = digits[-4:] if len(digits) >= 4 else digits or "0000"
+    driver.password_hash = hash_password(default_password)
+    driver.password_changed = False
+    await db.commit()
+    return {"message": f"Password reset for {driver.name}", "default_password": default_password}
 
 
 # ═══════════════════════════════════════════
@@ -1159,6 +1187,7 @@ async def toggle_cashier(
 @router.delete("/cashiers/{cashier_id}")
 async def delete_cashier(
     cashier_id: str,
+    permanent: bool = Query(False),
     admin: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1166,6 +1195,10 @@ async def delete_cashier(
     cashier = result.scalar_one_or_none()
     if not cashier:
         raise HTTPException(status_code=404, detail="Cashier not found")
+    if permanent:
+        await db.delete(cashier)
+        await db.commit()
+        return {"message": f"Cashier {cashier.name} permanently deleted"}
     cashier.status = "inactive"
     await db.commit()
     return {"message": f"Cashier {cashier.name} deactivated"}

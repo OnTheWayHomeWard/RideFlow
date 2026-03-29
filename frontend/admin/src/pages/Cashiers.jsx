@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
+import { useSettings } from '../hooks/useSettings.jsx'
 import Pagination from '../components/Pagination'
+import PhoneInput from '../components/PhoneInput'
 
 function initials(name) {
   const parts = name.trim().split(/\s+/)
@@ -9,6 +11,7 @@ function initials(name) {
 }
 
 export default function Cashiers() {
+  const settings = useSettings()
   const [data, setData] = useState({ items: [], total: 0, page: 1, total_pages: 0 })
   const [filter, setFilter] = useState('')
   const [page, setPage] = useState(1)
@@ -43,6 +46,10 @@ export default function Cashiers() {
   }
 
   const handleToggle = async (id) => { try { await api.toggleCashier(id); load(page, filter) } catch (e) { alert(e.message) } }
+  const handlePermanentDelete = async (id, name) => {
+    if (!confirm(`Permanently delete cashier "${name}"? This cannot be undone.`)) return
+    try { await api.deleteCashier(id, true); load(page, filter) } catch (e) { alert(e.message) }
+  }
   const handleQR = async (id) => {
     try { const data = await api.getCashierQR(id); setQrData(data) } catch (e) { alert(e.message) }
   }
@@ -69,8 +76,9 @@ export default function Cashiers() {
             </div>
             <div>
               <label className="text-xs text-slate-500">Phone</label>
-              <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} required
-                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="+1555..." />
+              <div className="mt-1">
+                <PhoneInput value={form.phone} onChange={v => setForm(p => ({ ...p, phone: v }))} availableCountries={settings.available_countries} placeholder="Phone number" />
+              </div>
             </div>
             <div>
               <label className="text-xs text-slate-500">Email (optional)</label>
@@ -134,27 +142,15 @@ export default function Cashiers() {
                 </div>
               </Link>
 
-              {/* Actions — buttons stop propagation so they don't navigate */}
-              <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50 flex items-center gap-2 flex-wrap">
-                {c.status === 'pending' && (
-                  <>
-                    <button onClick={() => handleApprove(c.id)} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700">Approve</button>
-                    <button onClick={() => handleReject(c.id)} className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200">Reject</button>
-                  </>
-                )}
-                {c.status === 'active' && (
-                  <>
-                    <button onClick={() => handleQR(c.id)} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 flex items-center gap-1">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
-                      QR Code
-                    </button>
-                    <button onClick={() => handleToggle(c.id)} className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-300">Deactivate</button>
-                  </>
-                )}
-                {c.status === 'inactive' && (
-                  <button onClick={() => handleToggle(c.id)} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700">Activate</button>
-                )}
-              </div>
+              {/* QR button only — other actions in detail page */}
+              {c.status === 'active' && (
+                <div className="px-4 py-2 border-t border-slate-100 bg-slate-50">
+                  <button onClick={() => handleQR(c.id)} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 flex items-center gap-1">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
+                    QR Code
+                  </button>
+                </div>
+              )}
             </div>
           ))}
           {cashiers.length === 0 && <p className="text-center text-slate-400 py-8">No cashiers found</p>}

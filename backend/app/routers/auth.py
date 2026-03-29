@@ -43,7 +43,7 @@ async def driver_login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid phone or password")
 
     token = create_access_token({"sub": str(driver.id), "role": "driver"})
-    return TokenResponse(access_token=token, role="driver", name=driver.name)
+    return TokenResponse(access_token=token, role="driver", name=driver.name, password_changed=driver.password_changed)
 
 
 @router.post("/cashier/login", response_model=TokenResponse)
