@@ -86,6 +86,7 @@ function LogoCard({ setting, saving, onSave }) {
 const FRIENDLY_NAMES = {
   company_name: 'Company Name',
   company_phone: 'Company Phone',
+  google_maps_api_key: 'Google Maps API Key',
   default_driver_pay_pct: 'Driver Pay %',
   default_cashier_commission_pct: 'Cashier Commission %',
   cashier_commission_enabled: 'Cashier Commissions',
@@ -101,6 +102,7 @@ const FRIENDLY_NAMES = {
   sms_cashier_payout: 'Cashier Payout SMS',
   sms_client_booking: 'Client Booking Confirmation SMS',
   sms_client_ride_started: 'Client Ride Started SMS',
+  sms_guest_payment_link: 'Guest Payment Link SMS',
   available_countries: 'Available Countries',
 }
 
@@ -123,6 +125,7 @@ const SMS_VARIABLES = {
   sms_cashier_payout: ['cashier_name', 'amount', 'booking_number'],
   sms_client_booking: ['client_name', 'pickup_name', 'dropoff_name', 'pickup_date', 'booking_number', 'confirmation_url'],
   sms_client_ride_started: ['client_name', 'driver_name', 'pickup_name', 'dropoff_name', 'booking_number', 'confirmation_url'],
+  sms_guest_payment_link: ['client_name', 'hotel_name', 'pickup_name', 'dropoff_name', 'pickup_date', 'pickup_time', 'total_amount', 'payment_url', 'booking_number'],
 }
 
 function SmsTemplates({ settings, saving, onSave }) {

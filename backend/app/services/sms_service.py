@@ -107,3 +107,12 @@ async def notify_client_ride_started(db: AsyncSession, client_phone: str, variab
         return
     message = render_template(template, variables)
     await send_sms(db, client_phone, message, "client_ride_started")
+
+
+async def notify_guest_payment_link(db: AsyncSession, guest_phone: str, variables: dict):
+    """Send payment link to guest when cashier books on their behalf."""
+    template = await get_template(db, "sms_guest_payment_link")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, guest_phone, message, "guest_payment_link")

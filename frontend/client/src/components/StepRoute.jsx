@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api/client'
+import { useSettings } from '../hooks/useSettings'
 import Toast from './Toast'
+import AddressInput from './AddressInput'
 
 const DESTINATION_ICONS = {
   'Airport': '✈️', 'Downtown': '🏙️', 'Beach': '🏖️',
@@ -15,6 +17,7 @@ function getIcon(name) {
 }
 
 export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, onError }) {
+  const settings = useSettings()
   const [routes, setRoutes] = useState([])
   const [pickup, setPickup] = useState(booking.pickup)
   const [dropoff, setDropoff] = useState(booking.dropoff)
@@ -164,28 +167,23 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
 
       {/* Pickup field — shown when no pickup set, or user is editing */}
       {(!hasPickup || editingPickup) && (
-        <div className="relative mb-3">
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 bg-blue-500 rounded-full"></div>
-          <input
-            type="text"
-            placeholder="Pickup location"
+        <div className="mb-3">
+          <AddressInput
             value={pickupText}
-            onChange={e => handlePickupChange(e.target.value)}
-            autoFocus={editingPickup}
-            className="w-full pl-9 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-slate-400"
+            onChange={(loc) => { setPickup(loc); setPickupText(loc.name) }}
+            placeholder="Pickup location"
+            googleApiKey={settings.google_maps_api_key}
           />
         </div>
       )}
 
       {/* Destination field — always shown */}
-      <div className="relative mb-3">
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 bg-green-500 rounded-full"></div>
-        <input
-          type="text"
-          placeholder="Where to?"
+      <div className="mb-3">
+        <AddressInput
           value={dropoffText}
-          onChange={e => handleDropoffChange(e.target.value)}
-          className="w-full pl-9 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-slate-400"
+          onChange={(loc) => { setDropoff(loc); setDropoffText(loc.name) }}
+          placeholder="Where to?"
+          googleApiKey={settings.google_maps_api_key}
         />
       </div>
 

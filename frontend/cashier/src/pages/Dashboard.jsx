@@ -34,14 +34,26 @@ export default function Dashboard() {
 
       {/* Quick actions */}
       <div className="space-y-3">
-        <Link to="/qr" className="block bg-purple-600 text-white rounded-xl p-4 hover:bg-purple-700 transition-all">
+        <Link to="/book-for-guest" className="block bg-purple-600 text-white rounded-xl p-4 hover:bg-purple-700 transition-all">
+          <div className="flex items-center gap-3">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+            </svg>
+            <div>
+              <p className="font-semibold">Book for Guest</p>
+              <p className="text-sm text-purple-200">Create reservation & send payment link</p>
+            </div>
+          </div>
+        </Link>
+
+        <Link to="/qr" className="block bg-white border border-purple-200 text-purple-700 rounded-xl p-4 hover:bg-purple-50 transition-all">
           <div className="flex items-center gap-3">
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
             </svg>
             <div>
               <p className="font-semibold">View Your QR Code</p>
-              <p className="text-sm text-purple-200">Show to guests to book rides</p>
+              <p className="text-sm text-purple-400">Show to guests to book themselves</p>
             </div>
           </div>
         </Link>

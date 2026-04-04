@@ -70,6 +70,7 @@ async def seed():
             Setting(key="sms_cashier_payout", value="Hi {cashier_name}, your commission of ${amount} for booking {booking_number} has been processed.", description="SMS to cashier on payout. Vars: {cashier_name}, {amount}, {booking_number}"),
             Setting(key="sms_client_booking", value="Hi {client_name}, your ride is booked! {pickup_name} → {dropoff_name} on {pickup_date}. View your receipt: {confirmation_url}", description="SMS to client after booking. Vars: {client_name}, {pickup_name}, {dropoff_name}, {pickup_date}, {booking_number}, {confirmation_url}"),
             Setting(key="sms_client_ride_started", value="Hi {client_name}, your ride has started! {driver_name} is taking you from {pickup_name} to {dropoff_name}. Rate your experience: {confirmation_url}", description="SMS to client when ride starts. Vars: {client_name}, {driver_name}, {pickup_name}, {dropoff_name}, {confirmation_url}, {booking_number}"),
+            Setting(key="sms_guest_payment_link", value="Hi {client_name}, a ride has been reserved for you by {hotel_name}: {pickup_name} → {dropoff_name} on {pickup_date} at {pickup_time}. Total: ${total_amount}. Pay here: {payment_url}", description="SMS to guest when cashier books for them. Vars: {client_name}, {hotel_name}, {pickup_name}, {dropoff_name}, {pickup_date}, {pickup_time}, {total_amount}, {payment_url}, {booking_number}"),
         ]
         db.add_all(settings)
         print("Created settings")

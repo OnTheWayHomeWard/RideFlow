@@ -10,7 +10,9 @@ async function request(path, options = {}) {
   if (res.status === 401 && path !== '/auth/cashier/login') { localStorage.removeItem('cashier_token'); window.location.href = '/login'; return }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Request failed' }))
-    throw new Error(err.detail || 'Request failed')
+    const detail = err.detail
+    const msg = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map(d => d.msg || d.message || JSON.stringify(d)).join(', ') : 'Request failed'
+    throw new Error(msg)
   }
   return res.json()
 }
@@ -22,4 +24,13 @@ export const api = {
   getEarnings: () => request('/cashiers/earnings'),
   changePassword: (data) => request('/cashiers/change-password', { method: 'POST', body: JSON.stringify(data) }),
   getPublicSettings: () => request('/settings/public'),
+
+  // Guest reservation
+  bookForGuest: (data) => request('/cashiers/book-for-guest', { method: 'POST', body: JSON.stringify(data) }),
+  getReservations: () => request('/cashiers/reservations'),
+
+  // Public pricing data
+  getVehicleRates: () => request('/vehicle-rates'),
+  getCommonRoutes: () => request('/common-routes'),
+  getExtras: () => request('/extras'),
 }

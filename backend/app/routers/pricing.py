@@ -89,7 +89,7 @@ async def calculate_all_prices(req: AllVehiclePricesRequest, db: AsyncSession = 
 @router.get("/settings/public")
 async def get_public_settings(db: AsyncSession = Depends(get_db)):
     """Public company settings — no auth needed. Used by client app for branding."""
-    keys = ["company_name", "company_phone", "company_logo_url", "available_countries"]
+    keys = ["company_name", "company_phone", "company_logo_url", "available_countries", "google_maps_api_key"]
     result = await db.execute(select(Setting).where(Setting.key.in_(keys)))
     settings = {s.key: s.value for s in result.scalars().all()}
     countries = settings.get("available_countries", ["US"])
@@ -102,4 +102,5 @@ async def get_public_settings(db: AsyncSession = Depends(get_db)):
         "company_phone": str(settings.get("company_phone", "")),
         "company_logo_url": str(settings.get("company_logo_url", "")),
         "available_countries": countries,
+        "google_maps_api_key": str(settings.get("google_maps_api_key", "")),
     }

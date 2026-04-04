@@ -1,3 +1,5 @@
+from datetime import date, time, timedelta, datetime, timezone
+from typing import Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
@@ -11,6 +13,7 @@ from app.models.payment_split import PaymentSplit
 from app.middleware.auth import get_current_cashier
 from app.utils.security import hash_password, verify_password
 from app.schemas.cashier import CashierValidateOut
+from app.services.pricing_service import calculate_price
 
 router = APIRouter(prefix="/api", tags=["cashiers"])
 
@@ -169,3 +172,162 @@ async def get_my_earnings(cashier: Cashier = Depends(get_current_cashier), db: A
         "this_month": {"amount": float(month_amt), "referrals": month_cnt},
         "total": {"amount": float(total_amt), "referrals": total_cnt},
     }
+
+
+# ═══════════════════════════════════════════
+# GUEST RESERVATION
+# ═══════════════════════════════════════════
+
+class GuestBookingRequest(BaseModel):
+    client_name: str
+    client_phone: str
+    client_room: Optional[str] = None
+    pickup_name: Optional[str] = None
+    pickup_address: Optional[str] = None
+    pickup_lat: Optional[float] = None
+    pickup_lng: Optional[float] = None
+    dropoff_name: str
+    dropoff_address: str
+    dropoff_lat: float
+    dropoff_lng: float
+    vehicle_type: str
+    pickup_date: date
+    pickup_time: time
+    extras: Optional[list] = None
+
+
+@router.post("/cashiers/book-for-guest")
+async def book_for_guest(
+    req: GuestBookingRequest,
+    cashier: Cashier = Depends(get_current_cashier),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cashier creates a booking on behalf of a guest. Payment link sent to guest phone."""
+    # Get cashier's hotel for pickup
+    if not cashier.hotel_id:
+        raise HTTPException(status_code=400, detail="You are not assigned to a hotel")
+
+    hotel_r = await db.execute(select(Hotel).where(Hotel.id == cashier.hotel_id))
+    hotel = hotel_r.scalar_one_or_none()
+    if not hotel:
+        raise HTTPException(status_code=400, detail="Hotel not found")
+    # Use custom pickup if provided, otherwise hotel
+    if req.pickup_lat and req.pickup_lng and req.pickup_name:
+        p_name, p_address = req.pickup_name, req.pickup_address or req.pickup_name
+        p_lat, p_lng = req.pickup_lat, req.pickup_lng
+    else:
+        if not hotel.lat or not hotel.lng:
+            raise HTTPException(status_code=400, detail="Your hotel does not have coordinates set. Ask admin to update the hotel location.")
+        p_name, p_address = hotel.name, hotel.address
+        p_lat, p_lng = float(hotel.lat), float(hotel.lng)
+
+    # Calculate price
+    try:
+        price = await calculate_price(
+            db, p_lat, p_lng,
+            req.dropoff_lat, req.dropoff_lng,
+            req.vehicle_type, req.extras,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Generate booking number
+    from app.routers.bookings import generate_booking_number
+    booking_number = generate_booking_number()
+    while True:
+        existing = await db.execute(select(Booking.id).where(Booking.booking_number == booking_number))
+        if not existing.scalar_one_or_none():
+            break
+        booking_number = generate_booking_number()
+
+    # Create booking
+    booking = Booking(
+        booking_number=booking_number,
+        client_name=req.client_name,
+        client_phone=req.client_phone,
+        client_room=req.client_room,
+        pickup_name=p_name,
+        pickup_address=p_address,
+        pickup_lat=p_lat,
+        pickup_lng=p_lng,
+        dropoff_name=req.dropoff_name,
+        dropoff_address=req.dropoff_address,
+        dropoff_lat=req.dropoff_lat,
+        dropoff_lng=req.dropoff_lng,
+        distance_miles=price["distance_miles"],
+        pickup_date=req.pickup_date,
+        pickup_time=req.pickup_time,
+        passengers=1,
+        luggage="none",
+        vehicle_type=req.vehicle_type,
+        base_amount=price["base_amount"],
+        extras_amount=price["extras_amount"],
+        upsale_amount=price["upsale_amount"],
+        total_amount=price["total_amount"],
+        common_route_id=price["common_route_id"],
+        upsale_id=price["upsale_id"],
+        extras_chosen=req.extras if req.extras else None,
+        cashier_id=cashier.id,
+        hotel_id=cashier.hotel_id,
+        status="pending",
+    )
+    db.add(booking)
+    await db.flush()
+
+    # Create checkout session
+    from app.services.payment_service import create_checkout_session
+    checkout = await create_checkout_session(db, booking)
+
+    # Send SMS with payment link to guest
+    from app.services.sms_service import notify_guest_payment_link
+    payment_url = checkout.get("checkout_url") or checkout.get("dev_confirm_url", "")
+    await notify_guest_payment_link(db, req.client_phone, {
+        "client_name": req.client_name,
+        "hotel_name": hotel.name,
+        "pickup_name": p_name,
+        "dropoff_name": req.dropoff_name,
+        "pickup_date": str(req.pickup_date),
+        "pickup_time": str(req.pickup_time)[:5],
+        "total_amount": f"{float(price['total_amount']):.2f}",
+        "payment_url": payment_url,
+        "booking_number": booking_number,
+    })
+
+    await db.commit()
+
+    return {
+        "booking_number": booking_number,
+        "total_amount": float(price["total_amount"]),
+        "payment_url": payment_url,
+        "client_phone": req.client_phone,
+    }
+
+
+@router.get("/cashiers/reservations")
+async def get_my_reservations(cashier: Cashier = Depends(get_current_cashier), db: AsyncSession = Depends(get_db)):
+    """Cashier views all bookings they created (including pending ones)."""
+    result = await db.execute(
+        select(Booking).where(Booking.cashier_id == cashier.id)
+        .order_by(Booking.created_at.desc()).limit(50)
+    )
+    reservations = []
+    for b in result.scalars().all():
+        split_r = await db.execute(
+            select(PaymentSplit).where(PaymentSplit.booking_id == b.id, PaymentSplit.recipient_type == "cashier")
+        )
+        split = split_r.scalar_one_or_none()
+        reservations.append({
+            "id": str(b.id),
+            "booking_number": b.booking_number,
+            "client_name": b.client_name,
+            "client_phone": b.client_phone,
+            "pickup_name": b.pickup_name,
+            "dropoff_name": b.dropoff_name,
+            "pickup_date": str(b.pickup_date),
+            "pickup_time": str(b.pickup_time),
+            "total_amount": float(b.total_amount),
+            "status": b.status,
+            "commission": float(split.amount) if split else 0,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+        })
+    return reservations
