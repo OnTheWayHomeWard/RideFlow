@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api/client'
+import { useSettings } from '../hooks/useSettings'
+import AddressInput from '../components/AddressInput'
 
 export default function Pricing() {
+  const settings = useSettings()
   const [rates, setRates] = useState([])
   const [extras, setExtras] = useState([])
   const [routes, setRoutes] = useState([])
@@ -36,7 +39,7 @@ export default function Pricing() {
 
       {tab === 'rates' && <VehicleRatesTab rates={rates} reload={load} />}
       {tab === 'extras' && <ExtrasTab extras={extras} reload={load} />}
-      {tab === 'routes' && <RoutesTab routes={routes} rates={rates} reload={load} />}
+      {tab === 'routes' && <RoutesTab routes={routes} rates={rates} reload={load} googleApiKey={settings.google_maps_api_key} />}
     </div>
   )
 }
@@ -191,9 +194,9 @@ function ExtrasTab({ extras, reload }) {
 }
 
 // ═══ COMMON ROUTES ═══
-function RoutesTab({ routes, rates, reload }) {
+function RoutesTab({ routes, rates, reload, googleApiKey }) {
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', from_name: '', from_address: '', to_name: '', to_address: '', distance_miles: '', base_amount: '' })
+  const [form, setForm] = useState({ name: '', from_name: '', from_address: '', from_lat: '', from_lng: '', to_name: '', to_address: '', to_lat: '', to_lng: '', distance_miles: '', base_amount: '' })
   const [editId, setEditId] = useState(null)
 
   // Extract base amount from prices — take the lowest value as the route base
@@ -211,14 +214,16 @@ function RoutesTab({ routes, rates, reload }) {
       const baseAmt = parseFloat(form.base_amount) || 0
       const data = {
         name: form.name, from_name: form.from_name, from_address: form.from_address,
+        from_lat: parseFloat(form.from_lat) || null, from_lng: parseFloat(form.from_lng) || null,
         to_name: form.to_name, to_address: form.to_address,
+        to_lat: parseFloat(form.to_lat) || null, to_lng: parseFloat(form.to_lng) || null,
         distance_miles: form.distance_miles ? parseFloat(form.distance_miles) : null,
         // Store base amount — pricing engine will add vehicle base fare on top
         prices: { _base: baseAmt },
       }
       if (editId) await api.updateRoute(editId, data)
       else await api.createRoute(data)
-      setShowForm(false); setEditId(null); setForm({ name: '', from_name: '', from_address: '', to_name: '', to_address: '', distance_miles: '', base_amount: '' })
+      setShowForm(false); setEditId(null); setForm({ name: '', from_name: '', from_address: '', from_lat: '', from_lng: '', to_name: '', to_address: '', to_lat: '', to_lng: '', distance_miles: '', base_amount: '' })
       reload()
     } catch (err) { alert(err.message) }
   }
@@ -226,7 +231,9 @@ function RoutesTab({ routes, rates, reload }) {
   const startEdit = (r) => {
     setForm({
       name: r.name, from_name: r.from_name, from_address: r.from_address,
+      from_lat: r.from_lat || '', from_lng: r.from_lng || '',
       to_name: r.to_name, to_address: r.to_address,
+      to_lat: r.to_lat || '', to_lng: r.to_lng || '',
       distance_miles: r.distance_miles || '',
       base_amount: getBaseAmount(r.prices),
     })
@@ -244,7 +251,7 @@ function RoutesTab({ routes, rates, reload }) {
   return (
     <div>
       <div className="flex justify-end mb-3">
-        <button onClick={() => { setShowForm(!showForm); setEditId(null); setForm({ name: '', from_name: '', from_address: '', to_name: '', to_address: '', distance_miles: '', base_amount: '' }) }}
+        <button onClick={() => { setShowForm(!showForm); setEditId(null); setForm({ name: '', from_name: '', from_address: '', from_lat: '', from_lng: '', to_name: '', to_address: '', to_lat: '', to_lng: '', distance_miles: '', base_amount: '' }) }}
           className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">{showForm ? 'Cancel' : '+ Add Route'}</button>
       </div>
 
@@ -254,10 +261,24 @@ function RoutesTab({ routes, rates, reload }) {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
             <Inp label="Route Name" value={form.name} onChange={v => setForm(p => ({ ...p, name: v }))} required placeholder="e.g. Airport to Downtown" />
             <Inp label="Distance (miles)" type="number" value={form.distance_miles} onChange={v => setForm(p => ({ ...p, distance_miles: v }))} placeholder="Optional" />
-            <Inp label="From Name" value={form.from_name} onChange={v => setForm(p => ({ ...p, from_name: v }))} required placeholder="e.g. Airport" />
-            <Inp label="From Address" value={form.from_address} onChange={v => setForm(p => ({ ...p, from_address: v }))} required />
-            <Inp label="To Name" value={form.to_name} onChange={v => setForm(p => ({ ...p, to_name: v }))} required placeholder="e.g. Downtown" />
-            <Inp label="To Address" value={form.to_address} onChange={v => setForm(p => ({ ...p, to_address: v }))} required />
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">From Location</label>
+              <AddressInput
+                value={form.from_name || form.from_address}
+                onChange={(loc) => setForm(p => ({ ...p, from_name: loc.name, from_address: loc.address, from_lat: loc.lat, from_lng: loc.lng }))}
+                placeholder="Search start location..."
+                googleApiKey={googleApiKey}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">To Location</label>
+              <AddressInput
+                value={form.to_name || form.to_address}
+                onChange={(loc) => setForm(p => ({ ...p, to_name: loc.name, to_address: loc.address, to_lat: loc.lat, to_lng: loc.lng }))}
+                placeholder="Search destination..."
+                googleApiKey={googleApiKey}
+              />
+            </div>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
             <div>

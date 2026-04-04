@@ -86,7 +86,6 @@ function LogoCard({ setting, saving, onSave }) {
 const FRIENDLY_NAMES = {
   company_name: 'Company Name',
   company_phone: 'Company Phone',
-  google_maps_api_key: 'Google Maps API Key',
   default_driver_pay_pct: 'Driver Pay %',
   default_cashier_commission_pct: 'Cashier Commission %',
   cashier_commission_enabled: 'Cashier Commissions',

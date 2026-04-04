@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -86,10 +87,18 @@ async def calculate_all_prices(req: AllVehiclePricesRequest, db: AsyncSession = 
     )
 
 
+def _get_maps_key() -> str:
+    """Return Google Maps API key from env only, filtering out placeholders."""
+    key = os.environ.get("GOOGLE_MAPS_API_KEY", "")
+    if key in ("", "placeholder", "your_key_here"):
+        return ""
+    return key
+
+
 @router.get("/settings/public")
 async def get_public_settings(db: AsyncSession = Depends(get_db)):
     """Public company settings — no auth needed. Used by client app for branding."""
-    keys = ["company_name", "company_phone", "company_logo_url", "available_countries", "google_maps_api_key"]
+    keys = ["company_name", "company_phone", "company_logo_url", "available_countries"]
     result = await db.execute(select(Setting).where(Setting.key.in_(keys)))
     settings = {s.key: s.value for s in result.scalars().all()}
     countries = settings.get("available_countries", ["US"])
@@ -102,5 +111,5 @@ async def get_public_settings(db: AsyncSession = Depends(get_db)):
         "company_phone": str(settings.get("company_phone", "")),
         "company_logo_url": str(settings.get("company_logo_url", "")),
         "available_countries": countries,
-        "google_maps_api_key": str(settings.get("google_maps_api_key", "")),
+        "google_maps_api_key": _get_maps_key(),
     }
