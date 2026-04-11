@@ -116,3 +116,21 @@ async def notify_guest_payment_link(db: AsyncSession, guest_phone: str, variable
         return
     message = render_template(template, variables)
     await send_sms(db, guest_phone, message, "guest_payment_link")
+
+
+async def notify_driver_new_run(db: AsyncSession, driver_phone: str, variables: dict):
+    """Notify driver when a new run is assigned to them."""
+    template = await get_template(db, "sms_driver_new_run")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, driver_phone, message, "driver_new_run")
+
+
+async def notify_driver_ride_completed(db: AsyncSession, driver_phone: str, variables: dict):
+    """Notify driver when ride is completed with earnings info."""
+    template = await get_template(db, "sms_driver_ride_completed")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, driver_phone, message, "driver_ride_completed")

@@ -102,6 +102,8 @@ const FRIENDLY_NAMES = {
   sms_client_booking: 'Client Booking Confirmation SMS',
   sms_client_ride_started: 'Client Ride Started SMS',
   sms_guest_payment_link: 'Guest Payment Link SMS',
+  sms_driver_new_run: 'Driver New Run SMS',
+  sms_driver_ride_completed: 'Driver Ride Completed SMS',
   available_countries: 'Available Countries',
 }
 
@@ -125,6 +127,8 @@ const SMS_VARIABLES = {
   sms_client_booking: ['client_name', 'pickup_name', 'dropoff_name', 'pickup_date', 'booking_number', 'confirmation_url'],
   sms_client_ride_started: ['client_name', 'driver_name', 'pickup_name', 'dropoff_name', 'booking_number', 'confirmation_url'],
   sms_guest_payment_link: ['client_name', 'hotel_name', 'pickup_name', 'dropoff_name', 'pickup_date', 'pickup_time', 'total_amount', 'payment_url', 'booking_number'],
+  sms_driver_new_run: ['driver_name', 'pickup_name', 'dropoff_name', 'pickup_date', 'pickup_time', 'client_name', 'driver_earnings', 'booking_number'],
+  sms_driver_ride_completed: ['driver_name', 'pickup_name', 'dropoff_name', 'driver_earnings', 'booking_number'],
 }
 
 function SmsTemplates({ settings, saving, onSave }) {

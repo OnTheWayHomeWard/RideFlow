@@ -207,6 +207,21 @@ async def accept_run(
             cashier_amount = float(cashier_split.amount) if cashier_split else 0
             company_split.amount = round(float(booking.total_amount) - cashier_amount - driver_split.amount, 2)
 
+    # Send SMS to driver
+    from app.services.sms_service import notify_driver_new_run
+    driver_pct_val = float(driver.pay_percentage) / 100
+    driver_earn = round(float(booking.base_amount) * driver_pct_val, 2)
+    await notify_driver_new_run(db, driver.phone, {
+        "driver_name": driver.name,
+        "pickup_name": booking.pickup_name,
+        "dropoff_name": booking.dropoff_name,
+        "pickup_date": str(booking.pickup_date),
+        "pickup_time": str(booking.pickup_time)[:5],
+        "client_name": booking.client_name,
+        "driver_earnings": f"{driver_earn:.2f}",
+        "booking_number": booking.booking_number,
+    })
+
     await db.commit()
 
     return {
@@ -316,6 +331,17 @@ async def complete_ride(
     driver_split = split_result.scalar_one_or_none()
     if driver_split:
         driver_split.payout_status = "pending_review"
+
+    # Send SMS to driver
+    from app.services.sms_service import notify_driver_ride_completed
+    d_earnings = float(driver_split.amount) if driver_split else 0
+    await notify_driver_ride_completed(db, driver.phone, {
+        "driver_name": driver.name,
+        "pickup_name": booking.pickup_name,
+        "dropoff_name": booking.dropoff_name,
+        "driver_earnings": f"{d_earnings:.2f}",
+        "booking_number": booking.booking_number,
+    })
 
     await db.commit()
 

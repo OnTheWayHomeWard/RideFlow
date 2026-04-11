@@ -38,3 +38,22 @@ async def health_check():
         "version": "0.1.0",
         "payment_mode": "dev_simulation" if is_dev_mode() else "live_stripe",
     }
+
+
+@app.post("/api/test-sms")
+async def test_sms(phone: str, message: str):
+    """DEV ONLY — Test Twilio SMS. Hit from Postman to verify credentials work."""
+    import os
+    sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
+    if sid in ("", "placeholder"):
+        return {"error": "Twilio is in dev mode (SID is placeholder). Set real credentials in .env to test."}
+
+    try:
+        from twilio.rest import Client
+        token = os.environ.get("TWILIO_AUTH_TOKEN", "")
+        from_number = os.environ.get("TWILIO_PHONE_NUMBER", "")
+        client = Client(sid, token)
+        msg = client.messages.create(body=message, from_=from_number, to=phone)
+        return {"success": True, "sid": msg.sid, "to": phone, "status": msg.status}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
