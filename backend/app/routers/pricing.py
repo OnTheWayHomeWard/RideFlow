@@ -98,7 +98,7 @@ def _get_maps_key() -> str:
 @router.get("/settings/public")
 async def get_public_settings(db: AsyncSession = Depends(get_db)):
     """Public company settings — no auth needed. Used by client app for branding."""
-    keys = ["company_name", "company_phone", "company_logo_url", "available_countries"]
+    keys = ["company_name", "company_phone", "company_logo_url", "available_countries", "allow_cross_country_booking"]
     result = await db.execute(select(Setting).where(Setting.key.in_(keys)))
     settings = {s.key: s.value for s in result.scalars().all()}
     countries = settings.get("available_countries", ["US"])
@@ -106,10 +106,12 @@ async def get_public_settings(db: AsyncSession = Depends(get_db)):
         import json
         try: countries = json.loads(countries)
         except: countries = ["US"]
+    cross_country = str(settings.get("allow_cross_country_booking", "false")).lower() == "true"
     return {
         "company_name": str(settings.get("company_name", "RideFlow")),
         "company_phone": str(settings.get("company_phone", "")),
         "company_logo_url": str(settings.get("company_logo_url", "")),
         "available_countries": countries,
+        "allow_cross_country_booking": cross_country,
         "google_maps_api_key": _get_maps_key(),
     }

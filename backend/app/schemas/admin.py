@@ -25,6 +25,7 @@ class DashboardStats(BaseModel):
     completed_bookings: int = 0
 
     # Pending actions
+    failed_transfers: int = 0
     pending_payouts: int = 0
     pending_driver_approvals: int = 0
     pending_cashier_approvals: int = 0
@@ -76,6 +77,8 @@ class PayoutRequestOut(BaseModel):
     start_location: dict | None = None
     end_location: dict | None = None
     payout_status: str
+    stripe_transfer_id: str | None = None
+    driver_stripe_connected: bool = False
     # Client feedback
     client_rating: int | None = None
     client_comment: str | None = None

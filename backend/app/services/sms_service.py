@@ -35,22 +35,23 @@ async def send_sms(db: AsyncSession, to: str, message: str, related_type: str = 
     Send an SMS message. In dev mode, just logs it. In production, uses Twilio.
     Always logs to notification_log table.
     """
+    # Check if SMS is enabled (before adding log to avoid autoflush issues)
+    sms_enabled_r = await db.execute(select(Setting).where(Setting.key == "sms_enabled"))
+    sms_setting = sms_enabled_r.scalar_one_or_none()
+    sms_enabled = not (sms_setting and not sms_setting.value)
+
     # Log the notification
     log = NotificationLog(
         recipient=to,
         channel="sms",
         message=message,
-        status="sent",
+        status="sent" if sms_enabled else "disabled",
         related_type=related_type,
         related_id=related_id,
     )
     db.add(log)
 
-    # Check if SMS is enabled
-    sms_enabled_r = await db.execute(select(Setting).where(Setting.key == "sms_enabled"))
-    sms_setting = sms_enabled_r.scalar_one_or_none()
-    if sms_setting and not sms_setting.value:
-        log.status = "disabled"
+    if not sms_enabled:
         return
 
     # Dev mode — just print
@@ -134,3 +135,30 @@ async def notify_driver_ride_completed(db: AsyncSession, driver_phone: str, vari
         return
     message = render_template(template, variables)
     await send_sms(db, driver_phone, message, "driver_ride_completed")
+
+
+async def notify_driver_payout_released(db: AsyncSession, driver_phone: str, variables: dict):
+    """Notify driver when their payout is released."""
+    template = await get_template(db, "sms_driver_payout_released")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, driver_phone, message, "driver_payout_released")
+
+
+async def notify_driver_payout_flagged(db: AsyncSession, driver_phone: str, variables: dict):
+    """Notify driver when their payout is flagged for review."""
+    template = await get_template(db, "sms_driver_payout_flagged")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, driver_phone, message, "driver_payout_flagged")
+
+
+async def notify_driver_payout_rejected(db: AsyncSession, driver_phone: str, variables: dict):
+    """Notify driver when their payout is rejected."""
+    template = await get_template(db, "sms_driver_payout_rejected")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, driver_phone, message, "driver_payout_rejected")

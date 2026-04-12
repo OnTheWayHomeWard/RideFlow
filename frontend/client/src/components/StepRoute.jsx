@@ -27,6 +27,7 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
   const [routesLoading, setRoutesLoading] = useState(true)
   const [editingPickup, setEditingPickup] = useState(false)
   const [locationStatus, setLocationStatus] = useState(null) // 'requesting', 'granted', 'denied'
+  const [userCountry, setUserCountry] = useState(null) // detected country from geolocation
 
   const hasQR = !!cashierInfo
   const hasPickup = !!pickup && !editingPickup
@@ -64,6 +65,34 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
         }
         setPickup(loc)
         setPickupText('Your current location')
+
+        // Reverse geocode to detect country
+        if (window.google?.maps?.Geocoder) {
+          const geocoder = new window.google.maps.Geocoder()
+          geocoder.geocode({ location: { lat: pos.coords.latitude, lng: pos.coords.longitude } }, (results, status) => {
+            if (status === 'OK' && results[0]) {
+              const cc = results[0].address_components?.find(c => c.types.includes('country'))
+              if (cc) {
+                setUserCountry(cc.short_name)
+                loc.country = cc.short_name
+                setPickup({ ...loc })
+              }
+            }
+          })
+        } else {
+          // No Google Maps — try free reverse geocode API
+          fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`)
+            .then(r => r.json())
+            .then(data => {
+              if (data.address?.country_code) {
+                const cc = data.address.country_code.toUpperCase()
+                setUserCountry(cc)
+                loc.country = cc
+                setPickup({ ...loc })
+              }
+            })
+            .catch(() => {})
+        }
       },
       () => {
         setLocationStatus('denied')
@@ -157,6 +186,50 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
         </div>
       )}
 
+      {/* Service area warning */}
+      {(() => {
+        const allowed = settings.available_countries || []
+        if (allowed.length === 0) return null
+
+        // Check if user's detected location is outside service area (on arrival)
+        const userOutside = userCountry && !allowed.includes(userCountry.toUpperCase())
+
+        // Check if selected pickup/destination are outside
+        const pickupOutside = pickup?.country && !allowed.includes(pickup.country.toUpperCase())
+        const dropoffOutside = dropoff?.country && !allowed.includes(dropoff.country.toUpperCase())
+
+        if (userOutside && !pickup?.country && !dropoff?.country) {
+          // User just arrived and their location is outside service area
+          return (
+            <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+              <svg className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <p className="text-xs text-amber-700">It looks like you're not in our service area. We currently operate in <strong>{allowed.join(', ')}</strong>. You can still browse, but pickup and destination must be within these countries.</p>
+            </div>
+          )
+        }
+
+        if (pickupOutside || dropoffOutside) {
+          return (
+            <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+              <svg className="w-4 h-4 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <p className="text-xs text-red-700">
+                {pickupOutside && dropoffOutside
+                  ? 'Both your pickup and destination are outside our service area.'
+                  : pickupOutside ? 'Your pickup location is outside our service area.'
+                  : 'Your destination is outside our service area.'}
+                {' '}We only operate in <strong>{allowed.join(', ')}</strong>.
+              </p>
+            </div>
+          )
+        }
+
+        return null
+      })()}
+
       {/* Title */}
       <h1 className="text-2xl font-bold text-slate-900 mb-1">
         {hasPickup && !editingPickup ? 'Where are you going?' : 'Book a ride'}
@@ -173,6 +246,7 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
             onChange={(loc) => { setPickup(loc); setPickupText(loc.name) }}
             placeholder="Pickup location"
             googleApiKey={settings.google_maps_api_key}
+            countries={settings.available_countries}
           />
         </div>
       )}
@@ -184,6 +258,7 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
           onChange={(loc) => { setDropoff(loc); setDropoffText(loc.name) }}
           placeholder="Where to?"
           googleApiKey={settings.google_maps_api_key}
+          countries={settings.available_countries}
         />
       </div>
 

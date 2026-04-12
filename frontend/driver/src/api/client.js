@@ -29,4 +29,9 @@ export const api = {
   getEarnings: () => request('/drivers/earnings'),
   changePassword: (data) => request('/drivers/me/change-password', { method: 'POST', body: JSON.stringify(data) }),
   getPublicSettings: () => request('/settings/public'),
+
+  // Stripe Connect
+  stripeConnect: () => request('/drivers/stripe/connect', { method: 'POST' }),
+  stripeStatus: () => request('/drivers/stripe/status'),
+  stripeOnboardingLink: () => request('/drivers/stripe/onboarding-link', { method: 'POST' }),
 }

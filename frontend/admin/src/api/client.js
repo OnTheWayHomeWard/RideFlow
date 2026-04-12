@@ -43,6 +43,8 @@ export const api = {
   releasePayout: (id, note) => request(`/admin/payouts/${id}/release`, { method: 'PUT', body: JSON.stringify({ note }) }),
   flagPayout: (id, note) => request(`/admin/payouts/${id}/flag`, { method: 'PUT', body: JSON.stringify({ note }) }),
   rejectPayout: (id, note) => request(`/admin/payouts/${id}/reject`, { method: 'PUT', body: JSON.stringify({ note }) }),
+  retryTransfer: (id) => request(`/admin/payouts/${id}/retry-transfer`, { method: 'PUT' }),
+  markManualPayout: (id, note) => request(`/admin/payouts/${id}/mark-manual`, { method: 'PUT', body: JSON.stringify({ note }) }),
 
   // Drivers
   getDrivers: (status, page = 1, perPage = 10) => request(`/admin/drivers?page=${page}&per_page=${perPage}${status ? `&status=${status}` : ''}`),

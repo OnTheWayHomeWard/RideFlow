@@ -25,6 +25,11 @@ export const api = {
   changePassword: (data) => request('/cashiers/change-password', { method: 'POST', body: JSON.stringify(data) }),
   getPublicSettings: () => request('/settings/public'),
 
+  // Stripe Connect
+  stripeConnect: () => request('/cashiers/stripe/connect', { method: 'POST' }),
+  stripeStatus: () => request('/cashiers/stripe/status'),
+  stripeOnboardingLink: () => request('/cashiers/stripe/onboarding-link', { method: 'POST' }),
+
   // Guest reservation
   bookForGuest: (data) => request('/cashiers/book-for-guest', { method: 'POST', body: JSON.stringify(data) }),
   getReservations: () => request('/cashiers/reservations'),

@@ -331,3 +331,63 @@ async def get_my_reservations(cashier: Cashier = Depends(get_current_cashier), d
             "created_at": b.created_at.isoformat() if b.created_at else None,
         })
     return reservations
+
+
+# ═══════════════════════════════════════════
+# STRIPE CONNECT
+# ═══════════════════════════════════════════
+
+@router.post("/cashiers/stripe/connect")
+async def stripe_connect(cashier: Cashier = Depends(get_current_cashier), db: AsyncSession = Depends(get_db)):
+    from app.services.connect_service import create_connect_account, create_onboarding_link, get_account_details
+
+    if not cashier.stripe_connect_id:
+        acct_id = await create_connect_account("cashier", cashier.id, cashier.email)
+        cashier.stripe_connect_id = acct_id
+        cashier.payout_method = "stripe_connect"
+        await db.flush()
+    else:
+        acct_id = cashier.stripe_connect_id
+
+    details = await get_account_details(acct_id)
+    if details.get("charges_enabled") and details.get("payouts_enabled"):
+        cashier.payout_details = details
+        await db.commit()
+        return {"already_connected": True, "account_id": acct_id, "details": details}
+
+    url = await create_onboarding_link(acct_id, "http://localhost:5176/profile?stripe=complete", "http://localhost:5176/profile?stripe=refresh")
+    await db.commit()
+    return {"onboarding_url": url, "account_id": acct_id}
+
+
+@router.get("/cashiers/stripe/status")
+async def stripe_status(cashier: Cashier = Depends(get_current_cashier), db: AsyncSession = Depends(get_db)):
+    if not cashier.stripe_connect_id:
+        return {"connected": False}
+
+    from app.services.connect_service import get_account_details
+    details = await get_account_details(cashier.stripe_connect_id)
+    cashier.payout_details = details
+    await db.commit()
+
+    return {
+        "connected": True,
+        "charges_enabled": details.get("charges_enabled", False),
+        "payouts_enabled": details.get("payouts_enabled", False),
+        "details_submitted": details.get("details_submitted", False),
+        "account_id": cashier.stripe_connect_id,
+        "name": details.get("name"),
+        "email": details.get("email"),
+        "bank_last4": details.get("bank_last4"),
+        "bank_name": details.get("bank_name"),
+    }
+
+
+@router.post("/cashiers/stripe/onboarding-link")
+async def stripe_onboarding_link(cashier: Cashier = Depends(get_current_cashier)):
+    if not cashier.stripe_connect_id:
+        raise HTTPException(status_code=400, detail="No Stripe account found. Use /stripe/connect first.")
+
+    from app.services.connect_service import create_onboarding_link
+    url = await create_onboarding_link(cashier.stripe_connect_id, "http://localhost:5176/profile?stripe=complete", "http://localhost:5176/profile?stripe=refresh")
+    return {"onboarding_url": url}

@@ -6,11 +6,12 @@ import { useState, useRef, useEffect } from 'react'
  *
  * Props:
  * - value: string (display text)
- * - onChange: ({ name, address, lat, lng }) => void
+ * - onChange: ({ name, address, lat, lng, country }) => void
  * - placeholder: string
  * - googleApiKey: string (optional — if not set, plain text mode)
+ * - countries: string[] (optional — ISO country codes to restrict autocomplete, e.g. ['US', 'ET'])
  */
-export default function AddressInput({ value, onChange, placeholder, googleApiKey }) {
+export default function AddressInput({ value, onChange, placeholder, googleApiKey, countries }) {
   const inputRef = useRef(null)
   const autocompleteRef = useRef(null)
   const [text, setText] = useState(value || '')
@@ -38,18 +39,30 @@ export default function AddressInput({ value, onChange, placeholder, googleApiKe
   useEffect(() => {
     if (!loaded || !inputRef.current || autocompleteRef.current) return
 
-    const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
-      types: ['establishment', 'geocode'],
-    })
+    const options = { types: ['establishment', 'geocode'] }
+    if (countries && countries.length > 0) {
+      options.componentRestrictions = { country: countries.map(c => c.toLowerCase()) }
+    }
+
+    const ac = new window.google.maps.places.Autocomplete(inputRef.current, options)
 
     ac.addListener('place_changed', () => {
       const place = ac.getPlace()
       if (!place.geometry) return
+
+      // Extract country from address components
+      let countryCode = ''
+      if (place.address_components) {
+        const cc = place.address_components.find(c => c.types.includes('country'))
+        if (cc) countryCode = cc.short_name
+      }
+
       const result = {
         name: place.name || place.formatted_address,
         address: place.formatted_address,
         lat: place.geometry.location.lat(),
         lng: place.geometry.location.lng(),
+        country: countryCode,
       }
       setText(result.name)
       onChange(result)
@@ -63,9 +76,8 @@ export default function AddressInput({ value, onChange, placeholder, googleApiKe
 
   const handleChange = (e) => {
     setText(e.target.value)
-    // In non-google mode, just pass text (backend will use rough coords)
     if (!loaded && e.target.value.length > 2) {
-      onChange({ name: e.target.value, address: e.target.value, lat: 0, lng: 0 })
+      onChange({ name: e.target.value, address: e.target.value, lat: 0, lng: 0, country: '' })
     }
   }
 

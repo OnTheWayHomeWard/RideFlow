@@ -40,6 +40,17 @@ export default function Settings() {
       <SettingsGroup title="Company" settings={otherSettings.filter(s => s.key.startsWith('company_'))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Payment & Commissions" settings={otherSettings.filter(s => ['default_driver_pay_pct','default_cashier_commission_pct','cashier_commission_enabled','driver_payout_schedule','late_cancel_refund_pct','max_active_runs_per_driver'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Booking" settings={otherSettings.filter(s => ['booking_window_days','cancellation_window_hours','unassigned_alert_minutes','review_expiry_days'].includes(s.key))} saving={saving} onSave={handleSave} />
+      {/* Service Area — countries */}
+      {settings.find(s => s.key === 'available_countries') && (
+        <CountriesSelector
+          setting={settings.find(s => s.key === 'available_countries')}
+          crossCountrySetting={settings.find(s => s.key === 'allow_cross_country_booking')}
+          saving={saving === 'available_countries'}
+          onSave={handleSave}
+        />
+      )}
+
+      <SettingsGroup title="Stripe Connect" settings={otherSettings.filter(s => s.key === 'stripe_connect_enabled')} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Notifications" settings={otherSettings.filter(s => s.key === 'sms_enabled')} saving={saving} onSave={handleSave} />
       <SmsTemplates settings={otherSettings.filter(s => s.key.startsWith('sms_') && s.key !== 'sms_enabled')} saving={saving} onSave={handleSave} />
     </div>
@@ -104,6 +115,10 @@ const FRIENDLY_NAMES = {
   sms_guest_payment_link: 'Guest Payment Link SMS',
   sms_driver_new_run: 'Driver New Run SMS',
   sms_driver_ride_completed: 'Driver Ride Completed SMS',
+  sms_driver_payout_released: 'Driver Payout Released SMS',
+  sms_driver_payout_flagged: 'Driver Payout Flagged SMS',
+  sms_driver_payout_rejected: 'Driver Payout Rejected SMS',
+  stripe_connect_enabled: 'Stripe Connect Payouts',
   available_countries: 'Available Countries',
 }
 
@@ -129,6 +144,9 @@ const SMS_VARIABLES = {
   sms_guest_payment_link: ['client_name', 'hotel_name', 'pickup_name', 'dropoff_name', 'pickup_date', 'pickup_time', 'total_amount', 'payment_url', 'booking_number'],
   sms_driver_new_run: ['driver_name', 'pickup_name', 'dropoff_name', 'pickup_date', 'pickup_time', 'client_name', 'driver_earnings', 'booking_number'],
   sms_driver_ride_completed: ['driver_name', 'pickup_name', 'dropoff_name', 'driver_earnings', 'booking_number'],
+  sms_driver_payout_released: ['driver_name', 'amount', 'route', 'booking_number'],
+  sms_driver_payout_flagged: ['driver_name', 'amount', 'route', 'booking_number'],
+  sms_driver_payout_rejected: ['driver_name', 'amount', 'route', 'booking_number'],
 }
 
 function SmsTemplates({ settings, saving, onSave }) {
@@ -202,7 +220,7 @@ const ALL_COUNTRIES = [
   { code: 'KR', name: 'South Korea', dial: '+82', flag: '🇰🇷' },
 ]
 
-function CountriesSelector({ setting, saving, onSave }) {
+function CountriesSelector({ setting, crossCountrySetting, saving, onSave }) {
   const [selected, setSelected] = useState(() => {
     const val = setting.value
     if (Array.isArray(val)) return val
@@ -215,6 +233,8 @@ function CountriesSelector({ setting, saving, onSave }) {
   })
   const changed = JSON.stringify([...selected].sort()) !== JSON.stringify([...saved].sort())
 
+  const crossCountry = crossCountrySetting ? String(crossCountrySetting.value) === 'true' : false
+
   const toggle = (code) => {
     setSelected(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code])
   }
@@ -226,10 +246,13 @@ function CountriesSelector({ setting, saving, onSave }) {
 
   return (
     <div className="mb-5">
-      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Phone Country Codes</h2>
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Service Area</h2>
       <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <p className="text-sm font-medium text-slate-900 mb-1">Countries where your service operates</p>
+        <p className="text-xs text-slate-500 mb-3">Clients can only search and select pickup/destination addresses within these countries. Address autocomplete results will be restricted to selected countries.</p>
+
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm text-slate-500">Select which countries are available for phone input. First selected is default.</p>
+          <p className="text-xs text-slate-400">{selected.length} countries selected</p>
           {changed && (
             <button onClick={handleSave} disabled={saving}
               className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-60 shrink-0">
@@ -238,8 +261,7 @@ function CountriesSelector({ setting, saving, onSave }) {
           )}
         </div>
 
-        {/* Checkbox grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
           {ALL_COUNTRIES.map(c => {
             const isSelected = selected.includes(c.code)
             return (
@@ -261,12 +283,32 @@ function CountriesSelector({ setting, saving, onSave }) {
                 <span className="text-base leading-none">{c.flag}</span>
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-slate-900 truncate">{c.name}</p>
-                  <p className="text-xs text-slate-400">{c.dial}</p>
                 </div>
               </div>
             )
           })}
         </div>
+
+        {/* Cross-country booking toggle */}
+        {crossCountrySetting && (
+          <div className="border-t border-slate-100 pt-3">
+            <div className="flex items-start gap-3">
+              <button type="button"
+                onClick={() => onSave(crossCountrySetting.key, crossCountry ? 'false' : 'true')}
+                className={`w-10 h-6 rounded-full shrink-0 mt-0.5 transition-colors ${crossCountry ? 'bg-blue-600' : 'bg-slate-300'}`}>
+                <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${crossCountry ? 'translate-x-5' : 'translate-x-1'}`}></div>
+              </button>
+              <div>
+                <p className="text-sm font-medium text-slate-900">Allow cross-country bookings</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {crossCountry
+                    ? 'Pickup and destination can be in different countries. E.g. a client can book from Ethiopia to Kenya.'
+                    : 'Pickup and destination must be in the same country. E.g. a client booking from Addis Ababa can only go to destinations within Ethiopia.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

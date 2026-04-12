@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react'
 import { api } from '../api/client'
 import Pagination from '../components/Pagination'
 
-const TABS = ['pending_review', 'released', 'flagged', 'rejected']
-const TAB_LABELS = { pending_review: 'Pending', released: 'Released', flagged: 'Flagged', rejected: 'Rejected' }
+const TABS = ['pending_review', 'released', 'transfer_failed', 'flagged', 'rejected']
+const TAB_LABELS = { pending_review: 'Pending', released: 'Released', transfer_failed: 'Failed Transfers', flagged: 'Flagged', rejected: 'Rejected' }
 
 export default function Payouts() {
   const [tab, setTab] = useState('pending_review')
@@ -27,7 +27,13 @@ export default function Payouts() {
       if (action === 'release') await api.releasePayout(id, note || 'Verified')
       if (action === 'flag') await api.flagPayout(id, note)
       if (action === 'reject') await api.rejectPayout(id, note)
-      load()
+      if (action === 'retry') await api.retryTransfer(id)
+      if (action === 'manual') {
+        const manualNote = prompt('Enter transfer reference or note:')
+        if (manualNote === null) return
+        await api.markManualPayout(id, manualNote)
+      }
+      load(page, tab)
     } catch (err) { alert(err.message) }
   }
 
@@ -108,9 +114,27 @@ export default function Payouts() {
                 </div>
               )}
 
-              {/* Actions */}
+              {/* Stripe transfer badge */}
+              {tab === 'released' && (
+                <div className="px-3 lg:px-4 py-1.5 border-t border-slate-100 bg-slate-50 flex items-center gap-2 text-xs">
+                  {p.stripe_transfer_id ? (
+                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Stripe Transferred</span>
+                  ) : (
+                    <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Manual Payout</span>
+                  )}
+                  {p.stripe_transfer_id && <span className="text-slate-400 font-mono">{p.stripe_transfer_id}</span>}
+                </div>
+              )}
+
+              {/* Actions — Pending */}
               {tab === 'pending_review' && (
                 <div className="px-3 lg:px-4 py-2 border-t border-slate-100 bg-slate-50 flex gap-2 lg:justify-end">
+                  {!p.driver_stripe_connected && (
+                    <span className="text-xs text-amber-600 flex items-center gap-1 mr-auto">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      No Stripe — manual payout
+                    </span>
+                  )}
                   <button onClick={() => handleAction(p.split_id, 'release')}
                     className="flex-1 lg:flex-none px-4 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700">
                     Release ${p.driver_amount}
@@ -122,6 +146,21 @@ export default function Payouts() {
                   <button onClick={() => handleAction(p.split_id, 'reject')}
                     className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200">
                     Reject
+                  </button>
+                </div>
+              )}
+
+              {/* Actions — Failed Transfers */}
+              {tab === 'transfer_failed' && (
+                <div className="px-3 lg:px-4 py-2 border-t border-red-100 bg-red-50 flex gap-2 lg:justify-end">
+                  <span className="text-xs text-red-600 mr-auto">Stripe transfer failed</span>
+                  <button onClick={() => handleAction(p.split_id, 'retry')}
+                    className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">
+                    Retry Transfer
+                  </button>
+                  <button onClick={() => handleAction(p.split_id, 'manual')}
+                    className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-300">
+                    Mark as Manual
                   </button>
                 </div>
               )}

@@ -29,6 +29,18 @@ async def create_booking(req: BookingCreateRequest, db: AsyncSession = Depends(g
     if not dropoff_ok:
         raise HTTPException(status_code=400, detail="Destination is outside our service area")
 
+    # Validate cross-country booking
+    if req.pickup_country and req.dropoff_country:
+        from app.models.setting import Setting as SettingModel
+        cross_r = await db.execute(select(SettingModel).where(SettingModel.key == "allow_cross_country_booking"))
+        cross_setting = cross_r.scalar_one_or_none()
+        allow_cross = str(cross_setting.value).lower() == "true" if cross_setting else False
+        if not allow_cross and req.pickup_country.upper() != req.dropoff_country.upper():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cross-country bookings are not allowed. Pickup ({req.pickup_country}) and destination ({req.dropoff_country}) must be in the same country."
+            )
+
     # Calculate price
     try:
         price = await calculate_price(

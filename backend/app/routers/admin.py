@@ -96,6 +96,8 @@ async def dashboard_stats(
     # Pending actions
     r = await db.execute(select(func.count()).select_from(PaymentSplit).where(PaymentSplit.payout_status == "pending_review"))
     pending_payouts = r.scalar()
+    r = await db.execute(select(func.count()).select_from(PaymentSplit).where(PaymentSplit.payout_status == "transfer_failed"))
+    failed_transfers = r.scalar()
     r = await db.execute(select(func.count()).select_from(Driver).where(Driver.status == "pending"))
     pending_drivers = r.scalar()
     r = await db.execute(select(func.count()).select_from(Cashier).where(Cashier.status == "pending"))
@@ -220,6 +222,7 @@ async def dashboard_stats(
         assigned_bookings=await count_status("assigned"),
         in_progress_bookings=await count_status("in_progress"),
         completed_bookings=await count_status("completed"),
+        failed_transfers=failed_transfers,
         pending_payouts=pending_payouts,
         pending_driver_approvals=pending_drivers,
         pending_cashier_approvals=pending_cashiers,
@@ -446,6 +449,8 @@ async def list_payouts(
             payout_status=s.payout_status,
             client_rating=rating.rating if rating else None,
             client_comment=rating.comment if rating else None,
+            stripe_transfer_id=s.stripe_transfer_id,
+            driver_stripe_connected=bool(d.stripe_connect_id) if d else False,
         ))
 
     return {"items": payouts, "total": total, "page": page, "per_page": per_page, "total_pages": (total + per_page - 1) // per_page}
@@ -474,7 +479,6 @@ async def release_payout(
     split.reviewed_by = admin.id
     split.reviewed_at = datetime.now(timezone.utc)
     split.review_note = req.note
-    split.paid_at = datetime.now(timezone.utc)
 
     # Also mark company split as released
     co_result = await db.execute(
@@ -488,15 +492,47 @@ async def release_payout(
         company_split.payout_status = "released"
         company_split.reviewed_at = datetime.now(timezone.utc)
 
-    # Update driver total earnings
+    # Update driver total earnings + execute Stripe Transfer if connected
+    transfer_id = None
     if split.recipient_id:
         d_result = await db.execute(select(Driver).where(Driver.id == split.recipient_id))
         driver = d_result.scalar_one_or_none()
         if driver:
             driver.total_earnings = float(driver.total_earnings or 0) + float(split.amount)
 
+            if driver.stripe_connect_id:
+                try:
+                    from app.services.connect_service import execute_transfer, get_account_details
+                    acct_status = await get_account_details(driver.stripe_connect_id)
+                    if not acct_status.get("charges_enabled") or not acct_status.get("payouts_enabled"):
+                        split.payout_status = "transfer_failed"
+                        split.paid_at = None
+                        split.review_note = (split.review_note or "") + " [Stripe account not fully activated — charges_enabled or payouts_enabled is false]"
+                    else:
+                        transfer_id = await execute_transfer(db, split, driver.stripe_connect_id)
+                        split.paid_at = datetime.now(timezone.utc)
+                except Exception as e:
+                    split.payout_status = "transfer_failed"
+                    split.paid_at = None
+                    split.review_note = (split.review_note or "") + f" [Stripe transfer failed: {str(e)}]"
+
     await db.commit()
-    return {"message": "Payout released", "amount": float(split.amount)}
+
+    # SMS to driver
+    if driver and driver.phone:
+        try:
+            booking_r = await db.execute(select(Booking).where(Booking.id == split.booking_id))
+            b = booking_r.scalar_one_or_none()
+            from app.services.sms_service import notify_driver_payout_released
+            await notify_driver_payout_released(db, driver.phone, {
+                "driver_name": driver.name, "amount": f"{float(split.amount):.2f}",
+                "route": f"{b.pickup_name} → {b.dropoff_name}" if b else "", "booking_number": b.booking_number if b else "",
+            })
+            await db.commit()
+        except Exception as e:
+            print(f"[SMS ERROR] Driver payout released SMS failed: {e}")
+
+    return {"message": "Payout released", "amount": float(split.amount), "stripe_transfer_id": transfer_id}
 
 
 @router.put("/payouts/{split_id}/flag")
@@ -524,6 +560,24 @@ async def flag_payout(
     split.review_note = req.note
 
     await db.commit()
+
+    # SMS to driver
+    try:
+        if split.recipient_id:
+            dr = await db.execute(select(Driver).where(Driver.id == split.recipient_id))
+            driver = dr.scalar_one_or_none()
+            br = await db.execute(select(Booking).where(Booking.id == split.booking_id))
+            b = br.scalar_one_or_none()
+            if driver and driver.phone:
+                from app.services.sms_service import notify_driver_payout_flagged
+                await notify_driver_payout_flagged(db, driver.phone, {
+                    "driver_name": driver.name, "amount": f"{float(split.amount):.2f}",
+                    "route": f"{b.pickup_name} → {b.dropoff_name}" if b else "", "booking_number": b.booking_number if b else "",
+                })
+                await db.commit()
+    except Exception as e:
+        print(f"[SMS ERROR] Driver payout flagged SMS failed: {e}")
+
     return {"message": "Payout flagged for investigation"}
 
 
@@ -552,7 +606,127 @@ async def reject_payout(
     split.review_note = req.note
 
     await db.commit()
+
+    # SMS to driver
+    try:
+        if split.recipient_id:
+            dr = await db.execute(select(Driver).where(Driver.id == split.recipient_id))
+            driver = dr.scalar_one_or_none()
+            br = await db.execute(select(Booking).where(Booking.id == split.booking_id))
+            b = br.scalar_one_or_none()
+            if driver and driver.phone:
+                from app.services.sms_service import notify_driver_payout_rejected
+                await notify_driver_payout_rejected(db, driver.phone, {
+                    "driver_name": driver.name, "amount": f"{float(split.amount):.2f}",
+                    "route": f"{b.pickup_name} → {b.dropoff_name}" if b else "", "booking_number": b.booking_number if b else "",
+                })
+                await db.commit()
+    except Exception as e:
+        print(f"[SMS ERROR] Driver payout rejected SMS failed: {e}")
+
     return {"message": "Payout rejected"}
+
+
+@router.put("/payouts/{split_id}/retry-transfer")
+async def retry_transfer(
+    split_id: str,
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin retries a failed Stripe transfer."""
+    result = await db.execute(
+        select(PaymentSplit).where(
+            PaymentSplit.id == split_id,
+            PaymentSplit.recipient_type == "driver",
+            PaymentSplit.payout_status == "transfer_failed",
+        )
+    )
+    split = result.scalar_one_or_none()
+    if not split:
+        raise HTTPException(status_code=404, detail="Failed transfer not found")
+
+    d_result = await db.execute(select(Driver).where(Driver.id == split.recipient_id))
+    driver = d_result.scalar_one_or_none()
+    if not driver or not driver.stripe_connect_id:
+        raise HTTPException(status_code=400, detail="Driver has no Stripe Connect account")
+
+    try:
+        from app.services.connect_service import execute_transfer, get_account_details
+        acct_status = await get_account_details(driver.stripe_connect_id)
+        if not acct_status.get("charges_enabled") or not acct_status.get("payouts_enabled"):
+            raise HTTPException(status_code=400, detail="Driver's Stripe account is not fully set up")
+
+        transfer_id = await execute_transfer(db, split, driver.stripe_connect_id)
+        split.payout_status = "released"
+        split.paid_at = datetime.now(timezone.utc)
+        split.review_note = (split.review_note or "") + f" [Retry succeeded]"
+        await db.commit()
+
+        # SMS to driver
+        try:
+            br = await db.execute(select(Booking).where(Booking.id == split.booking_id))
+            b = br.scalar_one_or_none()
+            from app.services.sms_service import notify_driver_payout_released
+            await notify_driver_payout_released(db, driver.phone, {
+                "driver_name": driver.name, "amount": f"{float(split.amount):.2f}",
+                "route": f"{b.pickup_name} → {b.dropoff_name}" if b else "", "booking_number": b.booking_number if b else "",
+            })
+            await db.commit()
+        except Exception:
+            pass
+
+        return {"message": "Transfer retry succeeded", "stripe_transfer_id": transfer_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        split.review_note = (split.review_note or "") + f" [Retry failed: {str(e)}]"
+        await db.commit()
+        raise HTTPException(status_code=500, detail=f"Transfer retry failed: {str(e)}")
+
+
+@router.put("/payouts/{split_id}/mark-manual")
+async def mark_manual_payout(
+    split_id: str,
+    req: PayoutActionRequest,
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin marks a failed transfer as manually handled."""
+    result = await db.execute(
+        select(PaymentSplit).where(
+            PaymentSplit.id == split_id,
+            PaymentSplit.recipient_type == "driver",
+            PaymentSplit.payout_status == "transfer_failed",
+        )
+    )
+    split = result.scalar_one_or_none()
+    if not split:
+        raise HTTPException(status_code=404, detail="Failed transfer not found")
+
+    split.payout_status = "released"
+    split.reviewed_by = admin.id
+    split.reviewed_at = datetime.now(timezone.utc)
+    split.paid_at = datetime.now(timezone.utc)
+    split.review_note = (split.review_note or "") + f" [Manually transferred: {req.note or 'N/A'}]"
+    await db.commit()
+
+    # SMS to driver
+    try:
+        d_result = await db.execute(select(Driver).where(Driver.id == split.recipient_id))
+        driver = d_result.scalar_one_or_none()
+        br = await db.execute(select(Booking).where(Booking.id == split.booking_id))
+        b = br.scalar_one_or_none()
+        if driver and driver.phone:
+            from app.services.sms_service import notify_driver_payout_released
+            await notify_driver_payout_released(db, driver.phone, {
+                "driver_name": driver.name, "amount": f"{float(split.amount):.2f}",
+                "route": f"{b.pickup_name} → {b.dropoff_name}" if b else "", "booking_number": b.booking_number if b else "",
+            })
+            await db.commit()
+    except Exception:
+        pass
+
+    return {"message": "Payout marked as manually transferred"}
 
 
 # ═══════════════════════════════════════════

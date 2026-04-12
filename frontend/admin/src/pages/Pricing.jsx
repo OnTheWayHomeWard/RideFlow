@@ -267,7 +267,8 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
                 value={form.from_name || form.from_address}
                 onChange={(loc) => setForm(p => ({ ...p, from_name: loc.name, from_address: loc.address, from_lat: loc.lat, from_lng: loc.lng }))}
                 placeholder="Search start location..."
-                googleApiKey={googleApiKey}
+                googleApiKey={settings.google_maps_api_key}
+                countries={settings.available_countries}
               />
             </div>
             <div>
@@ -276,7 +277,8 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
                 value={form.to_name || form.to_address}
                 onChange={(loc) => setForm(p => ({ ...p, to_name: loc.name, to_address: loc.address, to_lat: loc.lat, to_lng: loc.lng }))}
                 placeholder="Search destination..."
-                googleApiKey={googleApiKey}
+                googleApiKey={settings.google_maps_api_key}
+                countries={settings.available_countries}
               />
             </div>
           </div>

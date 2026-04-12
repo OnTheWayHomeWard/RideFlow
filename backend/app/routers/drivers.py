@@ -207,22 +207,26 @@ async def accept_run(
             cashier_amount = float(cashier_split.amount) if cashier_split else 0
             company_split.amount = round(float(booking.total_amount) - cashier_amount - driver_split.amount, 2)
 
-    # Send SMS to driver
-    from app.services.sms_service import notify_driver_new_run
-    driver_pct_val = float(driver.pay_percentage) / 100
-    driver_earn = round(float(booking.base_amount) * driver_pct_val, 2)
-    await notify_driver_new_run(db, driver.phone, {
-        "driver_name": driver.name,
-        "pickup_name": booking.pickup_name,
-        "dropoff_name": booking.dropoff_name,
-        "pickup_date": str(booking.pickup_date),
-        "pickup_time": str(booking.pickup_time)[:5],
-        "client_name": booking.client_name,
-        "driver_earnings": f"{driver_earn:.2f}",
-        "booking_number": booking.booking_number,
-    })
-
     await db.commit()
+
+    # Send SMS to driver (after commit)
+    try:
+        from app.services.sms_service import notify_driver_new_run
+        driver_pct_val = float(driver.pay_percentage) / 100
+        driver_earn = round(float(booking.base_amount) * driver_pct_val, 2)
+        await notify_driver_new_run(db, driver.phone, {
+            "driver_name": driver.name,
+            "pickup_name": booking.pickup_name,
+            "dropoff_name": booking.dropoff_name,
+            "pickup_date": str(booking.pickup_date),
+            "pickup_time": str(booking.pickup_time)[:5],
+            "client_name": booking.client_name,
+            "driver_earnings": f"{driver_earn:.2f}",
+            "booking_number": booking.booking_number,
+        })
+        await db.commit()
+    except Exception as e:
+        print(f"[SMS ERROR] Driver new run SMS failed: {e}")
 
     return {
         "message": "Run accepted",
@@ -270,19 +274,23 @@ async def start_ride(
         related_type="ride_started",
     ))
 
-    # Send SMS to client with rating link
-    from app.services.sms_service import notify_client_ride_started
-    confirmation_url = f"http://localhost:5173/confirmation/{booking.booking_number}"
-    await notify_client_ride_started(db, booking.client_phone, {
-        "client_name": booking.client_name,
-        "driver_name": driver.name,
-        "pickup_name": booking.pickup_name,
-        "dropoff_name": booking.dropoff_name,
-        "booking_number": booking.booking_number,
-        "confirmation_url": confirmation_url,
-    })
-
     await db.commit()
+
+    # Send SMS to client with rating link (after commit)
+    try:
+        from app.services.sms_service import notify_client_ride_started
+        confirmation_url = f"http://localhost:5173/confirmation/{booking.booking_number}"
+        await notify_client_ride_started(db, booking.client_phone, {
+            "client_name": booking.client_name,
+            "driver_name": driver.name,
+            "pickup_name": booking.pickup_name,
+            "dropoff_name": booking.dropoff_name,
+            "booking_number": booking.booking_number,
+            "confirmation_url": confirmation_url,
+        })
+        await db.commit()
+    except Exception as e:
+        print(f"[SMS ERROR] Client ride started SMS failed: {e}")
 
     return {"message": "Ride started", "booking_number": booking.booking_number}
 
@@ -332,18 +340,22 @@ async def complete_ride(
     if driver_split:
         driver_split.payout_status = "pending_review"
 
-    # Send SMS to driver
-    from app.services.sms_service import notify_driver_ride_completed
-    d_earnings = float(driver_split.amount) if driver_split else 0
-    await notify_driver_ride_completed(db, driver.phone, {
-        "driver_name": driver.name,
-        "pickup_name": booking.pickup_name,
-        "dropoff_name": booking.dropoff_name,
-        "driver_earnings": f"{d_earnings:.2f}",
-        "booking_number": booking.booking_number,
-    })
-
     await db.commit()
+
+    # Send SMS to driver (after commit so DB is clean)
+    try:
+        from app.services.sms_service import notify_driver_ride_completed
+        d_earnings = float(driver_split.amount) if driver_split else 0
+        await notify_driver_ride_completed(db, driver.phone, {
+            "driver_name": driver.name,
+            "pickup_name": booking.pickup_name,
+            "dropoff_name": booking.dropoff_name,
+            "driver_earnings": f"{d_earnings:.2f}",
+            "booking_number": booking.booking_number,
+        })
+        await db.commit()
+    except Exception as e:
+        print(f"[SMS ERROR] Driver ride completed SMS failed: {e}")
 
     earnings = float(driver_split.amount) if driver_split else 0
 
@@ -501,3 +513,76 @@ async def get_earnings(
         this_month=month_earnings,
         this_month_rides=month_rides,
     )
+
+
+# ═══════════════════════════════════════════
+# STRIPE CONNECT
+# ═══════════════════════════════════════════
+
+@router.post("/stripe/connect")
+async def stripe_connect(driver: Driver = Depends(get_current_driver), db: AsyncSession = Depends(get_db)):
+    """Start Stripe Connect onboarding. Creates Express account if needed."""
+    from app.services.connect_service import create_connect_account, create_onboarding_link, get_account_details
+
+    if not driver.stripe_connect_id:
+        acct_id = await create_connect_account("driver", driver.id, driver.email)
+        driver.stripe_connect_id = acct_id
+        driver.payout_method = "stripe_connect"
+        await db.flush()
+    else:
+        acct_id = driver.stripe_connect_id
+
+    # Check if already fully set up
+    details = await get_account_details(acct_id)
+    if details.get("charges_enabled") and details.get("payouts_enabled"):
+        driver.payout_details = details
+        await db.commit()
+        return {"already_connected": True, "account_id": acct_id, "details": details}
+
+    return_url = "http://localhost:5174/profile?stripe=complete"
+    refresh_url = "http://localhost:5174/profile?stripe=refresh"
+    url = await create_onboarding_link(acct_id, return_url, refresh_url)
+
+    await db.commit()
+    return {"onboarding_url": url, "account_id": acct_id}
+
+
+@router.get("/stripe/status")
+async def stripe_status(driver: Driver = Depends(get_current_driver), db: AsyncSession = Depends(get_db)):
+    """Check Stripe Connect status."""
+    if not driver.stripe_connect_id:
+        return {"connected": False}
+
+    from app.services.connect_service import get_account_details
+    details = await get_account_details(driver.stripe_connect_id)
+
+    # Update stored details
+    driver.payout_details = details
+    await db.commit()
+
+    return {
+        "connected": True,
+        "charges_enabled": details.get("charges_enabled", False),
+        "payouts_enabled": details.get("payouts_enabled", False),
+        "details_submitted": details.get("details_submitted", False),
+        "account_id": driver.stripe_connect_id,
+        "name": details.get("name"),
+        "email": details.get("email"),
+        "bank_last4": details.get("bank_last4"),
+        "bank_name": details.get("bank_name"),
+    }
+
+
+@router.post("/stripe/onboarding-link")
+async def stripe_onboarding_link(driver: Driver = Depends(get_current_driver)):
+    """Get a fresh onboarding link (for incomplete setups)."""
+    if not driver.stripe_connect_id:
+        raise HTTPException(status_code=400, detail="No Stripe account found. Use /stripe/connect first.")
+
+    from app.services.connect_service import create_onboarding_link
+    url = await create_onboarding_link(
+        driver.stripe_connect_id,
+        "http://localhost:5174/profile?stripe=complete",
+        "http://localhost:5174/profile?stripe=refresh",
+    )
+    return {"onboarding_url": url}

@@ -86,10 +86,11 @@ export default function Dashboard() {
         )}
 
         {/* Needs attention — inline */}
-        {(stats.pending_payouts > 0 || stats.pending_driver_approvals > 0 || stats.paid_bookings > 0) && (
+        {(stats.pending_payouts > 0 || stats.pending_driver_approvals > 0 || stats.paid_bookings > 0 || stats.failed_transfers > 0) && (
           <div className="flex gap-2 flex-wrap">
             {stats.pending_payouts > 0 && <AlertChip to="/payouts" label={`${stats.pending_payouts} payouts pending`} color="amber" />}
             {stats.pending_driver_approvals > 0 && <AlertChip to="/drivers" label={`${stats.pending_driver_approvals} driver approvals`} color="purple" />}
+            {stats.failed_transfers > 0 && <AlertChip to="/payouts" label={`${stats.failed_transfers} failed transfers`} color="red" />}
             {stats.paid_bookings > 0 && <AlertChip to="/runs" label={`${stats.paid_bookings} unassigned rides`} color="orange" />}
           </div>
         )}

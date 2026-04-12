@@ -27,6 +27,10 @@ def point_in_polygon(point_lat: float, point_lng: float, polygon: list[dict]) ->
 
 async def validate_location(db: AsyncSession, lat: float, lng: float) -> bool:
     """Check if a location is within any active geofence."""
+    # Skip validation if coordinates are unknown (no Google Maps API)
+    if lat == 0 and lng == 0:
+        return True
+
     result = await db.execute(
         select(Geofence).where(Geofence.is_active == True)
     )

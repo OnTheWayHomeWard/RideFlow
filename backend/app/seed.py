@@ -65,6 +65,8 @@ async def seed():
             Setting(key="sms_enabled", value=True, description="Enable SMS notifications"),
             Setting(key="unassigned_alert_minutes", value=15, description="Alert admin if run unassigned after X minutes"),
             Setting(key="max_active_runs_per_driver", value=5, description="Max active (assigned + in_progress) runs per driver at once"),
+            Setting(key="allow_cross_country_booking", value=False, description="Allow pickup and destination in different countries"),
+            Setting(key="stripe_connect_enabled", value=True, description="Enable Stripe Connect for driver/cashier payouts"),
             Setting(key="driver_payout_schedule", value="weekly", description="How often drivers are paid"),
             Setting(key="sms_cashier_referral", value="Hi {cashier_name}, you earned ${amount} from a new booking by {client_name} ({route}). Total earnings: ${total_earnings}.", description="SMS to cashier on referral. Vars: {cashier_name}, {amount}, {client_name}, {route}, {total_earnings}, {booking_number}"),
             Setting(key="sms_cashier_payout", value="Hi {cashier_name}, your commission of ${amount} for booking {booking_number} has been processed.", description="SMS to cashier on payout. Vars: {cashier_name}, {amount}, {booking_number}"),
@@ -73,6 +75,9 @@ async def seed():
             Setting(key="sms_guest_payment_link", value="Hi {client_name}, a ride has been reserved for you by {hotel_name}: {pickup_name} → {dropoff_name} on {pickup_date} at {pickup_time}. Total: ${total_amount}. Pay here: {payment_url}", description="SMS to guest when cashier books for them. Vars: {client_name}, {hotel_name}, {pickup_name}, {dropoff_name}, {pickup_date}, {pickup_time}, {total_amount}, {payment_url}, {booking_number}"),
             Setting(key="sms_driver_new_run", value="Hi {driver_name}, you have a new run! {pickup_name} → {dropoff_name} on {pickup_date} at {pickup_time}. Client: {client_name}. Earnings: ${driver_earnings}.", description="SMS to driver on run assignment. Vars: {driver_name}, {pickup_name}, {dropoff_name}, {pickup_date}, {pickup_time}, {client_name}, {driver_earnings}, {booking_number}"),
             Setting(key="sms_driver_ride_completed", value="Hi {driver_name}, ride completed! {pickup_name} → {dropoff_name}. You earned ${driver_earnings}. Great job!", description="SMS to driver on ride completion. Vars: {driver_name}, {pickup_name}, {dropoff_name}, {driver_earnings}, {booking_number}"),
+            Setting(key="sms_driver_payout_released", value="Hi {driver_name}, your payout of ${amount} for {route} has been released! The funds are on their way.", description="SMS to driver when payout released. Vars: {driver_name}, {amount}, {route}, {booking_number}"),
+            Setting(key="sms_driver_payout_flagged", value="Hi {driver_name}, your payout of ${amount} for {route} has been flagged for review. Please contact support if you have questions.", description="SMS to driver when payout flagged. Vars: {driver_name}, {amount}, {route}, {booking_number}"),
+            Setting(key="sms_driver_payout_rejected", value="Hi {driver_name}, your payout of ${amount} for {route} has been rejected. Please contact support for details.", description="SMS to driver when payout rejected. Vars: {driver_name}, {amount}, {route}, {booking_number}"),
         ]
         db.add_all(settings)
         print("Created settings")

@@ -19,6 +19,7 @@ export default function BookForGuest() {
   const [selectedRoute, setSelectedRoute] = useState('')
   const [customDest, setCustomDest] = useState(null)
   const [googleApiKey, setGoogleApiKey] = useState('')
+  const [serviceCountries, setServiceCountries] = useState([])
   const [vehicleType, setVehicleType] = useState('')
   const [pickupDate, setPickupDate] = useState('')
   const [pickupTime, setPickupTime] = useState('')
@@ -37,6 +38,7 @@ export default function BookForGuest() {
         setExtras(e.filter(x => x.is_active))
         if (v.length > 0) setVehicleType(v.filter(x => x.is_active)[0]?.vehicle_type || '')
         if (s.google_maps_api_key) setGoogleApiKey(s.google_maps_api_key)
+        if (s.available_countries) setServiceCountries(s.available_countries)
       })
       .catch(() => {}).finally(() => setLoading(false))
   }, [])
@@ -174,6 +176,7 @@ export default function BookForGuest() {
               onChange={setCustomPickup}
               placeholder="Search pickup address..."
               googleApiKey={googleApiKey}
+              countries={serviceCountries}
             />
           </div>
         )}
@@ -197,6 +200,7 @@ export default function BookForGuest() {
             onChange={setCustomDest}
             placeholder="Search destination address..."
             googleApiKey={googleApiKey}
+            countries={serviceCountries}
           />
         )}
 

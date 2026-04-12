@@ -1,6 +1,7 @@
 """
 Payment Split Service — calculates how money is divided between cashier, driver, and company.
 """
+from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,6 +58,23 @@ async def create_splits_for_booking(db: AsyncSession, booking: Booking, payment:
         if cashier:
             cashier.total_referrals = (cashier.total_referrals or 0) + 1
             cashier.total_earnings = float(cashier.total_earnings or 0) + cashier_amount
+
+            # Execute Stripe Transfer if cashier has connected account
+            if cashier.stripe_connect_id:
+                try:
+                    from app.services.connect_service import execute_transfer, get_account_details
+                    acct_status = await get_account_details(cashier.stripe_connect_id)
+                    if not acct_status.get("charges_enabled") or not acct_status.get("payouts_enabled"):
+                        splits[-1].payout_status = "transfer_failed"
+                        splits[-1].review_note = "Stripe account not fully activated"
+                        print(f"[STRIPE] Cashier account not activated: charges_enabled={acct_status.get('charges_enabled')}, payouts_enabled={acct_status.get('payouts_enabled')}")
+                    else:
+                        await execute_transfer(db, splits[-1], cashier.stripe_connect_id)
+                        splits[-1].paid_at = datetime.now(timezone.utc)
+                except Exception as e:
+                    splits[-1].payout_status = "transfer_failed"
+                    splits[-1].review_note = f"Stripe transfer failed: {str(e)}"
+                    print(f"[STRIPE] Cashier transfer failed: {e}")
 
             # Send SMS notification to cashier
             from app.services.sms_service import notify_cashier_referral

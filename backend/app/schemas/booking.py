@@ -19,6 +19,10 @@ class BookingCreateRequest(BaseModel):
     dropoff_lat: float
     dropoff_lng: float
 
+    # Country codes (from Google Places autocomplete)
+    pickup_country: str | None = None
+    dropoff_country: str | None = None
+
     # Schedule
     pickup_date: date
     pickup_time: time
