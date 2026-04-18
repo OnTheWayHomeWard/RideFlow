@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { api } from '../api/client'
 import Pagination from '../components/Pagination'
 
-const EMPTY_FORM = { name: '', address: '', contact_name: '', contact_phone: '', default_commission_pct: 10, lat: '', lng: '' }
+const EMPTY_FORM = { name: '', address: '', contact_name: '', contact_phone: '', default_commission_pct: 10, lat: '', lng: '', concierge_id: '' }
 
 export default function Hotels() {
   const [data, setData] = useState({ items: [], total: 0, page: 1, total_pages: 0 })
@@ -11,9 +11,11 @@ export default function Hotels() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [editingId, setEditingId] = useState(null)
+  const [concierges, setConcierges] = useState([])
 
   const load = (p) => { api.getHotels(p || page, 10).then(setData).catch(() => {}).finally(() => setLoading(false)) }
   useEffect(() => { load(page) }, [page])
+  useEffect(() => { api.getConcierges().then(setConcierges).catch(() => {}) }, [])
 
   const hotels = data.items || []
 
@@ -27,6 +29,7 @@ export default function Hotels() {
       else delete payload.lat
       if (payload.lng) payload.lng = parseFloat(payload.lng)
       else delete payload.lng
+      if (!payload.concierge_id) payload.concierge_id = null
       await api.createHotel(payload)
       resetForm()
       load(page)
@@ -41,6 +44,7 @@ export default function Hotels() {
       else delete payload.lat
       if (payload.lng) payload.lng = parseFloat(payload.lng)
       else delete payload.lng
+      if (!payload.concierge_id) payload.concierge_id = null
       await api.updateHotel(editingId, payload)
       resetForm()
       load(page)
@@ -53,6 +57,7 @@ export default function Hotels() {
       contact_name: h.contact_name || '', contact_phone: h.contact_phone || '',
       default_commission_pct: h.default_commission_pct,
       lat: h.lat || '', lng: h.lng || '',
+      concierge_id: h.concierge_id || '',
     })
     setEditingId(h.id)
     setShowForm(true)
@@ -111,6 +116,15 @@ export default function Hotels() {
                 className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               <p className="text-xs text-slate-400 mt-1">Cashiers assigned to this hotel will use this as their default commission</p>
             </div>
+            <div>
+              <label className="text-xs text-slate-500">Concierge</label>
+              <select value={form.concierge_id} onChange={e => setForm(p => ({ ...p, concierge_id: e.target.value }))}
+                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">No concierge</option>
+                {concierges.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <p className="text-xs text-slate-400 mt-1">Cashier commissions will be paid out through this concierge</p>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-xs text-slate-500">Latitude</label>
@@ -149,9 +163,10 @@ export default function Hotels() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 truncate">{h.address}</p>
-                  <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5">
+                  <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5 flex-wrap">
                     <span>Contact: {h.contact_name || '—'}</span>
                     <span>Commission: {h.default_commission_pct}%</span>
+                    {h.concierge_id && <span className="text-blue-600">Concierge: {concierges.find(c => c.id === h.concierge_id)?.name || '—'}</span>}
                   </div>
                 </div>
                 <div className="flex gap-1.5 shrink-0">

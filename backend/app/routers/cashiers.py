@@ -130,6 +130,8 @@ async def get_my_referrals(cashier: Cashier = Depends(get_current_cashier), db: 
             "paid_at": b.paid_at.isoformat() if b.paid_at else str(b.created_at),
             "status": b.status,
             "commission": float(split.amount) if split else 0,
+            "payout_status": split.payout_status if split else "pending",
+            "settled_at": split.paid_at.isoformat() if split and split.paid_at else None,
         })
     return referrals
 

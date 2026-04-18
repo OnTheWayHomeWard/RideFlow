@@ -106,12 +106,16 @@ async def execute_transfer(db: AsyncSession, split: PaymentSplit, destination_ac
     from app.config import settings
     stripe.api_key = settings.STRIPE_SECRET_KEY
 
+    # Use split.id + timestamp for idempotency so retries don't collide with previous failed attempts
+    import time
+    idem_key = f"split_{split.id}_{int(time.time())}"
+
     transfer = stripe.Transfer.create(
         amount=amount_cents,
         currency="usd",
         destination=destination_account_id,
         metadata={"split_id": str(split.id), "booking_id": str(split.booking_id)},
-        idempotency_key=f"split_{split.id}",
+        idempotency_key=idem_key,
     )
     split.stripe_transfer_id = transfer.id
     return transfer.id

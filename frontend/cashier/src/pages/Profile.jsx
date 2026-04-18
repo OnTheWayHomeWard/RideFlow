@@ -1,38 +1,12 @@
 import { useState, useEffect } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 
 export default function Profile() {
-  const [searchParams] = useSearchParams()
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [stripe, setStripe] = useState(null)
-  const [stripeLoading, setStripeLoading] = useState(false)
-  const [stripeMsg, setStripeMsg] = useState('')
 
   useEffect(() => { api.getMe().then(setProfile).catch(() => {}).finally(() => setLoading(false)) }, [])
-
-  useEffect(() => {
-    api.stripeStatus().then(setStripe).catch(() => {})
-    if (searchParams.get('stripe') === 'complete') {
-      setStripeMsg('Stripe account connected successfully!')
-      setTimeout(() => setStripeMsg(''), 5000)
-      api.stripeStatus().then(setStripe).catch(() => {})
-    }
-  }, [])
-
-  const handleStripeConnect = async () => {
-    setStripeLoading(true)
-    try {
-      const res = await api.stripeConnect()
-      if (res.already_connected) {
-        setStripe({ connected: true, ...res.details })
-      } else if (res.onboarding_url) {
-        window.location.href = res.onboarding_url
-      }
-    } catch (e) { alert(e.message) }
-    finally { setStripeLoading(false) }
-  }
 
   if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 border-3 border-purple-600 border-t-transparent rounded-full animate-spin"></div></div>
   if (!profile) return <p className="text-center text-slate-400 py-16">Failed to load</p>
@@ -59,44 +33,8 @@ export default function Profile() {
       </Section>
 
       {/* Stripe Connect */}
-      <Section title="Payout Account">
-        {stripeMsg && (
-          <div className="mb-3 bg-green-50 border border-green-200 rounded-lg p-2.5 text-sm text-green-700 font-medium">{stripeMsg}</div>
-        )}
-        {stripe?.connected && stripe?.charges_enabled ? (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span className="text-sm font-medium text-green-700">Stripe Connected</span>
-            </div>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              {stripe.name && <div><p className="text-xs text-slate-400">Account Name</p><p className="font-medium">{stripe.name}</p></div>}
-              {stripe.email && <div><p className="text-xs text-slate-400">Email</p><p className="font-medium break-all">{stripe.email}</p></div>}
-              {stripe.bank_name && <div><p className="text-xs text-slate-400">Bank</p><p className="font-medium">{stripe.bank_name}</p></div>}
-              {stripe.bank_last4 && <div><p className="text-xs text-slate-400">Account</p><p className="font-mono font-medium">****{stripe.bank_last4}</p></div>}
-            </div>
-          </div>
-        ) : stripe?.connected && !stripe?.charges_enabled ? (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
-              <span className="text-sm font-medium text-amber-700">Setup Incomplete</span>
-            </div>
-            <p className="text-xs text-slate-500 mb-3">Complete your Stripe setup to receive commission payouts automatically.</p>
-            <button onClick={handleStripeConnect} disabled={stripeLoading}
-              className="w-full py-2.5 bg-amber-500 text-white rounded-lg text-sm font-semibold hover:bg-amber-600 disabled:opacity-60">
-              {stripeLoading ? 'Loading...' : 'Complete Setup'}
-            </button>
-          </div>
-        ) : (
-          <div>
-            <p className="text-xs text-slate-500 mb-3">Connect your Stripe account to receive commission payouts automatically when clients pay for rides.</p>
-            <button onClick={handleStripeConnect} disabled={stripeLoading}
-              className="w-full py-2.5 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-700 disabled:opacity-60">
-              {stripeLoading ? 'Connecting...' : 'Connect with Stripe'}
-            </button>
-          </div>
-        )}
+      <Section title="How you get paid">
+        <p className="text-xs text-slate-600 leading-relaxed">Your commissions are settled through your concierge. When the concierge is paid by the company, they will distribute your share to you. Your earnings are still tracked here in real time.</p>
       </Section>
 
       {/* Actions */}

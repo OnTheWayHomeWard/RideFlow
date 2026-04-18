@@ -376,14 +376,17 @@ async def list_payouts(
     admin: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """List payout requests. Filter by status: pending_review, released, flagged, rejected."""
+    """List payout requests. Filter by status: pending_review, released, transfer_failed, flagged, rejected."""
+    # For transfer_failed, include both driver and cashier splits. Others: driver only.
+    recipient_types = ["driver", "cashier"] if status == "transfer_failed" else ["driver"]
+
     total = (await db.execute(
-        select(func.count(PaymentSplit.id)).where(PaymentSplit.recipient_type == "driver", PaymentSplit.payout_status == status)
+        select(func.count(PaymentSplit.id)).where(PaymentSplit.recipient_type.in_(recipient_types), PaymentSplit.payout_status == status)
     )).scalar()
 
     result = await db.execute(
         select(PaymentSplit).where(
-            PaymentSplit.recipient_type == "driver",
+            PaymentSplit.recipient_type.in_(recipient_types),
             PaymentSplit.payout_status == status,
         ).order_by(PaymentSplit.created_at.desc()).offset((page - 1) * per_page).limit(per_page)
     )
@@ -397,9 +400,12 @@ async def list_payouts(
         if not b:
             continue
 
-        # Get driver
-        d_result = await db.execute(select(Driver).where(Driver.id == s.recipient_id))
-        d = d_result.scalar_one_or_none()
+        # Get driver (for display). If this is a cashier split, get the booking's driver.
+        driver_id_to_lookup = s.recipient_id if s.recipient_type == "driver" else b.driver_id
+        d = None
+        if driver_id_to_lookup:
+            d_result = await db.execute(select(Driver).where(Driver.id == driver_id_to_lookup))
+            d = d_result.scalar_one_or_none()
 
         # Get cashier split amount
         c_result = await db.execute(
@@ -436,7 +442,7 @@ async def list_payouts(
             completed_at=b.completed_at,
             driver_name=d.name if d else "Unknown",
             driver_phone=d.phone if d else "",
-            driver_id=s.recipient_id,
+            driver_id=driver_id_to_lookup,
             client_name=b.client_name,
             client_phone=b.client_phone,
             vehicle_type=b.vehicle_type,
@@ -633,11 +639,11 @@ async def retry_transfer(
     admin: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Admin retries a failed Stripe transfer."""
+    """Admin retries a failed Stripe transfer (driver or cashier)."""
     result = await db.execute(
         select(PaymentSplit).where(
             PaymentSplit.id == split_id,
-            PaymentSplit.recipient_type == "driver",
+            PaymentSplit.recipient_type.in_(["driver", "cashier"]),
             PaymentSplit.payout_status == "transfer_failed",
         )
     )
@@ -645,32 +651,49 @@ async def retry_transfer(
     if not split:
         raise HTTPException(status_code=404, detail="Failed transfer not found")
 
-    d_result = await db.execute(select(Driver).where(Driver.id == split.recipient_id))
-    driver = d_result.scalar_one_or_none()
-    if not driver or not driver.stripe_connect_id:
-        raise HTTPException(status_code=400, detail="Driver has no Stripe Connect account")
+    driver = None
+    stripe_connect_id = None
+    recipient_name = ""
+    recipient_phone = ""
+    if split.recipient_type == "driver":
+        d_result = await db.execute(select(Driver).where(Driver.id == split.recipient_id))
+        driver = d_result.scalar_one_or_none()
+        if not driver or not driver.stripe_connect_id:
+            raise HTTPException(status_code=400, detail="Driver has no Stripe Connect account")
+        stripe_connect_id = driver.stripe_connect_id
+        recipient_name = driver.name
+        recipient_phone = driver.phone
+    else:  # cashier
+        c_result = await db.execute(select(Cashier).where(Cashier.id == split.recipient_id))
+        cashier = c_result.scalar_one_or_none()
+        if not cashier or not cashier.stripe_connect_id:
+            raise HTTPException(status_code=400, detail="Cashier has no Stripe Connect account")
+        stripe_connect_id = cashier.stripe_connect_id
+        recipient_name = cashier.name
+        recipient_phone = cashier.phone
 
     try:
         from app.services.connect_service import execute_transfer, get_account_details
-        acct_status = await get_account_details(driver.stripe_connect_id)
+        acct_status = await get_account_details(stripe_connect_id)
         if not acct_status.get("charges_enabled") or not acct_status.get("payouts_enabled"):
-            raise HTTPException(status_code=400, detail="Driver's Stripe account is not fully set up")
+            raise HTTPException(status_code=400, detail="Stripe account is not fully set up")
 
-        transfer_id = await execute_transfer(db, split, driver.stripe_connect_id)
+        transfer_id = await execute_transfer(db, split, stripe_connect_id)
         split.payout_status = "released"
         split.paid_at = datetime.now(timezone.utc)
         split.review_note = (split.review_note or "") + f" [Retry succeeded]"
         await db.commit()
 
-        # SMS to driver
+        # SMS to recipient
         try:
             br = await db.execute(select(Booking).where(Booking.id == split.booking_id))
             b = br.scalar_one_or_none()
-            from app.services.sms_service import notify_driver_payout_released
-            await notify_driver_payout_released(db, driver.phone, {
-                "driver_name": driver.name, "amount": f"{float(split.amount):.2f}",
-                "route": f"{b.pickup_name} → {b.dropoff_name}" if b else "", "booking_number": b.booking_number if b else "",
-            })
+            if split.recipient_type == "driver":
+                from app.services.sms_service import notify_driver_payout_released
+                await notify_driver_payout_released(db, recipient_phone, {
+                    "driver_name": recipient_name, "amount": f"{float(split.amount):.2f}",
+                    "route": f"{b.pickup_name} → {b.dropoff_name}" if b else "", "booking_number": b.booking_number if b else "",
+                })
             await db.commit()
         except Exception:
             pass
@@ -695,7 +718,7 @@ async def mark_manual_payout(
     result = await db.execute(
         select(PaymentSplit).where(
             PaymentSplit.id == split_id,
-            PaymentSplit.recipient_type == "driver",
+            PaymentSplit.recipient_type.in_(["driver", "cashier"]),
             PaymentSplit.payout_status == "transfer_failed",
         )
     )
@@ -710,21 +733,22 @@ async def mark_manual_payout(
     split.review_note = (split.review_note or "") + f" [Manually transferred: {req.note or 'N/A'}]"
     await db.commit()
 
-    # SMS to driver
-    try:
-        d_result = await db.execute(select(Driver).where(Driver.id == split.recipient_id))
-        driver = d_result.scalar_one_or_none()
-        br = await db.execute(select(Booking).where(Booking.id == split.booking_id))
-        b = br.scalar_one_or_none()
-        if driver and driver.phone:
-            from app.services.sms_service import notify_driver_payout_released
-            await notify_driver_payout_released(db, driver.phone, {
-                "driver_name": driver.name, "amount": f"{float(split.amount):.2f}",
-                "route": f"{b.pickup_name} → {b.dropoff_name}" if b else "", "booking_number": b.booking_number if b else "",
-            })
-            await db.commit()
-    except Exception:
-        pass
+    # SMS to recipient (driver only — cashier auto gets referral SMS)
+    if split.recipient_type == "driver":
+        try:
+            d_result = await db.execute(select(Driver).where(Driver.id == split.recipient_id))
+            driver = d_result.scalar_one_or_none()
+            br = await db.execute(select(Booking).where(Booking.id == split.booking_id))
+            b = br.scalar_one_or_none()
+            if driver and driver.phone:
+                from app.services.sms_service import notify_driver_payout_released
+                await notify_driver_payout_released(db, driver.phone, {
+                    "driver_name": driver.name, "amount": f"{float(split.amount):.2f}",
+                    "route": f"{b.pickup_name} → {b.dropoff_name}" if b else "", "booking_number": b.booking_number if b else "",
+                })
+                await db.commit()
+        except Exception:
+            pass
 
     return {"message": "Payout marked as manually transferred"}
 
@@ -1212,6 +1236,7 @@ async def list_hotels(
             "lat": float(h.lat) if h.lat else None, "lng": float(h.lng) if h.lng else None,
             "contact_name": h.contact_name, "contact_phone": h.contact_phone,
             "default_commission_pct": float(h.default_commission_pct), "is_active": h.is_active,
+            "concierge_id": str(h.concierge_id) if h.concierge_id else None,
             "created_at": h.created_at.isoformat() if h.created_at else None,
         })
     return {"items": items, "total": total, "page": page, "per_page": per_page, "total_pages": (total + per_page - 1) // per_page}
@@ -1898,3 +1923,490 @@ async def update_setting(
     setting.updated_by = admin.id
     await db.commit()
     return {"message": f"Setting '{req.key}' updated"}
+
+
+# ═══════════════════════════════════════════
+# CONCIERGES
+# ═══════════════════════════════════════════
+
+from pydantic import BaseModel as _BM
+from app.models.concierge import Concierge
+from app.models.payout_batch import PayoutBatch
+
+
+class ConciergeCreateRequest(_BM):
+    name: str
+    phone: str
+    email: str | None = None
+
+
+class ConciergeUpdateRequest(_BM):
+    name: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    status: str | None = None
+
+
+@router.get("/concierges")
+async def list_concierges(admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Concierge).order_by(Concierge.created_at.desc()))
+    concierges = result.scalars().all()
+    out = []
+    for c in concierges:
+        # Count hotels and cashiers
+        h_r = await db.execute(select(func.count(Hotel.id)).where(Hotel.concierge_id == c.id))
+        hotel_count = h_r.scalar() or 0
+        hotel_ids_r = await db.execute(select(Hotel.id).where(Hotel.concierge_id == c.id))
+        hotel_ids = [h[0] for h in hotel_ids_r.all()]
+        cashier_count = 0
+        total_owed = 0.0
+        if hotel_ids:
+            ca_r = await db.execute(select(func.count(Cashier.id)).where(Cashier.hotel_id.in_(hotel_ids)))
+            cashier_count = ca_r.scalar() or 0
+            # Calculate total owed (pending cashier splits)
+            cashier_ids_r = await db.execute(select(Cashier.id).where(Cashier.hotel_id.in_(hotel_ids)))
+            cashier_ids = [x[0] for x in cashier_ids_r.all()]
+            if cashier_ids:
+                owed_r = await db.execute(
+                    select(func.coalesce(func.sum(PaymentSplit.amount), 0))
+                    .where(
+                        PaymentSplit.recipient_type == "cashier",
+                        PaymentSplit.recipient_id.in_(cashier_ids),
+                        PaymentSplit.payout_status == "pending",
+                    )
+                )
+                total_owed = float(owed_r.scalar() or 0)
+        out.append({
+            "id": str(c.id), "name": c.name, "phone": c.phone, "email": c.email,
+            "status": c.status, "stripe_connect_id": c.stripe_connect_id,
+            "total_earnings": float(c.total_earnings or 0),
+            "total_paid_out": float(c.total_paid_out or 0),
+            "hotel_count": hotel_count, "cashier_count": cashier_count,
+            "total_owed": total_owed,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        })
+    return out
+
+
+@router.get("/concierges/{concierge_id}")
+async def get_concierge(concierge_id: str, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    r = await db.execute(select(Concierge).where(Concierge.id == concierge_id))
+    c = r.scalar_one_or_none()
+    if not c:
+        raise HTTPException(status_code=404, detail="Concierge not found")
+
+    # Hotels + cashiers under this concierge
+    hotels_r = await db.execute(select(Hotel).where(Hotel.concierge_id == concierge_id))
+    hotels = hotels_r.scalars().all()
+    hotel_ids = [h.id for h in hotels]
+    cashiers = []
+    if hotel_ids:
+        ca_r = await db.execute(select(Cashier).where(Cashier.hotel_id.in_(hotel_ids)))
+        cashiers = ca_r.scalars().all()
+
+    return {
+        "id": str(c.id), "name": c.name, "phone": c.phone, "email": c.email,
+        "status": c.status, "stripe_connect_id": c.stripe_connect_id,
+        "payout_method": c.payout_method, "payout_details": c.payout_details,
+        "total_earnings": float(c.total_earnings or 0),
+        "total_paid_out": float(c.total_paid_out or 0),
+        "hotels": [{"id": str(h.id), "name": h.name, "address": h.address} for h in hotels],
+        "cashiers": [{"id": str(ca.id), "name": ca.name, "phone": ca.phone, "hotel_id": str(ca.hotel_id) if ca.hotel_id else None} for ca in cashiers],
+    }
+
+
+@router.post("/concierges")
+async def create_concierge(req: ConciergeCreateRequest, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    default_pw = req.phone[-4:] if len(req.phone) >= 4 else "0000"
+    concierge = Concierge(
+        name=req.name, phone=req.phone, email=req.email,
+        password_hash=hash_password(default_pw),
+        status="active",
+    )
+    db.add(concierge)
+    await db.commit()
+    await db.refresh(concierge)
+    return {"id": str(concierge.id), "default_password": default_pw}
+
+
+@router.put("/concierges/{concierge_id}")
+async def update_concierge(concierge_id: str, req: ConciergeUpdateRequest, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    r = await db.execute(select(Concierge).where(Concierge.id == concierge_id))
+    c = r.scalar_one_or_none()
+    if not c:
+        raise HTTPException(status_code=404, detail="Concierge not found")
+    if req.name is not None: c.name = req.name
+    if req.phone is not None: c.phone = req.phone
+    if req.email is not None: c.email = req.email
+    if req.status is not None: c.status = req.status
+    await db.commit()
+    return {"message": "Updated"}
+
+
+@router.delete("/concierges/{concierge_id}")
+async def delete_concierge(concierge_id: str, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    r = await db.execute(select(Concierge).where(Concierge.id == concierge_id))
+    c = r.scalar_one_or_none()
+    if not c:
+        raise HTTPException(status_code=404, detail="Concierge not found")
+    # Unlink hotels
+    await db.execute(select(Hotel).where(Hotel.concierge_id == concierge_id))
+    hotels_r = await db.execute(select(Hotel).where(Hotel.concierge_id == concierge_id))
+    for h in hotels_r.scalars().all():
+        h.concierge_id = None
+    await db.delete(c)
+    await db.commit()
+    return {"message": "Deleted"}
+
+
+@router.get("/concierges/{concierge_id}/payout-preview")
+async def concierge_payout_preview(concierge_id: str, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    from app.services.payout_batch_service import preview_concierge_payout
+    result = await preview_concierge_payout(db, concierge_id)
+    return result
+
+
+class BatchPayoutRequest(_BM):
+    split_ids: list[str] | None = None
+    release_all: bool = False
+    note: str | None = None
+
+
+@router.post("/concierges/{concierge_id}/payout")
+async def execute_concierge_payout(concierge_id: str, req: BatchPayoutRequest, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    from app.services.payout_batch_service import preview_concierge_payout, execute_batch_payout
+
+    if req.release_all or not req.split_ids:
+        preview = await preview_concierge_payout(db, concierge_id)
+        split_ids = preview["split_ids"]
+    else:
+        split_ids = req.split_ids
+
+    if not split_ids:
+        raise HTTPException(status_code=400, detail="No pending commissions to pay out")
+
+    batch = await execute_batch_payout(db, "concierge", concierge_id, split_ids, admin.id, req.note)
+
+    # SMS notifications
+    if batch.status == "released":
+        try:
+            cr = await db.execute(select(Concierge).where(Concierge.id == concierge_id))
+            concierge = cr.scalar_one_or_none()
+            if concierge and concierge.phone:
+                from app.services.sms_service import notify_concierge_payout, notify_cashier_paid_via_concierge
+                await notify_concierge_payout(db, concierge.phone, {
+                    "concierge_name": concierge.name,
+                    "amount": f"{float(batch.total_amount):.2f}",
+                    "count": str(batch.split_count),
+                })
+
+                # SMS each affected cashier
+                splits_r = await db.execute(select(PaymentSplit).where(PaymentSplit.payout_batch_id == batch.id))
+                affected_splits = splits_r.scalars().all()
+                cashier_totals = {}
+                for s in affected_splits:
+                    if s.recipient_id not in cashier_totals:
+                        cashier_totals[s.recipient_id] = {"total": 0, "count": 0}
+                    cashier_totals[s.recipient_id]["total"] += float(s.amount)
+                    cashier_totals[s.recipient_id]["count"] += 1
+
+                for cashier_id, data in cashier_totals.items():
+                    cr2 = await db.execute(select(Cashier).where(Cashier.id == cashier_id))
+                    cashier = cr2.scalar_one_or_none()
+                    if cashier and cashier.phone:
+                        await notify_cashier_paid_via_concierge(db, cashier.phone, {
+                            "cashier_name": cashier.name,
+                            "amount": f"{data['total']:.2f}",
+                            "count": str(data["count"]),
+                            "concierge_name": concierge.name,
+                        })
+
+                # Update concierge totals
+                concierge.total_paid_out = float(concierge.total_paid_out or 0) + float(batch.total_amount)
+                await db.commit()
+        except Exception as e:
+            print(f"[SMS ERROR] Concierge payout SMS: {e}")
+
+    return {
+        "batch_id": str(batch.id),
+        "status": batch.status,
+        "total_amount": float(batch.total_amount),
+        "split_count": batch.split_count,
+        "stripe_transfer_id": batch.stripe_transfer_id,
+        "failure_reason": batch.failure_reason,
+    }
+
+
+# ═══════════════════════════════════════════
+# CONCIERGE STRIPE CONNECT
+# ═══════════════════════════════════════════
+
+@router.post("/concierges/{concierge_id}/generate-onboarding-link")
+async def generate_concierge_onboarding_link(concierge_id: str, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Generate a public onboarding link the admin can send to the concierge."""
+    from app.utils.security import create_access_token
+    from datetime import timedelta
+
+    r = await db.execute(select(Concierge).where(Concierge.id == concierge_id))
+    concierge = r.scalar_one_or_none()
+    if not concierge:
+        raise HTTPException(status_code=404, detail="Concierge not found")
+
+    # Create a long-lived token (7 days) specifically for onboarding
+    token = create_access_token({"sub": str(concierge.id), "role": "concierge_onboarding"}, expires_delta=timedelta(days=7))
+    link = f"http://localhost:5175/concierge-onboarding?token={token}"
+    return {"link": link, "expires_in_days": 7}
+
+
+@router.post("/concierges/{concierge_id}/stripe-connect")
+async def concierge_stripe_connect(concierge_id: str, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Start Stripe Connect onboarding for a concierge (admin triggers on behalf)."""
+    return await _start_concierge_stripe(concierge_id, db)
+
+
+async def _start_concierge_stripe(concierge_id: str, db: AsyncSession):
+    from app.services.connect_service import create_connect_account, create_onboarding_link, get_account_details
+
+    r = await db.execute(select(Concierge).where(Concierge.id == concierge_id))
+    concierge = r.scalar_one_or_none()
+    if not concierge:
+        raise HTTPException(status_code=404, detail="Concierge not found")
+
+    if not concierge.stripe_connect_id:
+        acct_id = await create_connect_account("concierge", concierge.id, concierge.email)
+        concierge.stripe_connect_id = acct_id
+        concierge.payout_method = "stripe_connect"
+        await db.flush()
+    else:
+        acct_id = concierge.stripe_connect_id
+
+    details = await get_account_details(acct_id)
+    if details.get("charges_enabled") and details.get("payouts_enabled"):
+        concierge.payout_details = details
+        await db.commit()
+        return {"already_connected": True, "account_id": acct_id, "details": details}
+
+    return_url = f"http://localhost:5175/concierge-onboarding/complete?concierge_id={concierge_id}"
+    refresh_url = f"http://localhost:5175/concierge-onboarding/refresh?concierge_id={concierge_id}"
+    url = await create_onboarding_link(acct_id, return_url, refresh_url)
+
+    await db.commit()
+    return {"onboarding_url": url, "account_id": acct_id}
+
+
+@router.get("/concierges/{concierge_id}/stripe-status")
+async def concierge_stripe_status(concierge_id: str, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    from app.services.connect_service import get_account_details
+    r = await db.execute(select(Concierge).where(Concierge.id == concierge_id))
+    concierge = r.scalar_one_or_none()
+    if not concierge:
+        raise HTTPException(status_code=404, detail="Concierge not found")
+    if not concierge.stripe_connect_id:
+        return {"connected": False}
+
+    details = await get_account_details(concierge.stripe_connect_id)
+    concierge.payout_details = details
+    await db.commit()
+
+    return {
+        "connected": True,
+        "charges_enabled": details.get("charges_enabled", False),
+        "payouts_enabled": details.get("payouts_enabled", False),
+        "account_id": concierge.stripe_connect_id,
+        "name": details.get("name"),
+        "email": details.get("email"),
+        "bank_last4": details.get("bank_last4"),
+        "bank_name": details.get("bank_name"),
+    }
+
+
+# ═══════════════════════════════════════════
+# DRIVER BATCH PAYOUT
+# ═══════════════════════════════════════════
+
+@router.get("/drivers/{driver_id}/payout-preview")
+async def driver_payout_preview(driver_id: str, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    from app.services.payout_batch_service import preview_driver_payout
+    return await preview_driver_payout(db, driver_id)
+
+
+@router.post("/drivers/{driver_id}/payout")
+async def execute_driver_payout(driver_id: str, req: BatchPayoutRequest, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    from app.services.payout_batch_service import preview_driver_payout, execute_batch_payout
+
+    if req.release_all or not req.split_ids:
+        preview = await preview_driver_payout(db, driver_id)
+        split_ids = preview["split_ids"]
+    else:
+        split_ids = req.split_ids
+
+    if not split_ids:
+        raise HTTPException(status_code=400, detail="No pending rides to pay out")
+
+    batch = await execute_batch_payout(db, "driver", driver_id, split_ids, admin.id, req.note)
+
+    # SMS to driver
+    if batch.status == "released":
+        try:
+            dr = await db.execute(select(Driver).where(Driver.id == driver_id))
+            driver = dr.scalar_one_or_none()
+            if driver and driver.phone:
+                from app.services.sms_service import notify_driver_batch_payout
+                await notify_driver_batch_payout(db, driver.phone, {
+                    "driver_name": driver.name,
+                    "amount": f"{float(batch.total_amount):.2f}",
+                    "count": str(batch.split_count),
+                })
+                driver.total_earnings = float(driver.total_earnings or 0) + float(batch.total_amount)
+                await db.commit()
+        except Exception as e:
+            print(f"[SMS ERROR] Driver batch payout SMS: {e}")
+
+    return {
+        "batch_id": str(batch.id),
+        "status": batch.status,
+        "total_amount": float(batch.total_amount),
+        "split_count": batch.split_count,
+        "stripe_transfer_id": batch.stripe_transfer_id,
+        "failure_reason": batch.failure_reason,
+    }
+
+
+# ═══════════════════════════════════════════
+# PAYOUT BATCHES (audit)
+# ═══════════════════════════════════════════
+
+@router.get("/payout-batches")
+async def list_payout_batches(
+    status: str | None = Query(None),
+    recipient_type: str | None = Query(None),
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(PayoutBatch)
+    conditions = []
+    if status:
+        conditions.append(PayoutBatch.status == status)
+    if recipient_type:
+        conditions.append(PayoutBatch.recipient_type == recipient_type)
+    if conditions:
+        query = query.where(and_(*conditions))
+    query = query.order_by(PayoutBatch.created_at.desc()).limit(100)
+
+    r = await db.execute(query)
+    batches = r.scalars().all()
+    out = []
+    for b in batches:
+        recipient_name = "—"
+        if b.recipient_type == "driver":
+            dr = await db.execute(select(Driver.name).where(Driver.id == b.recipient_id))
+            recipient_name = dr.scalar_one_or_none() or "Unknown"
+        elif b.recipient_type == "concierge":
+            cr = await db.execute(select(Concierge.name).where(Concierge.id == b.recipient_id))
+            recipient_name = cr.scalar_one_or_none() or "Unknown"
+
+        out.append({
+            "id": str(b.id),
+            "recipient_type": b.recipient_type,
+            "recipient_id": str(b.recipient_id),
+            "recipient_name": recipient_name,
+            "total_amount": float(b.total_amount),
+            "split_count": b.split_count,
+            "status": b.status,
+            "stripe_transfer_id": b.stripe_transfer_id,
+            "failure_reason": b.failure_reason,
+            "period_start": b.period_start.isoformat() if b.period_start else None,
+            "period_end": b.period_end.isoformat() if b.period_end else None,
+            "released_at": b.released_at.isoformat() if b.released_at else None,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+        })
+    return out
+
+
+@router.post("/payout-batches/{batch_id}/retry")
+async def retry_batch(batch_id: str, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    r = await db.execute(select(PayoutBatch).where(PayoutBatch.id == batch_id))
+    batch = r.scalar_one_or_none()
+    if not batch or batch.status != "transfer_failed":
+        raise HTTPException(status_code=400, detail="Batch not found or not in failed state")
+
+    # Get the splits
+    splits_r = await db.execute(select(PaymentSplit).where(PaymentSplit.payout_batch_id == batch_id))
+    splits = splits_r.scalars().all()
+    split_ids = [str(s.id) for s in splits]
+
+    # Reset splits to pending so they can be retried
+    for s in splits:
+        s.payout_status = "pending" if batch.recipient_type == "concierge" else "pending_review"
+        s.payout_batch_id = None
+    await db.commit()
+
+    # Delete old batch and create new one
+    await db.delete(batch)
+    await db.commit()
+
+    from app.services.payout_batch_service import execute_batch_payout
+    new_batch = await execute_batch_payout(db, batch.recipient_type, batch.recipient_id, split_ids, admin.id)
+
+    return {"batch_id": str(new_batch.id), "status": new_batch.status, "stripe_transfer_id": new_batch.stripe_transfer_id}
+
+
+@router.post("/payout-batches/{batch_id}/mark-manual")
+async def mark_batch_manual(batch_id: str, req: BatchPayoutRequest, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    r = await db.execute(select(PayoutBatch).where(PayoutBatch.id == batch_id))
+    batch = r.scalar_one_or_none()
+    if not batch or batch.status != "transfer_failed":
+        raise HTTPException(status_code=400, detail="Batch not found or not in failed state")
+
+    batch.status = "manual"
+    batch.released_at = datetime.now(timezone.utc)
+    batch.note = (batch.note or "") + f" [Manual: {req.note or 'N/A'}]"
+
+    # Mark all splits as released
+    splits_r = await db.execute(select(PaymentSplit).where(PaymentSplit.payout_batch_id == batch_id))
+    for s in splits_r.scalars().all():
+        s.payout_status = "released"
+        s.paid_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    return {"message": "Marked as manually paid"}
+
+
+# ═══════════════════════════════════════════
+# DRIVERS WITH PENDING PAYOUTS
+# ═══════════════════════════════════════════
+
+@router.get("/drivers-with-pending")
+async def drivers_with_pending(admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """List all drivers who have pending-review splits, with their totals."""
+    r = await db.execute(
+        select(
+            PaymentSplit.recipient_id,
+            func.count(PaymentSplit.id).label("ride_count"),
+            func.sum(PaymentSplit.amount).label("total"),
+        )
+        .where(
+            PaymentSplit.recipient_type == "driver",
+            PaymentSplit.payout_status.in_(["pending_review", "pending"]),
+        )
+        .group_by(PaymentSplit.recipient_id)
+    )
+    rows = r.all()
+
+    drivers_out = []
+    for row in rows:
+        if not row[0]:
+            continue
+        dr = await db.execute(select(Driver).where(Driver.id == row[0]))
+        driver = dr.scalar_one_or_none()
+        if driver:
+            drivers_out.append({
+                "driver_id": str(driver.id),
+                "name": driver.name,
+                "phone": driver.phone,
+                "stripe_connected": bool(driver.stripe_connect_id),
+                "ride_count": row[1],
+                "total_owed": float(row[2] or 0),
+            })
+
+    return sorted(drivers_out, key=lambda x: -x["total_owed"])

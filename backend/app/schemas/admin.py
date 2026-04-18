@@ -66,7 +66,7 @@ class PayoutRequestOut(BaseModel):
     completed_at: datetime | None
     driver_name: str
     driver_phone: str
-    driver_id: UUID
+    driver_id: UUID | None = None
     client_name: str
     client_phone: str
     vehicle_type: str
@@ -145,6 +145,7 @@ class HotelCreateRequest(BaseModel):
     contact_name: str | None = None
     contact_phone: str | None = None
     default_commission_pct: float = 10.0
+    concierge_id: UUID | None = None
 
 
 class HotelOut(BaseModel):
@@ -157,6 +158,7 @@ class HotelOut(BaseModel):
     contact_phone: str | None = None
     default_commission_pct: float
     is_active: bool
+    concierge_id: UUID | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

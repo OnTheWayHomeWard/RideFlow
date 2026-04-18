@@ -40,6 +40,65 @@ async def health_check():
     }
 
 
+@app.post("/api/public/concierge-onboarding")
+async def public_concierge_onboarding(token: str):
+    """Public endpoint — concierge uses their onboarding token to start Stripe Connect."""
+    from jose import jwt, JWTError
+    from app.config import settings as app_settings
+    from app.database import async_session
+    from app.routers.admin import _start_concierge_stripe
+
+    try:
+        payload = jwt.decode(token, app_settings.JWT_SECRET, algorithms=[app_settings.JWT_ALGORITHM])
+        if payload.get("role") != "concierge_onboarding":
+            return {"error": "Invalid token"}
+        concierge_id = payload.get("sub")
+    except JWTError:
+        return {"error": "Invalid or expired token"}
+
+    async with async_session() as db:
+        return await _start_concierge_stripe(concierge_id, db)
+
+
+@app.get("/api/public/concierge-info")
+async def public_concierge_info(token: str):
+    """Public endpoint — get concierge name/status from onboarding token."""
+    from jose import jwt, JWTError
+    from app.config import settings as app_settings
+    from app.database import async_session
+    from sqlalchemy import select
+    from app.models.concierge import Concierge
+    from app.services.connect_service import get_account_details
+
+    try:
+        payload = jwt.decode(token, app_settings.JWT_SECRET, algorithms=[app_settings.JWT_ALGORITHM])
+        if payload.get("role") != "concierge_onboarding":
+            return {"error": "Invalid token"}
+        concierge_id = payload.get("sub")
+    except JWTError:
+        return {"error": "Invalid or expired token"}
+
+    async with async_session() as db:
+        r = await db.execute(select(Concierge).where(Concierge.id == concierge_id))
+        c = r.scalar_one_or_none()
+        if not c:
+            return {"error": "Concierge not found"}
+
+        connected = False
+        charges_enabled = False
+        if c.stripe_connect_id:
+            details = await get_account_details(c.stripe_connect_id)
+            connected = True
+            charges_enabled = details.get("charges_enabled", False)
+
+        return {
+            "name": c.name,
+            "email": c.email,
+            "connected": connected,
+            "charges_enabled": charges_enabled,
+        }
+
+
 @app.post("/api/test-sms")
 async def test_sms(phone: str, message: str):
     """DEV ONLY — Test Twilio SMS. Hit from Postman to verify credentials work."""

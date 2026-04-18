@@ -79,7 +79,7 @@ export default function Referrals() {
                     <p className="text-xs text-slate-500">{r.pickup_name} → {r.dropoff_name}</p>
                     <div className="flex items-center justify-between mt-1.5">
                       <span className="text-xs text-slate-400">{r.pickup_date}</span>
-                      <StatusPill status={r.status} />
+                      <PayoutPill status={r.payout_status} />
                     </div>
                   </div>
                 ))}
@@ -110,14 +110,12 @@ export default function Referrals() {
   )
 }
 
-function StatusPill({ status }) {
+function PayoutPill({ status }) {
   const map = {
-    paid: { label: 'Paid', style: 'bg-blue-100 text-blue-700' },
-    assigned: { label: 'Assigned', style: 'bg-blue-100 text-blue-700' },
-    in_progress: { label: 'In Progress', style: 'bg-amber-100 text-amber-700' },
-    completed: { label: 'Completed', style: 'bg-green-100 text-green-700' },
-    cancelled: { label: 'Cancelled', style: 'bg-red-100 text-red-700' },
+    pending: { label: 'Pending', style: 'bg-amber-100 text-amber-700' },
+    released: { label: 'Settled', style: 'bg-green-100 text-green-700' },
+    transfer_failed: { label: 'Failed', style: 'bg-red-100 text-red-700' },
   }
-  const m = map[status] || { label: status, style: 'bg-slate-100 text-slate-600' }
+  const m = map[status] || { label: status || 'pending', style: 'bg-slate-100 text-slate-600' }
   return <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${m.style}`}>{m.label}</span>
 }

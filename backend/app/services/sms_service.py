@@ -162,3 +162,27 @@ async def notify_driver_payout_rejected(db: AsyncSession, driver_phone: str, var
         return
     message = render_template(template, variables)
     await send_sms(db, driver_phone, message, "driver_payout_rejected")
+
+
+async def notify_concierge_payout(db: AsyncSession, phone: str, variables: dict):
+    template = await get_template(db, "sms_concierge_payout")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, phone, message, "concierge_payout")
+
+
+async def notify_cashier_paid_via_concierge(db: AsyncSession, phone: str, variables: dict):
+    template = await get_template(db, "sms_cashier_paid_via_concierge")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, phone, message, "cashier_paid_via_concierge")
+
+
+async def notify_driver_batch_payout(db: AsyncSession, phone: str, variables: dict):
+    template = await get_template(db, "sms_driver_batch_payout")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, phone, message, "driver_batch_payout")

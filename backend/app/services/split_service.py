@@ -43,38 +43,23 @@ async def create_splits_for_booking(db: AsyncSession, booking: Booking, payment:
 
         cashier_amount = round(total * cashier_pct / 100, 2)
 
-        splits.append(PaymentSplit(
+        cashier_split = PaymentSplit(
             payment_id=payment.id,
             booking_id=booking.id,
             recipient_type="cashier",
             recipient_id=booking.cashier_id,
             amount=cashier_amount,
             percentage=cashier_pct,
-            payout_trigger="on_payment",
-            payout_status="released",  # cashier paid immediately
-        ))
+            payout_trigger="on_release",
+            payout_status="pending",  # paid when concierge batch is released
+        )
+        splits.append(cashier_split)
+        db.add(cashier_split)
 
         # Update cashier stats
         if cashier:
             cashier.total_referrals = (cashier.total_referrals or 0) + 1
             cashier.total_earnings = float(cashier.total_earnings or 0) + cashier_amount
-
-            # Execute Stripe Transfer if cashier has connected account
-            if cashier.stripe_connect_id:
-                try:
-                    from app.services.connect_service import execute_transfer, get_account_details
-                    acct_status = await get_account_details(cashier.stripe_connect_id)
-                    if not acct_status.get("charges_enabled") or not acct_status.get("payouts_enabled"):
-                        splits[-1].payout_status = "transfer_failed"
-                        splits[-1].review_note = "Stripe account not fully activated"
-                        print(f"[STRIPE] Cashier account not activated: charges_enabled={acct_status.get('charges_enabled')}, payouts_enabled={acct_status.get('payouts_enabled')}")
-                    else:
-                        await execute_transfer(db, splits[-1], cashier.stripe_connect_id)
-                        splits[-1].paid_at = datetime.now(timezone.utc)
-                except Exception as e:
-                    splits[-1].payout_status = "transfer_failed"
-                    splits[-1].review_note = f"Stripe transfer failed: {str(e)}"
-                    print(f"[STRIPE] Cashier transfer failed: {e}")
 
             # Send SMS notification to cashier
             from app.services.sms_service import notify_cashier_referral

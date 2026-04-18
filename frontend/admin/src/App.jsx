@@ -11,15 +11,33 @@ import DriverDetail from './pages/DriverDetail'
 import Cashiers from './pages/Cashiers'
 import CashierDetail from './pages/CashierDetail'
 import Hotels from './pages/Hotels'
+import Concierges from './pages/Concierges'
+import ConciergeDetail from './pages/ConciergeDetail'
 import Pricing from './pages/Pricing'
 import Upsales from './pages/Upsales'
 import RunDetail from './pages/RunDetail'
 import Reviews from './pages/Reviews'
 import Notifications from './pages/Notifications'
 import Settings from './pages/Settings'
+import ConciergeOnboarding from './pages/ConciergeOnboarding'
+import ConciergeOnboardingComplete from './pages/ConciergeOnboardingComplete'
 
 export default function App() {
   const auth = useAuth()
+
+  // Public routes — accessible without login
+  const path = window.location.pathname
+  if (path.startsWith('/concierge-onboarding')) {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="/concierge-onboarding" element={<ConciergeOnboarding />} />
+          <Route path="/concierge-onboarding/complete" element={<ConciergeOnboardingComplete />} />
+          <Route path="/concierge-onboarding/refresh" element={<ConciergeOnboarding />} />
+        </Routes>
+      </BrowserRouter>
+    )
+  }
 
   if (!auth.isLoggedIn) {
     return (
@@ -49,6 +67,8 @@ export default function App() {
           <Route path="/cashiers" element={<Cashiers />} />
           <Route path="/cashiers/:cashierId" element={<CashierDetail />} />
           <Route path="/hotels" element={<Hotels />} />
+          <Route path="/concierges" element={<Concierges />} />
+          <Route path="/concierges/:id" element={<ConciergeDetail />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/upsales" element={<Upsales />} />
           <Route path="/notifications" element={<Notifications />} />

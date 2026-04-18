@@ -17,6 +17,6 @@ class NotificationLog(Base):
     channel: Mapped[str] = mapped_column(String(10), nullable=False)  # sms, email, push
     message: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="sent")
-    related_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    related_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     related_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

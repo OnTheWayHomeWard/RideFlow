@@ -263,7 +263,7 @@ export default function CashierDetail() {
                   <label className="text-xs text-slate-500">Method</label>
                   <select value={editForm.payout_method} onChange={e => setEditForm(p => ({ ...p, payout_method: e.target.value }))}
                     className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="bank">Bank Account</option><option value="zelle">Zelle</option><option value="stripe_connect">Stripe Connect</option>
+                    <option value="bank">Bank Account</option><option value="zelle">Zelle</option>
                   </select>
                 </div>
               </div>
@@ -278,11 +278,6 @@ export default function CashierDetail() {
               {editForm.payout_method === 'zelle' && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
                   <EditField label="Zelle Email or Phone" value={editForm.zelle_email} onChange={v => setEditForm(p => ({ ...p, zelle_email: v }))} />
-                </div>
-              )}
-              {editForm.payout_method === 'stripe_connect' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
-                  <EditField label="Stripe Connect ID" value={editForm.stripe_connect_id} onChange={v => setEditForm(p => ({ ...p, stripe_connect_id: v }))} />
                 </div>
               )}
 
@@ -358,16 +353,13 @@ export default function CashierDetail() {
               </div>
             )}
 
-            {c.stripe_connect_id && (
-              <div className="bg-slate-50 rounded-xl p-3 mt-2">
-                <p className="text-xs text-slate-400 font-medium">Stripe Connect</p>
-                <p className="font-mono text-xs text-slate-600">{c.stripe_connect_id}</p>
-              </div>
-            )}
-
-            {!c.payout_details && !c.stripe_connect_id && (
+            {!c.payout_details && (
               <p className="text-xs text-slate-400 mt-2">No banking details configured. Click Edit on the Details tab to add.</p>
             )}
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mt-3">
+              <p className="text-xs text-blue-700">Cashier earnings are paid out through the concierge assigned to their hotel(s). Commissions show as "Pending" in the cashier portal until the concierge batch is released.</p>
+            </div>
           </div>
         </div>
       )}

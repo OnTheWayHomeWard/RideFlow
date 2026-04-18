@@ -46,6 +46,28 @@ export const api = {
   retryTransfer: (id) => request(`/admin/payouts/${id}/retry-transfer`, { method: 'PUT' }),
   markManualPayout: (id, note) => request(`/admin/payouts/${id}/mark-manual`, { method: 'PUT', body: JSON.stringify({ note }) }),
 
+  // Concierges
+  getConcierges: () => request('/admin/concierges'),
+  getConciergeDetail: (id) => request(`/admin/concierges/${id}`),
+  createConcierge: (data) => request('/admin/concierges', { method: 'POST', body: JSON.stringify(data) }),
+  updateConcierge: (id, data) => request(`/admin/concierges/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteConcierge: (id) => request(`/admin/concierges/${id}`, { method: 'DELETE' }),
+  getConciergePayoutPreview: (id) => request(`/admin/concierges/${id}/payout-preview`),
+  executeConciergePayout: (id, data) => request(`/admin/concierges/${id}/payout`, { method: 'POST', body: JSON.stringify(data) }),
+  conciergeStripeConnect: (id) => request(`/admin/concierges/${id}/stripe-connect`, { method: 'POST' }),
+  conciergeStripeStatus: (id) => request(`/admin/concierges/${id}/stripe-status`),
+  generateConciergeOnboardingLink: (id) => request(`/admin/concierges/${id}/generate-onboarding-link`, { method: 'POST' }),
+
+  // Batched driver payouts
+  getDriverPayoutPreview: (id) => request(`/admin/drivers/${id}/payout-preview`),
+  executeDriverPayout: (id, data) => request(`/admin/drivers/${id}/payout`, { method: 'POST', body: JSON.stringify(data) }),
+  getDriversWithPending: () => request('/admin/drivers-with-pending'),
+
+  // Payout batches
+  getPayoutBatches: (params = '') => request(`/admin/payout-batches${params ? '?' + params : ''}`),
+  retryBatch: (id) => request(`/admin/payout-batches/${id}/retry`, { method: 'POST' }),
+  markBatchManual: (id, note) => request(`/admin/payout-batches/${id}/mark-manual`, { method: 'POST', body: JSON.stringify({ note }) }),
+
   // Drivers
   getDrivers: (status, page = 1, perPage = 10) => request(`/admin/drivers?page=${page}&per_page=${perPage}${status ? `&status=${status}` : ''}`),
   getDriverDetail: (id) => request(`/admin/drivers/${id}`),

@@ -40,15 +40,8 @@ export default function BookingWizard() {
       setCashierRef(ref)
       api.validateCashier(ref).then(info => {
         setCashierInfo(info)
-        setBooking(prev => ({
-          ...prev,
-          pickup: {
-            name: info.hotel_name || 'Hotel',
-            address: info.hotel_address || '',
-            lat: info.hotel_lat || 39.74,
-            lng: info.hotel_lng || -104.99,
-          }
-        }))
+        // Do NOT auto-fill pickup from cashier's hotel anymore.
+        // Cashier can work at multiple hotels — client will set pickup via address search or current location.
       }).catch(() => {
         showToast('Invalid QR code. Please try again or enter your pickup manually.', 'warning')
       })
