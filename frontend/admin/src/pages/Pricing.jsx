@@ -47,7 +47,7 @@ export default function Pricing() {
 // ═══ VEHICLE RATES ═══
 function VehicleRatesTab({ rates, reload }) {
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ display_name: '', vehicle_type: '', base_fare: '', per_mile_rate: '', max_passengers: '', max_luggage: '2', sort_order: '0' })
+  const [form, setForm] = useState({ display_name: '', vehicle_type: '', base_fare: '', per_mile_rate: '', max_passengers: '', max_luggage: '2', sort_order: '0', image_url: '', description: '' })
   const [editId, setEditId] = useState(null)
 
   const handleSubmit = async (e) => {
@@ -55,13 +55,13 @@ function VehicleRatesTab({ rates, reload }) {
     try {
       if (editId) { await api.updateRate(editId, form); setEditId(null) }
       else await api.createRate(form)
-      setShowForm(false); setForm({ display_name: '', vehicle_type: '', base_fare: '', per_mile_rate: '', max_passengers: '', max_luggage: '2', sort_order: '0' })
+      setShowForm(false); setForm({ display_name: '', vehicle_type: '', base_fare: '', per_mile_rate: '', max_passengers: '', max_luggage: '2', sort_order: '0', image_url: '', description: '' })
       reload()
     } catch (err) { alert(err.message) }
   }
 
   const startEdit = (r) => {
-    setForm({ display_name: r.display_name, vehicle_type: r.vehicle_type, base_fare: r.base_fare, per_mile_rate: r.per_mile_rate, max_passengers: r.max_passengers, max_luggage: r.max_luggage, sort_order: r.sort_order })
+    setForm({ display_name: r.display_name, vehicle_type: r.vehicle_type, base_fare: r.base_fare, per_mile_rate: r.per_mile_rate, max_passengers: r.max_passengers, max_luggage: r.max_luggage, sort_order: r.sort_order, image_url: r.image_url || '', description: r.description || '' })
     setEditId(r.id); setShowForm(true)
   }
 
@@ -72,7 +72,7 @@ function VehicleRatesTab({ rates, reload }) {
   return (
     <div>
       <div className="flex justify-end mb-3">
-        <button onClick={() => { setShowForm(!showForm); setEditId(null); setForm({ display_name: '', vehicle_type: '', base_fare: '', per_mile_rate: '', max_passengers: '', max_luggage: '2', sort_order: '0' }) }}
+        <button onClick={() => { setShowForm(!showForm); setEditId(null); setForm({ display_name: '', vehicle_type: '', base_fare: '', per_mile_rate: '', max_passengers: '', max_luggage: '2', sort_order: '0', image_url: '', description: '' }) }}
           className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">{showForm ? 'Cancel' : '+ Add Vehicle'}</button>
       </div>
 
@@ -88,6 +88,27 @@ function VehicleRatesTab({ rates, reload }) {
             <Inp label="Max Luggage" type="number" value={form.max_luggage} onChange={v => setForm(p => ({ ...p, max_luggage: v }))} />
             <Inp label="Sort Order" type="number" value={form.sort_order} onChange={v => setForm(p => ({ ...p, sort_order: v }))} />
           </div>
+          <div className="mb-3">
+            <label className="text-xs text-slate-500">Image URL</label>
+            <div className="flex gap-2 mt-1">
+              <input type="url" value={form.image_url} onChange={e => setForm(p => ({ ...p, image_url: e.target.value }))}
+                placeholder="https://example.com/car.png"
+                className="flex-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              {form.image_url && (
+                <div className="w-20 h-16 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                  <img src={form.image_url} alt="preview" className="max-w-full max-h-full object-contain" onError={e => { e.target.style.display = 'none' }} />
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">Direct URL to a car image (PNG preferred). Shown to clients when choosing a vehicle.</p>
+          </div>
+          <div className="mb-3">
+            <label className="text-xs text-slate-500">Description</label>
+            <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
+              rows={2} placeholder="e.g. Comfortable 4-door sedan. Ideal for 1-3 passengers with standard luggage."
+              className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+            <p className="text-xs text-slate-400 mt-1">Shown to clients when they expand the vehicle details.</p>
+          </div>
           <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">{editId ? 'Save' : 'Create'}</button>
         </form>
       )}
@@ -96,6 +117,11 @@ function VehicleRatesTab({ rates, reload }) {
         {rates.map(r => (
           <div key={r.id} className={`bg-white border rounded-xl overflow-hidden ${r.is_active ? 'border-slate-200' : 'border-slate-200 opacity-50'}`}>
             <div className="p-3 lg:p-4 flex items-center gap-3">
+              {r.image_url && (
+                <div className="w-12 h-12 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                  <img src={r.image_url} alt="" className="max-w-full max-h-full object-contain" onError={e => { e.target.style.display = 'none' }} />
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <p className="font-bold text-sm text-slate-900">{r.display_name}</p>

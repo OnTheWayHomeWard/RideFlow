@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Boolean, DateTime, Numeric, Integer
+from sqlalchemy import String, Boolean, DateTime, Numeric, Integer, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -20,6 +20,7 @@ class VehicleRate(Base):
     max_passengers: Mapped[int] = mapped_column(Integer, nullable=False)
     max_luggage: Mapped[int] = mapped_column(Integer, default=2)
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     icon: Mapped[str | None] = mapped_column(String(10), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

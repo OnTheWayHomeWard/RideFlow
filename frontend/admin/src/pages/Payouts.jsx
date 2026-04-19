@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 
 const TABS = ['pending', 'batches']
 const TAB_LABELS = { pending: 'Pending by Driver', batches: 'All Batches' }
 
 export default function Payouts() {
+  const navigate = useNavigate()
   const [tab, setTab] = useState('pending')
   const [drivers, setDrivers] = useState([])
   const [batches, setBatches] = useState([])
@@ -141,16 +143,31 @@ export default function Payouts() {
                   <p className="text-xs text-slate-500">{preview.split_count} rides</p>
                 </div>
 
-                <div className="space-y-1.5 max-h-64 overflow-y-auto mb-4">
+                <div className="space-y-1.5 max-h-80 overflow-y-auto mb-4">
                   {preview.rides.map(r => (
-                    <div key={r.split_id} className="text-xs border-l-2 border-slate-200 pl-2">
+                    <button key={r.split_id} onClick={() => r.booking_id && navigate(`/runs/${r.booking_id}`)}
+                      className={`w-full text-left text-xs border-l-2 pl-2 py-1 rounded-r ${r.rating && r.rating <= 2 ? 'border-red-300 bg-red-50 hover:bg-red-100' : 'border-slate-200 hover:bg-slate-50'} transition-colors`}>
                       <div className="flex items-center justify-between">
                         <span className="font-mono text-slate-400">{r.booking_number}</span>
                         <span className="font-bold">${r.amount.toFixed(2)}</span>
                       </div>
                       <p className="text-slate-600 truncate">{r.route}</p>
-                      <p className="text-slate-400">{r.pickup_date}</p>
-                    </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-slate-400">{r.pickup_date}</p>
+                        {r.rating && (
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            {[1,2,3,4,5].map(s => (
+                              <svg key={s} className={`w-3 h-3 ${s <= r.rating ? 'text-amber-400' : 'text-slate-200'}`} fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                              </svg>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {r.comment && (
+                        <p className="text-xs text-slate-500 italic truncate mt-0.5" title={r.comment}>"{r.comment}"</p>
+                      )}
+                    </button>
                   ))}
                 </div>
 

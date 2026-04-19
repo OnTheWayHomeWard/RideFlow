@@ -107,7 +107,8 @@ async def preview_concierge_payout(db: AsyncSession, concierge_id, period_start=
 
 
 async def preview_driver_payout(db: AsyncSession, driver_id, period_start=None, period_end=None):
-    """Calculate what a driver is owed for completed rides."""
+    """Calculate what a driver is owed for completed rides, including client ratings."""
+    from app.models.rating import Rating
     conditions = [
         PaymentSplit.recipient_type == "driver",
         PaymentSplit.recipient_id == driver_id,
@@ -121,20 +122,35 @@ async def preview_driver_payout(db: AsyncSession, driver_id, period_start=None, 
     splits_r = await db.execute(select(PaymentSplit).where(and_(*conditions)).order_by(PaymentSplit.created_at))
     splits = splits_r.scalars().all()
 
+    if not splits:
+        return {"total": 0, "split_count": 0, "rides": [], "split_ids": []}
+
+    # Batch fetch bookings
+    booking_ids = [s.booking_id for s in splits]
+    bookings_r = await db.execute(select(Booking).where(Booking.id.in_(booking_ids)))
+    booking_map = {b.id: b for b in bookings_r.scalars().all()}
+
+    # Batch fetch ratings
+    ratings_r = await db.execute(select(Rating).where(Rating.booking_id.in_(booking_ids)))
+    rating_map = {r.booking_id: r for r in ratings_r.scalars().all()}
+
     rides = []
     total = 0.0
     for s in splits:
-        b_r = await db.execute(select(Booking).where(Booking.id == s.booking_id))
-        booking = b_r.scalar_one_or_none()
+        booking = booking_map.get(s.booking_id)
         if booking:
+            rating = rating_map.get(booking.id)
             rides.append({
                 "split_id": str(s.id),
+                "booking_id": str(booking.id),
                 "booking_number": booking.booking_number,
                 "route": f"{booking.pickup_name} → {booking.dropoff_name}",
                 "pickup_date": str(booking.pickup_date),
                 "completed_at": booking.completed_at.isoformat() if booking.completed_at else None,
                 "amount": float(s.amount),
                 "status": s.payout_status,
+                "rating": rating.rating if rating else None,
+                "comment": rating.comment if rating else None,
             })
             total += float(s.amount)
 
@@ -143,6 +159,114 @@ async def preview_driver_payout(db: AsyncSession, driver_id, period_start=None, 
         "split_count": len(splits),
         "rides": rides,
         "split_ids": [str(s.id) for s in splits],
+    }
+
+
+async def get_batch_detail(db: AsyncSession, batch_id):
+    """Full batch detail — used by admin and public concierge receipt."""
+    from app.models.rating import Rating
+    from app.models.concierge import Concierge
+
+    b_r = await db.execute(select(PayoutBatch).where(PayoutBatch.id == batch_id))
+    batch = b_r.scalar_one_or_none()
+    if not batch:
+        return None
+
+    # Recipient name
+    recipient_name = ""
+    recipient_phone = ""
+    if batch.recipient_type == "driver":
+        r = await db.execute(select(Driver).where(Driver.id == batch.recipient_id))
+        d = r.scalar_one_or_none()
+        if d:
+            recipient_name = d.name
+            recipient_phone = d.phone
+    elif batch.recipient_type == "concierge":
+        r = await db.execute(select(Concierge).where(Concierge.id == batch.recipient_id))
+        c = r.scalar_one_or_none()
+        if c:
+            recipient_name = c.name
+            recipient_phone = c.phone
+
+    # Get all splits in this batch
+    splits_r = await db.execute(
+        select(PaymentSplit).where(PaymentSplit.payout_batch_id == batch.id).order_by(PaymentSplit.created_at)
+    )
+    splits = splits_r.scalars().all()
+
+    booking_ids = [s.booking_id for s in splits]
+    bookings_r = await db.execute(select(Booking).where(Booking.id.in_(booking_ids))) if booking_ids else None
+    booking_map = {b.id: b for b in bookings_r.scalars().all()} if bookings_r else {}
+
+    # Cashiers (for concierge batches)
+    cashier_map = {}
+    if batch.recipient_type == "concierge":
+        cashier_ids = [s.recipient_id for s in splits if s.recipient_id]
+        if cashier_ids:
+            ca_r = await db.execute(select(Cashier).where(Cashier.id.in_(cashier_ids)))
+            cashier_map = {c.id: c for c in ca_r.scalars().all()}
+
+    # Ratings (for driver batches)
+    rating_map = {}
+    if batch.recipient_type == "driver" and booking_ids:
+        rr = await db.execute(select(Rating).where(Rating.booking_id.in_(booking_ids)))
+        rating_map = {r.booking_id: r for r in rr.scalars().all()}
+
+    splits_out = []
+    by_cashier = {}
+    for s in splits:
+        booking = booking_map.get(s.booking_id)
+        cashier = cashier_map.get(s.recipient_id) if batch.recipient_type == "concierge" else None
+        rating = rating_map.get(s.booking_id) if batch.recipient_type == "driver" else None
+
+        ride_data = {
+            "split_id": str(s.id),
+            "booking_id": str(s.booking_id) if s.booking_id else None,
+            "booking_number": booking.booking_number if booking else None,
+            "route": f"{booking.pickup_name} → {booking.dropoff_name}" if booking else None,
+            "pickup_date": str(booking.pickup_date) if booking else None,
+            "amount": float(s.amount),
+            "cashier_id": str(s.recipient_id) if cashier else None,
+            "cashier_name": cashier.name if cashier else None,
+            "rating": rating.rating if rating else None,
+            "comment": rating.comment if rating else None,
+        }
+        splits_out.append(ride_data)
+
+        if cashier:
+            key = str(cashier.id)
+            if key not in by_cashier:
+                by_cashier[key] = {
+                    "cashier_id": key,
+                    "cashier_name": cashier.name,
+                    "total": 0,
+                    "count": 0,
+                    "rides": [],
+                }
+            by_cashier[key]["total"] += float(s.amount)
+            by_cashier[key]["count"] += 1
+            by_cashier[key]["rides"].append(ride_data)
+
+    return {
+        "batch": {
+            "id": str(batch.id),
+            "recipient_type": batch.recipient_type,
+            "recipient_id": str(batch.recipient_id),
+            "recipient_name": recipient_name,
+            "total_amount": float(batch.total_amount),
+            "split_count": batch.split_count,
+            "status": batch.status,
+            "stripe_transfer_id": batch.stripe_transfer_id,
+            "stripe_account_id": batch.stripe_account_id,
+            "failure_reason": batch.failure_reason,
+            "period_start": batch.period_start.isoformat() if batch.period_start else None,
+            "period_end": batch.period_end.isoformat() if batch.period_end else None,
+            "released_at": batch.released_at.isoformat() if batch.released_at else None,
+            "created_at": batch.created_at.isoformat() if batch.created_at else None,
+            "note": batch.note,
+        },
+        "splits": splits_out,
+        "by_cashier": list(by_cashier.values()),
     }
 
 

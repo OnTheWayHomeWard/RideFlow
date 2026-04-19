@@ -99,6 +99,32 @@ async def public_concierge_info(token: str):
         }
 
 
+@app.get("/api/public/concierge-batch")
+async def public_concierge_batch(token: str):
+    """Public endpoint — concierge views their batch payout receipt via tokenized link."""
+    from jose import jwt, JWTError
+    from app.config import settings as app_settings
+    from app.database import async_session
+    from app.services.payout_batch_service import get_batch_detail
+
+    try:
+        payload = jwt.decode(token, app_settings.JWT_SECRET, algorithms=[app_settings.JWT_ALGORITHM])
+        if payload.get("role") != "concierge_batch_view":
+            return {"error": "Invalid token"}
+        batch_id = payload.get("sub")
+    except JWTError:
+        return {"error": "Invalid or expired token"}
+
+    async with async_session() as db:
+        detail = await get_batch_detail(db, batch_id)
+        if not detail:
+            return {"error": "Batch not found"}
+        # Strip admin-only fields
+        detail["batch"].pop("note", None)
+        detail["batch"].pop("failure_reason", None)
+        return detail
+
+
 @app.post("/api/test-sms")
 async def test_sms(phone: str, message: str):
     """DEV ONLY — Test Twilio SMS. Hit from Postman to verify credentials work."""

@@ -11,6 +11,10 @@ export default function ConciergeDetail() {
   const [loading, setLoading] = useState(true)
   const [releasing, setReleasing] = useState(false)
   const [stripeLoading, setStripeLoading] = useState(false)
+  const [expandedCashier, setExpandedCashier] = useState(null)
+  const [batches, setBatches] = useState([])
+  const [expandedBatch, setExpandedBatch] = useState(null)
+  const [batchDetail, setBatchDetail] = useState({})
 
   const load = () => {
     setLoading(true)
@@ -18,10 +22,22 @@ export default function ConciergeDetail() {
       api.getConciergeDetail(id),
       api.getConciergePayoutPreview(id),
       api.conciergeStripeStatus(id).catch(() => null),
-    ]).then(([c, p, s]) => { setConcierge(c); setPreview(p); setStripe(s) })
+      api.getConciergeBatches(id).catch(() => []),
+    ]).then(([c, p, s, b]) => { setConcierge(c); setPreview(p); setStripe(s); setBatches(b || []) })
       .catch(() => {}).finally(() => setLoading(false))
   }
   useEffect(load, [id])
+
+  const toggleBatch = async (batchId) => {
+    if (expandedBatch === batchId) { setExpandedBatch(null); return }
+    setExpandedBatch(batchId)
+    if (!batchDetail[batchId]) {
+      try {
+        const d = await api.getPayoutBatchDetail(batchId)
+        setBatchDetail(prev => ({ ...prev, [batchId]: d }))
+      } catch (e) { alert(e.message) }
+    }
+  }
 
   const handleGenerateLink = async () => {
     try {
@@ -160,13 +176,51 @@ export default function ConciergeDetail() {
             {/* By cashier */}
             {preview.by_cashier.length > 0 && (
               <div className="mb-3">
-                <p className="text-xs text-slate-400 uppercase font-medium mb-1">By Cashier</p>
-                {preview.by_cashier.map(c => (
-                  <div key={c.cashier_id} className="flex items-center justify-between py-1 text-sm">
-                    <span>{c.cashier_name}</span>
-                    <span className="font-medium">${c.total.toFixed(2)} <span className="text-xs text-slate-400">({c.count})</span></span>
-                  </div>
-                ))}
+                <p className="text-xs text-slate-400 uppercase font-medium mb-1">By Cashier (click to expand)</p>
+                <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg">
+                  {preview.by_cashier.map(c => {
+                    const isOpen = expandedCashier === c.cashier_id
+                    const rides = preview.splits.filter(s => s.cashier_name === c.cashier_name)
+                    return (
+                      <div key={c.cashier_id}>
+                        <button onClick={() => setExpandedCashier(isOpen ? null : c.cashier_id)}
+                          className="w-full flex items-center justify-between py-2 px-3 text-sm hover:bg-slate-50 text-left">
+                          <span className="flex items-center gap-2">
+                            <svg className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                            {c.cashier_name}
+                          </span>
+                          <span className="font-medium">${c.total.toFixed(2)} <span className="text-xs text-slate-400">({c.count})</span></span>
+                        </button>
+                        {isOpen && (
+                          <div className="bg-slate-50/50 px-3 py-2">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-slate-400">
+                                  <th className="text-left font-medium py-1">Booking</th>
+                                  <th className="text-left font-medium">Route</th>
+                                  <th className="text-left font-medium">Date</th>
+                                  <th className="text-right font-medium">Amount</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {rides.map(r => (
+                                  <tr key={r.split_id} className="border-t border-slate-100">
+                                    <td className="py-1 font-mono text-slate-500">{r.booking_number}</td>
+                                    <td className="py-1 text-slate-700 truncate max-w-[140px]" title={r.route}>{r.route}</td>
+                                    <td className="py-1 text-slate-500">{r.created_at?.slice(0, 10)}</td>
+                                    <td className="py-1 text-right font-medium">${r.amount.toFixed(2)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )}
 
@@ -178,6 +232,74 @@ export default function ConciergeDetail() {
               <p className="text-xs text-amber-600 mt-2 text-center">No Stripe connected — will be marked as manual settlement</p>
             )}
           </>
+        )}
+      </div>
+
+      {/* Payment History */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-5">
+        <h2 className="font-bold text-slate-900 mb-3">Payment History</h2>
+        {batches.length === 0 ? (
+          <p className="text-sm text-slate-400">No past payouts yet.</p>
+        ) : (
+          <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg">
+            {batches.map(b => {
+              const isOpen = expandedBatch === b.id
+              const detail = batchDetail[b.id]
+              return (
+                <div key={b.id}>
+                  <button onClick={() => toggleBatch(b.id)}
+                    className="w-full flex items-center gap-3 py-3 px-4 hover:bg-slate-50 text-left">
+                    <svg className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-sm">${b.total_amount.toFixed(2)}</p>
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                          b.status === 'released' ? 'bg-green-100 text-green-700' :
+                          b.status === 'manual' ? 'bg-slate-100 text-slate-700' :
+                          b.status === 'transfer_failed' ? 'bg-red-100 text-red-700' :
+                          'bg-amber-100 text-amber-700'
+                        }`}>{b.status}</span>
+                      </div>
+                      <p className="text-xs text-slate-500">{b.released_at?.slice(0, 10) || b.created_at?.slice(0, 10)} • {b.split_count} commissions</p>
+                    </div>
+                    {b.stripe_transfer_id ? (
+                      <span className="text-xs font-mono text-slate-400">{b.stripe_transfer_id.slice(0, 12)}…</span>
+                    ) : (
+                      <span className="text-xs text-slate-400">Manual</span>
+                    )}
+                  </button>
+                  {isOpen && (
+                    <div className="bg-slate-50/50 px-4 py-3">
+                      {!detail ? (
+                        <p className="text-xs text-slate-400">Loading...</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {detail.by_cashier.map(c => (
+                            <div key={c.cashier_id}>
+                              <div className="flex items-center justify-between text-sm font-medium">
+                                <span>{c.cashier_name}</span>
+                                <span>${c.total.toFixed(2)} <span className="text-xs text-slate-400">({c.count})</span></span>
+                              </div>
+                              <div className="ml-2 mt-1 space-y-0.5">
+                                {c.rides.map(r => (
+                                  <div key={r.split_id} className="flex items-center justify-between text-xs text-slate-600">
+                                    <span className="truncate flex-1">{r.booking_number} • {r.route}</span>
+                                    <span className="ml-2 shrink-0">${r.amount.toFixed(2)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         )}
       </div>
 

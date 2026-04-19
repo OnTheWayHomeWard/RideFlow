@@ -172,6 +172,22 @@ async def notify_concierge_payout(db: AsyncSession, phone: str, variables: dict)
     await send_sms(db, phone, message, "concierge_payout")
 
 
+async def notify_concierge_batch_link(db: AsyncSession, phone: str, variables: dict):
+    template = await get_template(db, "sms_concierge_batch_link")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, phone, message, "concierge_batch_link")
+
+
+async def notify_client_refund(db: AsyncSession, phone: str, variables: dict):
+    template = await get_template(db, "sms_client_refund")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, phone, message, "client_refund")
+
+
 async def notify_cashier_paid_via_concierge(db: AsyncSession, phone: str, variables: dict):
     template = await get_template(db, "sms_cashier_paid_via_concierge")
     if not template:

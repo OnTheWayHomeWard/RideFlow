@@ -40,6 +40,17 @@ export default function RunDetail() {
     } catch (e) { alert(e.message) }
   }
 
+  const handleRefund = async () => {
+    const reason = prompt(`Refund booking ${run.booking_number} for $${run.total_amount}?\n\nEnter the reason (will be sent to the client via SMS):`)
+    if (!reason) return
+    if (!confirm(`Confirm full refund of $${run.total_amount}? This cannot be undone.`)) return
+    try {
+      const res = await api.refundBooking(run.id, reason)
+      alert(`Refund completed!\n\nStripe refund ID: ${res.stripe_refund_id}\nAmount: $${res.refund_amount}`)
+      load()
+    } catch (e) { alert(`Refund failed: ${e.message}`) }
+  }
+
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>
   if (!run) return <div className="p-6 text-center text-slate-400">Run not found</div>
 
@@ -57,7 +68,15 @@ export default function RunDetail() {
             <p className="font-mono text-xs text-slate-400">{run.booking_number}</p>
             <h1 className="text-lg font-bold text-slate-900">{run.pickup_name} → {run.dropoff_name}</h1>
           </div>
-          <StatusBadge status={run.status} />
+          <div className="flex flex-col items-end gap-2">
+            <StatusBadge status={run.status} />
+            {['paid','assigned','in_progress','completed'].includes(run.status) && (
+              <button onClick={handleRefund}
+                className="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200">
+                Refund
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Route */}

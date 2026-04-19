@@ -161,6 +161,24 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
         </div>
       </Section>
 
+      {/* Your info — placed before add-ons so it's always visible */}
+      <Section title="Your info">
+        <div className="space-y-3">
+          <input
+            type="text"
+            placeholder="What should we call you?"
+            value={booking.clientName}
+            onChange={e => setBooking(prev => ({ ...prev, clientName: e.target.value }))}
+            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
+          />
+          <PhoneInput
+            value={booking.clientPhone}
+            onChange={v => setBooking(prev => ({ ...prev, clientPhone: v }))}
+            placeholder="Phone number"
+          />
+        </div>
+      </Section>
+
       {/* Add-ons */}
       {extrasList.length > 0 && (
         <Section title="Add-ons">
@@ -211,24 +229,6 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
           />
         </Section>
       )}
-
-      {/* Your info */}
-      <Section title="Your info">
-        <div className="space-y-3">
-          <input
-            type="text"
-            placeholder="What should we call you?"
-            value={booking.clientName}
-            onChange={e => setBooking(prev => ({ ...prev, clientName: e.target.value }))}
-            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
-          />
-          <PhoneInput
-            value={booking.clientPhone}
-            onChange={v => setBooking(prev => ({ ...prev, clientPhone: v }))}
-            placeholder="Phone number"
-          />
-        </div>
-      </Section>
 
       {/* Fixed bottom pay bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 z-20">

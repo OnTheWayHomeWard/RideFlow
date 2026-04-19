@@ -1797,12 +1797,14 @@ async def create_rate(
     vehicle_type: str = Query(...), display_name: str = Query(...),
     base_fare: float = Query(...), per_mile_rate: float = Query(...),
     max_passengers: int = Query(...), max_luggage: int = Query(2),
-    sort_order: int = Query(0),
+    sort_order: int = Query(0), image_url: str | None = Query(None),
+    description: str | None = Query(None),
 ):
     rate = VehicleRate(
         vehicle_type=vehicle_type.lower().replace(' ', '_'), display_name=display_name,
         base_fare=base_fare, per_mile_rate=per_mile_rate,
         max_passengers=max_passengers, max_luggage=max_luggage, sort_order=sort_order,
+        image_url=image_url, description=description,
     )
     db.add(rate)
     await db.commit()
@@ -1818,7 +1820,8 @@ async def update_rate(
     display_name: str | None = None, base_fare: float | None = None,
     per_mile_rate: float | None = None, max_passengers: int | None = None,
     max_luggage: int | None = None, is_active: bool | None = None,
-    sort_order: int | None = None,
+    sort_order: int | None = None, image_url: str | None = None,
+    description: str | None = None,
 ):
     result = await db.execute(select(VehicleRate).where(VehicleRate.id == rate_id))
     rate = result.scalar_one_or_none()
@@ -1831,6 +1834,8 @@ async def update_rate(
     if max_luggage is not None: rate.max_luggage = max_luggage
     if is_active is not None: rate.is_active = is_active
     if sort_order is not None: rate.sort_order = sort_order
+    if image_url is not None: rate.image_url = image_url
+    if description is not None: rate.description = description
     await db.commit()
     return {"message": f"{rate.display_name} updated"}
 
@@ -2095,11 +2100,30 @@ async def execute_concierge_payout(concierge_id: str, req: BatchPayoutRequest, a
             cr = await db.execute(select(Concierge).where(Concierge.id == concierge_id))
             concierge = cr.scalar_one_or_none()
             if concierge and concierge.phone:
-                from app.services.sms_service import notify_concierge_payout, notify_cashier_paid_via_concierge
+                from app.services.sms_service import notify_concierge_payout, notify_cashier_paid_via_concierge, notify_concierge_batch_link
+                from app.utils.security import create_access_token
+                from datetime import timedelta
+
+                # Generate public batch view link
+                batch_token = create_access_token(
+                    {"sub": str(batch.id), "role": "concierge_batch_view"},
+                    expires_delta=timedelta(days=30),
+                )
+                batch_url = f"http://localhost:5175/concierge-batch?token={batch_token}"
+                paid_date = batch.released_at.strftime("%Y-%m-%d") if batch.released_at else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
                 await notify_concierge_payout(db, concierge.phone, {
                     "concierge_name": concierge.name,
                     "amount": f"{float(batch.total_amount):.2f}",
                     "count": str(batch.split_count),
+                })
+
+                # SMS with link to full breakdown
+                await notify_concierge_batch_link(db, concierge.phone, {
+                    "concierge_name": concierge.name,
+                    "amount": f"{float(batch.total_amount):.2f}",
+                    "date": paid_date,
+                    "url": batch_url,
                 })
 
                 # SMS each affected cashier
@@ -2277,6 +2301,42 @@ async def execute_driver_payout(driver_id: str, req: BatchPayoutRequest, admin: 
 # ═══════════════════════════════════════════
 # PAYOUT BATCHES (audit)
 # ═══════════════════════════════════════════
+
+@router.get("/payout-batches/{batch_id}")
+async def get_payout_batch_detail(batch_id: str, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Full detail of a payout batch including all constituent splits."""
+    from app.services.payout_batch_service import get_batch_detail
+    detail = await get_batch_detail(db, batch_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    return detail
+
+
+@router.get("/concierges/{concierge_id}/batches")
+async def get_concierge_batches(concierge_id: str, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """List past payout batches for a concierge."""
+    r = await db.execute(
+        select(PayoutBatch).where(
+            PayoutBatch.recipient_type == "concierge",
+            PayoutBatch.recipient_id == concierge_id,
+        ).order_by(PayoutBatch.created_at.desc()).limit(50)
+    )
+    out = []
+    for b in r.scalars().all():
+        out.append({
+            "id": str(b.id),
+            "total_amount": float(b.total_amount),
+            "split_count": b.split_count,
+            "status": b.status,
+            "stripe_transfer_id": b.stripe_transfer_id,
+            "failure_reason": b.failure_reason,
+            "period_start": b.period_start.isoformat() if b.period_start else None,
+            "period_end": b.period_end.isoformat() if b.period_end else None,
+            "released_at": b.released_at.isoformat() if b.released_at else None,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+        })
+    return out
+
 
 @router.get("/payout-batches")
 async def list_payout_batches(
@@ -2671,4 +2731,97 @@ async def reassign_driver(booking_id: str, req: ReassignDriverRequest, admin: Ad
         "old_driver_name": old_driver.name if old_driver else None,
         "new_driver_name": new_driver.name,
         "booking_number": booking.booking_number,
+    }
+
+
+# ═══════════════════════════════════════════
+# REFUNDS
+# ═══════════════════════════════════════════
+
+class RefundRequest(_BM):
+    reason: str
+    amount: float | None = None  # null = full refund
+
+
+@router.post("/bookings/{booking_id}/refund")
+async def refund_booking(booking_id: str, req: RefundRequest, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Admin refunds a paid booking. Executes Stripe refund and cancels the booking."""
+    b_r = await db.execute(select(Booking).where(Booking.id == booking_id))
+    booking = b_r.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if booking.status not in ("paid", "assigned", "in_progress", "completed"):
+        raise HTTPException(status_code=400, detail=f"Cannot refund booking with status '{booking.status}'")
+
+    # Get the payment
+    p_r = await db.execute(select(Payment).where(Payment.booking_id == booking.id).order_by(Payment.created_at.desc()))
+    payment = p_r.scalar_one_or_none()
+    if not payment:
+        raise HTTPException(status_code=400, detail="No payment found for this booking")
+    if payment.status == "refunded":
+        raise HTTPException(status_code=400, detail="This payment has already been refunded")
+
+    refund_amount = req.amount if req.amount is not None else float(payment.amount)
+    if refund_amount <= 0 or refund_amount > float(payment.amount):
+        raise HTTPException(status_code=400, detail="Invalid refund amount")
+
+    # Execute Stripe refund
+    from app.services.payment_service import is_dev_mode
+    stripe_refund_id = None
+    if is_dev_mode() or not payment.stripe_payment_id:
+        stripe_refund_id = f"re_dev_{str(payment.id)[:8]}"
+        print(f"[STRIPE DEV] Refund {stripe_refund_id}: ${refund_amount} for payment {payment.stripe_payment_id}")
+    else:
+        try:
+            import stripe
+            from app.config import settings as cfg
+            stripe.api_key = cfg.STRIPE_SECRET_KEY
+            refund = stripe.Refund.create(
+                payment_intent=payment.stripe_payment_id,
+                amount=int(refund_amount * 100),
+                reason="requested_by_customer",
+                metadata={"booking_number": booking.booking_number, "admin_note": req.reason[:500]},
+            )
+            stripe_refund_id = refund.id
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Stripe refund failed: {str(e)}")
+
+    # Update payment
+    payment.status = "refunded" if refund_amount >= float(payment.amount) else "partially_refunded"
+    payment.refund_amount = refund_amount
+    payment.refund_reason = req.reason
+    payment.stripe_refund_id = stripe_refund_id
+    payment.refunded_at = datetime.now(timezone.utc)
+    payment.refunded_by = admin.id
+
+    # Cancel booking
+    booking.status = "cancelled"
+
+    # Cancel all pending splits — remove from driver/cashier income
+    splits_r = await db.execute(select(PaymentSplit).where(PaymentSplit.booking_id == booking.id))
+    for s in splits_r.scalars().all():
+        if s.payout_status in ("pending", "pending_review"):
+            s.payout_status = "cancelled"
+            s.review_note = (s.review_note or "") + f" [Refunded: {req.reason[:100]}]"
+
+    await db.commit()
+
+    # SMS to client
+    try:
+        from app.services.sms_service import notify_client_refund
+        await notify_client_refund(db, booking.client_phone, {
+            "client_name": booking.client_name,
+            "amount": f"{refund_amount:.2f}",
+            "reason": req.reason,
+            "booking_number": booking.booking_number,
+        })
+        await db.commit()
+    except Exception as e:
+        print(f"[SMS ERROR] Refund SMS: {e}")
+
+    return {
+        "message": "Booking refunded",
+        "stripe_refund_id": stripe_refund_id,
+        "refund_amount": refund_amount,
+        "booking_status": booking.status,
     }

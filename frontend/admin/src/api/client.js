@@ -34,6 +34,7 @@ export const api = {
   getBookings: (page = 1, perPage = 10, status = '') =>
     request(`/admin/bookings?page=${page}&per_page=${perPage}${status ? `&status=${status}` : ''}`),
   getBookingDetail: (id) => request(`/admin/bookings/${id}`),
+  refundBooking: (id, reason, amount = null) => request(`/admin/bookings/${id}/refund`, { method: 'POST', body: JSON.stringify({ reason, amount }) }),
 
   // Reviews
   getReviews: (page = 1, perPage = 10) => request(`/admin/reviews?page=${page}&per_page=${perPage}`),
@@ -71,6 +72,8 @@ export const api = {
 
   // Payout batches
   getPayoutBatches: (params = '') => request(`/admin/payout-batches${params ? '?' + params : ''}`),
+  getPayoutBatchDetail: (id) => request(`/admin/payout-batches/${id}`),
+  getConciergeBatches: (conciergeId) => request(`/admin/concierges/${conciergeId}/batches`),
   retryBatch: (id) => request(`/admin/payout-batches/${id}/retry`, { method: 'POST' }),
   markBatchManual: (id, note) => request(`/admin/payout-batches/${id}/mark-manual`, { method: 'POST', body: JSON.stringify({ note }) }),
 

@@ -203,6 +203,7 @@ async def calculate_all_vehicle_prices(
             price["max_passengers"] = rate.max_passengers
             price["max_luggage"] = rate.max_luggage
             price["image_url"] = rate.image_url
+            price["description"] = rate.description
             price["icon"] = rate.icon
             prices.append(price)
         except ValueError:

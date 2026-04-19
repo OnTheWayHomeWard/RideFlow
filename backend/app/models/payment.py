@@ -20,5 +20,8 @@ class Payment(Base):
     currency: Mapped[str] = mapped_column(String(3), default="USD")
     status: Mapped[str] = mapped_column(String(20), default="pending")
     refund_amount: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    refund_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    stripe_refund_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    refunded_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("admins.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

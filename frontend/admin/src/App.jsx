@@ -21,6 +21,7 @@ import Notifications from './pages/Notifications'
 import Settings from './pages/Settings'
 import ConciergeOnboarding from './pages/ConciergeOnboarding'
 import ConciergeOnboardingComplete from './pages/ConciergeOnboardingComplete'
+import ConciergeBatchView from './pages/ConciergeBatchView'
 
 export default function App() {
   const auth = useAuth()
@@ -34,6 +35,15 @@ export default function App() {
           <Route path="/concierge-onboarding" element={<ConciergeOnboarding />} />
           <Route path="/concierge-onboarding/complete" element={<ConciergeOnboardingComplete />} />
           <Route path="/concierge-onboarding/refresh" element={<ConciergeOnboarding />} />
+        </Routes>
+      </BrowserRouter>
+    )
+  }
+  if (path.startsWith('/concierge-batch')) {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="/concierge-batch" element={<ConciergeBatchView />} />
         </Routes>
       </BrowserRouter>
     )

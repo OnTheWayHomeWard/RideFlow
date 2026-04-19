@@ -120,6 +120,8 @@ const FRIENDLY_NAMES = {
   sms_driver_payout_flagged: 'Driver Payout Flagged SMS',
   sms_driver_payout_rejected: 'Driver Payout Rejected SMS',
   sms_driver_run_cancelled: 'Driver Run Reassigned SMS',
+  sms_concierge_batch_link: 'Concierge Batch Receipt Link SMS',
+  sms_client_refund: 'Client Refund SMS',
   priority_delay_normal_minutes: 'Normal Priority Delay (min)',
   priority_delay_low_minutes: 'Low Priority Delay (min)',
   stripe_connect_enabled: 'Stripe Connect Payouts',
@@ -153,6 +155,8 @@ const SMS_VARIABLES = {
   sms_driver_payout_flagged: ['driver_name', 'amount', 'route', 'booking_number'],
   sms_driver_payout_rejected: ['driver_name', 'amount', 'route', 'booking_number'],
   sms_driver_run_cancelled: ['driver_name', 'pickup_name', 'dropoff_name', 'pickup_date', 'pickup_time', 'reason', 'booking_number'],
+  sms_concierge_batch_link: ['concierge_name', 'amount', 'date', 'url'],
+  sms_client_refund: ['client_name', 'booking_number', 'amount', 'reason'],
 }
 
 function SmsTemplates({ settings, saving, onSave }) {
