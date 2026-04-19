@@ -55,7 +55,16 @@ export default function Payouts() {
   const handleRetry = async (batchId) => {
     try {
       const res = await api.retryBatch(batchId)
-      alert(`Status: ${res.status}`)
+      if (res.status === 'released') {
+        alert(`Transfer succeeded!\n\nStripe transfer ID: ${res.stripe_transfer_id}`)
+      } else if (res.status === 'transfer_failed') {
+        const msg = `Transfer failed again.\n\nError details:\n${res.failure_reason || 'No details'}`
+        // Also copy to clipboard for easy sharing
+        try { await navigator.clipboard.writeText(res.failure_reason || '') } catch {}
+        alert(msg + '\n\n(Error copied to clipboard)')
+      } else {
+        alert(`Status: ${res.status}`)
+      }
       loadBatches()
     } catch (err) { alert(err.message) }
   }
@@ -172,7 +181,15 @@ export default function Payouts() {
                 </div>
               </div>
               {b.stripe_transfer_id && <p className="text-xs text-slate-400 font-mono">Stripe: {b.stripe_transfer_id}</p>}
-              {b.failure_reason && <p className="text-xs text-red-600 mt-1">{b.failure_reason}</p>}
+              {b.failure_reason && (
+                <div className="mt-2 bg-red-50 border border-red-200 rounded-lg p-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs text-red-700 break-all flex-1">{b.failure_reason}</p>
+                    <button onClick={() => navigator.clipboard.writeText(b.failure_reason).then(() => alert('Copied!'))}
+                      className="text-xs text-red-600 hover:text-red-800 shrink-0 px-1.5 py-0.5 bg-red-100 rounded">Copy</button>
+                  </div>
+                </div>
+              )}
               <p className="text-xs text-slate-400 mt-1">{b.created_at ? new Date(b.created_at).toLocaleString() : ''}</p>
 
               {b.status === 'transfer_failed' && (

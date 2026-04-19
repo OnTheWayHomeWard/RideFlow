@@ -2348,7 +2348,7 @@ async def retry_batch(batch_id: str, admin: Admin = Depends(get_current_admin), 
     from app.services.payout_batch_service import execute_batch_payout
     new_batch = await execute_batch_payout(db, batch.recipient_type, batch.recipient_id, split_ids, admin.id)
 
-    return {"batch_id": str(new_batch.id), "status": new_batch.status, "stripe_transfer_id": new_batch.stripe_transfer_id}
+    return {"batch_id": str(new_batch.id), "status": new_batch.status, "stripe_transfer_id": new_batch.stripe_transfer_id, "failure_reason": new_batch.failure_reason}
 
 
 @router.post("/payout-batches/{batch_id}/mark-manual")

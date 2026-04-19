@@ -50,7 +50,7 @@ export default function Settings() {
         />
       )}
 
-      <SettingsGroup title="Stripe Connect" settings={otherSettings.filter(s => s.key === 'stripe_connect_enabled')} saving={saving} onSave={handleSave} />
+      <SettingsGroup title="Stripe Connect" settings={otherSettings.filter(s => ['stripe_connect_enabled', 'payout_currency'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Notifications" settings={otherSettings.filter(s => s.key === 'sms_enabled')} saving={saving} onSave={handleSave} />
       <SmsTemplates settings={otherSettings.filter(s => s.key.startsWith('sms_') && s.key !== 'sms_enabled')} saving={saving} onSave={handleSave} />
     </div>
@@ -119,6 +119,7 @@ const FRIENDLY_NAMES = {
   sms_driver_payout_flagged: 'Driver Payout Flagged SMS',
   sms_driver_payout_rejected: 'Driver Payout Rejected SMS',
   stripe_connect_enabled: 'Stripe Connect Payouts',
+  payout_currency: 'Payout Currency (usd, eur, gbp)',
   available_countries: 'Available Countries',
 }
 

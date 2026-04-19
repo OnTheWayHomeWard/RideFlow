@@ -225,6 +225,12 @@ async def execute_batch_payout(
     else:
         try:
             stripe.api_key = settings.STRIPE_SECRET_KEY
+            # Get payout currency from settings
+            from app.models.setting import Setting as SettingModel
+            cur_r = await db.execute(select(SettingModel).where(SettingModel.key == "payout_currency"))
+            cur_setting = cur_r.scalar_one_or_none()
+            currency = str(cur_setting.value).lower() if cur_setting else "usd"
+
             # Check account status
             acct = stripe.Account.retrieve(stripe_account_id)
             if not acct.charges_enabled or not acct.payouts_enabled:
@@ -235,7 +241,7 @@ async def execute_batch_payout(
                 idem_key = f"batch_{batch.id}_{int(time.time())}"
                 transfer = stripe.Transfer.create(
                     amount=amount_cents,
-                    currency="usd",
+                    currency=currency,
                     destination=stripe_account_id,
                     metadata={
                         "batch_id": str(batch.id),
@@ -251,7 +257,25 @@ async def execute_batch_payout(
                 batch.released_at = datetime.now(timezone.utc)
         except Exception as e:
             batch.status = "transfer_failed"
-            batch.failure_reason = str(e)
+            # Capture as much Stripe error detail as possible
+            error_parts = [str(e)]
+            try:
+                import stripe as _stripe
+                if isinstance(e, _stripe.error.StripeError):
+                    if getattr(e, 'code', None):
+                        error_parts.append(f"code={e.code}")
+                    if getattr(e, 'decline_code', None):
+                        error_parts.append(f"decline_code={e.decline_code}")
+                    if getattr(e, 'request_id', None):
+                        error_parts.append(f"request_id={e.request_id}")
+                    if getattr(e, 'http_status', None):
+                        error_parts.append(f"http_status={e.http_status}")
+                    if getattr(e, 'user_message', None):
+                        error_parts.append(f"user_message={e.user_message}")
+            except Exception:
+                pass
+            batch.failure_reason = " | ".join(error_parts)
+            print(f"[STRIPE] Transfer failed: {batch.failure_reason}")
 
     # Update splits
     if batch.status in ("released", "manual"):
