@@ -31,11 +31,6 @@ export default function CashierDetail() {
       name: c.name, phone: c.phone, email: c.email || '',
       hotel_id: c.hotel_id || '',
       commission_pct: c.commission_pct ?? '',
-      payout_method: c.payout_method || 'bank',
-      bank_name: c.payout_details?.bank_name || '',
-      routing: c.payout_details?.routing || '',
-      account: c.payout_details?.account || '',
-      zelle_email: c.payout_details?.zelle_email || '',
       stripe_connect_id: c.stripe_connect_id || '',
     })
     setEditing(true)
@@ -56,20 +51,7 @@ export default function CashierDetail() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      const { bank_name, routing, account, zelle_email, stripe_connect_id, ...rest } = editForm
-      const params = { ...rest }
-
-      if (rest.payout_method === 'bank') {
-        params.payout_details = JSON.stringify({ bank_name, routing, account })
-        params.stripe_connect_id = ''
-      } else if (rest.payout_method === 'zelle') {
-        params.payout_details = JSON.stringify({ zelle_email })
-        params.stripe_connect_id = ''
-      } else if (rest.payout_method === 'stripe_connect') {
-        params.payout_details = JSON.stringify({})
-        params.stripe_connect_id = stripe_connect_id
-      }
-
+      const params = { ...editForm }
       // Remove empty values
       Object.keys(params).forEach(k => { if (params[k] === '') delete params[k] })
 
@@ -155,7 +137,7 @@ export default function CashierDetail() {
         {[
           { key: 'info', label: 'Details' },
           { key: 'referrals', label: `Referrals (${referrals.length})` },
-          { key: 'payout', label: 'Payout' },
+          { key: 'earnings', label: 'Earnings' },
         ].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap shrink-0 transition-all ${
@@ -257,30 +239,6 @@ export default function CashierDetail() {
                 </div>
               </div>
 
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Payout Method</p>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
-                <div>
-                  <label className="text-xs text-slate-500">Method</label>
-                  <select value={editForm.payout_method} onChange={e => setEditForm(p => ({ ...p, payout_method: e.target.value }))}
-                    className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="bank">Bank Account</option><option value="zelle">Zelle</option>
-                  </select>
-                </div>
-              </div>
-
-              {editForm.payout_method === 'bank' && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
-                  <EditField label="Bank Name" value={editForm.bank_name} onChange={v => setEditForm(p => ({ ...p, bank_name: v }))} />
-                  <EditField label="Routing Number" value={editForm.routing} onChange={v => setEditForm(p => ({ ...p, routing: v }))} />
-                  <EditField label="Account Number" value={editForm.account} onChange={v => setEditForm(p => ({ ...p, account: v }))} />
-                </div>
-              )}
-              {editForm.payout_method === 'zelle' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
-                  <EditField label="Zelle Email or Phone" value={editForm.zelle_email} onChange={v => setEditForm(p => ({ ...p, zelle_email: v }))} />
-                </div>
-              )}
-
               <div className="flex gap-2 pt-3 border-t border-slate-100">
                 <button onClick={handleSave} disabled={saving} className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
                   {saving ? 'Saving...' : 'Save Changes'}
@@ -318,8 +276,8 @@ export default function CashierDetail() {
         </div>
       )}
 
-      {/* ═══ PAYOUT TAB ═══ */}
-      {tab === 'payout' && (
+      {/* ═══ EARNINGS TAB ═══ */}
+      {tab === 'earnings' && (
         <div className="space-y-4">
           <div className="bg-white border border-slate-200 rounded-xl p-4">
             <h3 className="text-sm font-semibold text-slate-900 mb-3">Earnings</h3>
@@ -333,32 +291,8 @@ export default function CashierDetail() {
                 <p className="text-xl font-bold text-blue-700">{stats.total_referrals}</p>
               </div>
             </div>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-xl p-4">
-            <h3 className="text-sm font-semibold text-slate-900 mb-3">Payout Method</h3>
-            <div className="grid grid-cols-2 gap-3 text-sm mb-3">
-              <Field label="Method" value={c.payout_method?.toUpperCase() || 'BANK'} />
-              <Field label="Commission" value={`${c.commission_pct ?? global_default_commission_pct}%`} />
-            </div>
-
-            {c.payout_details && Object.keys(c.payout_details).length > 0 && (
-              <div className="bg-slate-50 rounded-xl p-3 mt-2">
-                <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-2">Account Details</p>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  {Object.entries(c.payout_details).map(([k, v]) => (
-                    <Field key={k} label={k.replace(/_/g, ' ')} value={String(v)} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {!c.payout_details && (
-              <p className="text-xs text-slate-400 mt-2">No banking details configured. Click Edit on the Details tab to add.</p>
-            )}
-
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mt-3">
-              <p className="text-xs text-blue-700">Cashier earnings are paid out through the concierge assigned to their hotel(s). Commissions show as "Pending" in the cashier portal until the concierge batch is released.</p>
+            <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-3">
+              <p className="text-xs text-blue-700">Commissions are paid out via the concierge for the cashier's hotel(s), not directly to the cashier. No bank information is collected.</p>
             </div>
           </div>
         </div>

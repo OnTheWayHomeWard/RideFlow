@@ -210,20 +210,35 @@ docker compose ps
 # Run migrations (creates all tables)
 docker compose exec backend alembic upgrade head
 
-# Seed default data (super admin account, vehicle types, settings, SMS templates)
+# Seed reference data (vehicle types, extras, settings, SMS templates)
 docker compose exec backend python -m app.seed
 ```
 
-The seed script creates **one super admin** with these defaults:
-- Email: `admin@rideflow.com`
-- Password: `changeme`
+### Step 3.7 — Create your first super admin
+
+The seed script creates a default admin (`admin@rideflow.com` / `changeme`) for dev convenience. **For production**, skip those defaults and create your own:
+
+```bash
+docker compose exec backend python -m app.create_admin \
+  owner@yourcompany.com \
+  "YourStrongPassword123!" \
+  "Your Name"
+```
+
+This creates a super admin with:
+- Your email
+- Your password (already hashed securely)
 - Role: `super_admin`
+- `password_changed=true` (won't prompt to change on first login)
 
-**The seed is idempotent** — if an admin already exists, it skips creation entirely (prints "Database already seeded. Skipping."). See [Appendix — Managing Super Admins](#managing-super-admins) for how to change credentials, create additional admins, or recover from lost password.
+You can run this **multiple times** with different emails to create additional super admins. It will refuse to create if the email already exists.
 
-**Change the password immediately** after first login via Admin Dashboard → Change Password.
+**Delete the default admin** after confirming your new admin works:
+```bash
+docker compose exec db psql -U rideflow -c "DELETE FROM admins WHERE email = 'admin@rideflow.com';"
+```
 
-### Step 3.7 — Verify all services are running
+### Step 3.8 — Verify all services are running
 
 ```bash
 docker compose ps
@@ -234,7 +249,7 @@ curl http://localhost:8000/api/health
 # Should return: {"status":"ok","service":"rideflow-api","version":"0.1.0","payment_mode":"live_stripe"}
 ```
 
-### Step 3.8 — Install and configure Nginx + TLS
+### Step 3.9 — Install and configure Nginx + TLS
 
 ```bash
 sudo apt install -y nginx certbot python3-certbot-nginx
@@ -311,7 +326,7 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-### Step 3.9 — Get free TLS certificates for all 4 subdomains
+### Step 3.10 — Get free TLS certificates for all 4 subdomains
 
 Make sure DNS A records exist for: `yourdomain.com`, `driver.yourdomain.com`, `admin.yourdomain.com`, `cashier.yourdomain.com` — all pointing to your server's IP.
 
@@ -326,7 +341,7 @@ sudo certbot --nginx \
 
 Certbot will automatically rewrite the nginx config to use HTTPS and set up auto-renewal.
 
-### Step 3.10 — Update onboarding/callback URLs to production
+### Step 3.11 — Update onboarding/callback URLs to production
 
 The backend currently hardcodes `http://localhost:5175` for concierge onboarding return URLs. Before going live, update these to your production admin domain. Search for and replace `http://localhost:5175` in:
 - `backend/app/routers/admin.py` (concierge onboarding URLs)
@@ -339,7 +354,7 @@ docker compose build backend
 docker compose up -d backend
 ```
 
-### Step 3.11 — Configure Stripe webhook
+### Step 3.12 — Configure Stripe webhook
 
 1. Log in to Stripe Dashboard → **Developers → Webhooks → Add endpoint**
 2. **Endpoint URL:** `https://yourdomain.com/api/payments/webhook`
@@ -352,7 +367,7 @@ docker compose up -d backend
    docker compose restart backend
    ```
 
-### Step 3.12 — Enable Stripe Connect
+### Step 3.13 — Enable Stripe Connect
 
 1. Stripe Dashboard → **Connect → Get started**
 2. Choose **"Platform or Marketplace"**

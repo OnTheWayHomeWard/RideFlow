@@ -53,8 +53,14 @@ export default function ConciergeDetail() {
     setReleasing(true)
     try {
       const res = await api.executeConciergePayout(id, { release_all: true })
-      if (res.status === "released") {
-        alert(`Payout released! Stripe transfer ID: ${res.stripe_transfer_id || 'N/A'}`)
+      if (res.status === "released" || res.status === "manual") {
+        const method = res.status === "released" ? `Stripe transfer: ${res.stripe_transfer_id || 'N/A'}` : "Manual settlement"
+        let msg = `Payout recorded!\n\n${method}\n\nConcierge receipt link:\n${res.receipt_url || 'N/A'}`
+        if (res.receipt_url) {
+          try { await navigator.clipboard.writeText(res.receipt_url) } catch {}
+          msg += '\n\n(Link copied to clipboard — also sent via SMS to the concierge)'
+        }
+        alert(msg)
       } else if (res.status === "transfer_failed") {
         alert(`Transfer failed: ${res.failure_reason}`)
       } else {
@@ -276,6 +282,18 @@ export default function ConciergeDetail() {
                         <p className="text-xs text-slate-400">Loading...</p>
                       ) : (
                         <div className="space-y-2">
+                          {detail.batch?.receipt_url && (
+                            <div className="mb-2 bg-white border border-blue-200 rounded-lg p-2.5 flex items-center justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs text-blue-700 font-medium">Concierge receipt link</p>
+                                <p className="text-xs font-mono text-slate-500 truncate">{detail.batch.receipt_url}</p>
+                              </div>
+                              <button onClick={() => { navigator.clipboard.writeText(detail.batch.receipt_url); alert('Link copied!') }}
+                                className="shrink-0 px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700">
+                                Copy
+                              </button>
+                            </div>
+                          )}
                           {detail.by_cashier.map(c => (
                             <div key={c.cashier_id}>
                               <div className="flex items-center justify-between text-sm font-medium">

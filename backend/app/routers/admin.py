@@ -2094,22 +2094,25 @@ async def execute_concierge_payout(concierge_id: str, req: BatchPayoutRequest, a
 
     batch = await execute_batch_payout(db, "concierge", concierge_id, split_ids, admin.id, req.note)
 
-    # SMS notifications
-    if batch.status == "released":
+    # Always generate public batch view link (for both Stripe and manual settlements)
+    batch_url = None
+    if batch.status in ("released", "manual"):
+        from app.utils.security import create_access_token
+        from datetime import timedelta
+        batch_token = create_access_token(
+            {"sub": str(batch.id), "role": "concierge_batch_view"},
+            expires_delta=timedelta(days=30),
+        )
+        batch_url = f"http://localhost:5175/concierge-batch?token={batch_token}"
+
+    # SMS notifications (for both Stripe success and manual settlements)
+    if batch.status in ("released", "manual"):
         try:
             cr = await db.execute(select(Concierge).where(Concierge.id == concierge_id))
             concierge = cr.scalar_one_or_none()
             if concierge and concierge.phone:
                 from app.services.sms_service import notify_concierge_payout, notify_cashier_paid_via_concierge, notify_concierge_batch_link
-                from app.utils.security import create_access_token
-                from datetime import timedelta
 
-                # Generate public batch view link
-                batch_token = create_access_token(
-                    {"sub": str(batch.id), "role": "concierge_batch_view"},
-                    expires_delta=timedelta(days=30),
-                )
-                batch_url = f"http://localhost:5175/concierge-batch?token={batch_token}"
                 paid_date = batch.released_at.strftime("%Y-%m-%d") if batch.released_at else datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
                 await notify_concierge_payout(db, concierge.phone, {
@@ -2160,6 +2163,7 @@ async def execute_concierge_payout(concierge_id: str, req: BatchPayoutRequest, a
         "split_count": batch.split_count,
         "stripe_transfer_id": batch.stripe_transfer_id,
         "failure_reason": batch.failure_reason,
+        "receipt_url": batch_url,
     }
 
 
@@ -2306,9 +2310,21 @@ async def execute_driver_payout(driver_id: str, req: BatchPayoutRequest, admin: 
 async def get_payout_batch_detail(batch_id: str, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
     """Full detail of a payout batch including all constituent splits."""
     from app.services.payout_batch_service import get_batch_detail
+    from app.utils.security import create_access_token
+    from datetime import timedelta
+
     detail = await get_batch_detail(db, batch_id)
     if not detail:
         raise HTTPException(status_code=404, detail="Batch not found")
+
+    # Generate a fresh receipt URL for concierge batches (for admin to copy/share)
+    if detail["batch"]["recipient_type"] == "concierge" and detail["batch"]["status"] in ("released", "manual"):
+        token = create_access_token(
+            {"sub": batch_id, "role": "concierge_batch_view"},
+            expires_delta=timedelta(days=30),
+        )
+        detail["batch"]["receipt_url"] = f"http://localhost:5175/concierge-batch?token={token}"
+
     return detail
 
 
