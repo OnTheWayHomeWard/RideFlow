@@ -157,7 +157,10 @@ export default function Drivers() {
                       <p className="text-xs text-slate-500">{d.phone}</p>
                     </div>
                   </div>
-                  <StatusBadge status={d.status} />
+                  <div className="flex gap-1 shrink-0 items-start">
+                    <PriorityBadge level={d.priority_level || 2} />
+                    <StatusBadge status={d.status} />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-3 lg:grid-cols-5 gap-2 text-xs">
@@ -210,4 +213,14 @@ function Info({ label, value }) {
 function StatusBadge({ status }) {
   const styles = { active: 'bg-green-100 text-green-700', pending: 'bg-amber-100 text-amber-700', inactive: 'bg-slate-100 text-slate-600', suspended: 'bg-red-100 text-red-700' }
   return <span className={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap capitalize ${styles[status] || 'bg-slate-100'}`}>{status}</span>
+}
+
+function PriorityBadge({ level }) {
+  const map = {
+    1: { label: 'High', style: 'bg-red-100 text-red-700' },
+    2: { label: 'Normal', style: 'bg-slate-100 text-slate-600' },
+    3: { label: 'Low', style: 'bg-blue-100 text-blue-700' },
+  }
+  const m = map[level] || map[2]
+  return <span className={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${m.style}`}>{m.label}</span>
 }

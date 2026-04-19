@@ -186,3 +186,11 @@ async def notify_driver_batch_payout(db: AsyncSession, phone: str, variables: di
         return
     message = render_template(template, variables)
     await send_sms(db, phone, message, "driver_batch_payout")
+
+
+async def notify_driver_run_cancelled(db: AsyncSession, phone: str, variables: dict):
+    template = await get_template(db, "sms_driver_run_cancelled")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, phone, message, "driver_run_cancelled")

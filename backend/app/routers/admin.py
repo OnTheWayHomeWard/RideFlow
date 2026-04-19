@@ -969,6 +969,7 @@ async def list_drivers(
             "has_insurance": d.has_insurance,
             "payout_method": d.payout_method,
             "status": d.status,
+            "priority_level": d.priority_level or 2,
             "pay_percentage": float(d.pay_percentage),
             "rating_avg": round(float(avg_rating), 1) if avg_rating else 0,
             "rating_count": rating_count or 0,
@@ -1118,6 +1119,7 @@ async def get_driver_detail(
             "payout_details": driver.payout_details,
             "stripe_connect_id": driver.stripe_connect_id,
             "pay_percentage": float(driver.pay_percentage),
+            "priority_level": driver.priority_level or 2,
             "status": driver.status,
             "rejection_reason": driver.rejection_reason,
             "password_changed": driver.password_changed,
@@ -2410,3 +2412,263 @@ async def drivers_with_pending(admin: Admin = Depends(get_current_admin), db: As
             })
 
     return sorted(drivers_out, key=lambda x: -x["total_owed"])
+
+
+# ═══════════════════════════════════════════
+# DRIVER PRIORITY + ASSIGNMENT
+# ═══════════════════════════════════════════
+
+class SetPriorityRequest(_BM):
+    priority_level: int  # 1, 2, or 3
+
+
+@router.patch("/drivers/{driver_id}/priority")
+async def set_driver_priority(driver_id: str, req: SetPriorityRequest, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    if req.priority_level not in (1, 2, 3):
+        raise HTTPException(status_code=400, detail="priority_level must be 1 (High), 2 (Normal), or 3 (Low)")
+    r = await db.execute(select(Driver).where(Driver.id == driver_id))
+    driver = r.scalar_one_or_none()
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
+    driver.priority_level = req.priority_level
+    await db.commit()
+    return {"message": "Priority updated", "priority_level": driver.priority_level}
+
+
+@router.get("/eligible-drivers")
+async def get_eligible_drivers(booking_id: str = Query(...), admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Return drivers eligible for a booking (matching vehicle type, active, under max runs)."""
+    b_r = await db.execute(select(Booking).where(Booking.id == booking_id))
+    booking = b_r.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    max_r = await db.execute(select(Setting).where(Setting.key == "max_active_runs_per_driver"))
+    max_setting = max_r.scalar_one_or_none()
+    max_runs = int(max_setting.value) if max_setting else 5
+
+    drivers_r = await db.execute(
+        select(Driver).where(
+            Driver.vehicle_type == booking.vehicle_type,
+            Driver.status == "active",
+        )
+    )
+    drivers = drivers_r.scalars().all()
+
+    out = []
+    for d in drivers:
+        count_r = await db.execute(
+            select(func.count()).select_from(Booking).where(
+                Booking.driver_id == d.id,
+                Booking.status.in_(["assigned", "in_progress"]),
+            )
+        )
+        active_count = count_r.scalar() or 0
+        out.append({
+            "id": str(d.id),
+            "name": d.name,
+            "phone": d.phone,
+            "vehicle_type": d.vehicle_type,
+            "vehicle_make": d.vehicle_make,
+            "vehicle_plate": d.vehicle_plate,
+            "priority_level": d.priority_level or 2,
+            "pay_percentage": float(d.pay_percentage),
+            "rating_avg": float(d.rating_avg or 0),
+            "active_run_count": active_count,
+            "is_at_capacity": active_count >= max_runs,
+            "is_current_driver": booking.driver_id == d.id,
+        })
+
+    # Sort by priority (asc = high first), then by active count (asc = least busy first)
+    out.sort(key=lambda x: (x["priority_level"], x["active_run_count"]))
+    return {"drivers": out, "max_runs": max_runs, "current_driver_id": str(booking.driver_id) if booking.driver_id else None}
+
+
+async def _assign_driver_to_booking(db, booking: Booking, driver: Driver):
+    """Shared: assign a driver to a booking, update/recalc driver + company PaymentSplit."""
+    from datetime import datetime, timezone
+    booking.driver_id = driver.id
+    booking.status = "assigned"
+    booking.assigned_at = datetime.now(timezone.utc)
+
+    # Recalculate driver split
+    driver_split_r = await db.execute(
+        select(PaymentSplit).where(
+            PaymentSplit.booking_id == booking.id,
+            PaymentSplit.recipient_type == "driver",
+        )
+    )
+    driver_split = driver_split_r.scalar_one_or_none()
+
+    if driver_split:
+        driver_pct = float(driver.pay_percentage) / 100
+        driver_split.recipient_id = driver.id
+        driver_split.amount = round(float(booking.base_amount) * driver_pct, 2)
+        driver_split.percentage = float(driver.pay_percentage)
+        driver_split.payout_status = "pending_review" if booking.status == "completed" else "pending"
+
+        # Recalculate company split
+        co_r = await db.execute(
+            select(PaymentSplit).where(
+                PaymentSplit.booking_id == booking.id,
+                PaymentSplit.recipient_type == "company",
+            )
+        )
+        company_split = co_r.scalar_one_or_none()
+        if company_split:
+            ca_r = await db.execute(
+                select(PaymentSplit).where(
+                    PaymentSplit.booking_id == booking.id,
+                    PaymentSplit.recipient_type == "cashier",
+                )
+            )
+            cashier_split = ca_r.scalar_one_or_none()
+            cashier_amount = float(cashier_split.amount) if cashier_split else 0
+            company_split.amount = round(float(booking.total_amount) - cashier_amount - float(driver_split.amount), 2)
+
+
+class AssignDriverRequest(_BM):
+    driver_id: str
+
+
+@router.post("/bookings/{booking_id}/assign-driver")
+async def assign_driver(booking_id: str, req: AssignDriverRequest, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Admin assigns a driver to an unassigned, paid booking."""
+    b_r = await db.execute(select(Booking).where(Booking.id == booking_id))
+    booking = b_r.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if booking.driver_id is not None:
+        raise HTTPException(status_code=400, detail="Booking already has a driver. Use reassign instead.")
+    if booking.status != "paid":
+        raise HTTPException(status_code=400, detail=f"Booking status is '{booking.status}', must be 'paid'")
+
+    d_r = await db.execute(select(Driver).where(Driver.id == req.driver_id))
+    driver = d_r.scalar_one_or_none()
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
+    if driver.status != "active":
+        raise HTTPException(status_code=400, detail="Driver is not active")
+    if driver.vehicle_type != booking.vehicle_type:
+        raise HTTPException(status_code=400, detail=f"Driver vehicle ({driver.vehicle_type}) doesn't match booking ({booking.vehicle_type})")
+
+    # Check max runs
+    max_r = await db.execute(select(Setting).where(Setting.key == "max_active_runs_per_driver"))
+    max_setting = max_r.scalar_one_or_none()
+    max_runs = int(max_setting.value) if max_setting else 5
+    count_r = await db.execute(
+        select(func.count()).select_from(Booking).where(
+            Booking.driver_id == driver.id,
+            Booking.status.in_(["assigned", "in_progress"]),
+        )
+    )
+    if (count_r.scalar() or 0) >= max_runs:
+        raise HTTPException(status_code=400, detail=f"Driver is at capacity ({max_runs} active runs)")
+
+    await _assign_driver_to_booking(db, booking, driver)
+    await db.commit()
+
+    # SMS
+    try:
+        from app.services.sms_service import notify_driver_new_run
+        driver_earn = round(float(booking.base_amount) * float(driver.pay_percentage) / 100, 2)
+        await notify_driver_new_run(db, driver.phone, {
+            "driver_name": driver.name,
+            "pickup_name": booking.pickup_name,
+            "dropoff_name": booking.dropoff_name,
+            "pickup_date": str(booking.pickup_date),
+            "pickup_time": str(booking.pickup_time)[:5],
+            "client_name": booking.client_name,
+            "driver_earnings": f"{driver_earn:.2f}",
+            "booking_number": booking.booking_number,
+        })
+        await db.commit()
+    except Exception as e:
+        print(f"[SMS ERROR] Assign driver SMS: {e}")
+
+    return {"message": "Driver assigned", "driver_name": driver.name, "booking_number": booking.booking_number}
+
+
+class ReassignDriverRequest(_BM):
+    new_driver_id: str
+    reason: str | None = None
+
+
+@router.post("/bookings/{booking_id}/reassign-driver")
+async def reassign_driver(booking_id: str, req: ReassignDriverRequest, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Admin reassigns a booking from one driver to another."""
+    b_r = await db.execute(select(Booking).where(Booking.id == booking_id))
+    booking = b_r.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if booking.status not in ("assigned", "in_progress"):
+        raise HTTPException(status_code=400, detail=f"Booking status is '{booking.status}', must be 'assigned' or 'in_progress'")
+    if booking.driver_id is None:
+        raise HTTPException(status_code=400, detail="Booking has no current driver. Use assign instead.")
+    if str(booking.driver_id) == req.new_driver_id:
+        raise HTTPException(status_code=400, detail="New driver is same as current driver")
+
+    # Capture old driver
+    old_d_r = await db.execute(select(Driver).where(Driver.id == booking.driver_id))
+    old_driver = old_d_r.scalar_one_or_none()
+
+    # Validate new driver
+    new_d_r = await db.execute(select(Driver).where(Driver.id == req.new_driver_id))
+    new_driver = new_d_r.scalar_one_or_none()
+    if not new_driver:
+        raise HTTPException(status_code=404, detail="New driver not found")
+    if new_driver.status != "active":
+        raise HTTPException(status_code=400, detail="New driver is not active")
+    if new_driver.vehicle_type != booking.vehicle_type:
+        raise HTTPException(status_code=400, detail="New driver's vehicle type doesn't match booking")
+
+    # If was in_progress, reset started_at
+    was_in_progress = booking.status == "in_progress"
+    if was_in_progress:
+        booking.started_at = None
+        booking.start_location = None
+
+    await _assign_driver_to_booking(db, booking, new_driver)
+    await db.commit()
+
+    # SMS to old driver
+    try:
+        from app.services.sms_service import notify_driver_run_cancelled
+        if old_driver and old_driver.phone:
+            await notify_driver_run_cancelled(db, old_driver.phone, {
+                "driver_name": old_driver.name,
+                "pickup_name": booking.pickup_name,
+                "dropoff_name": booking.dropoff_name,
+                "pickup_date": str(booking.pickup_date),
+                "pickup_time": str(booking.pickup_time)[:5],
+                "reason": req.reason or "Admin reassignment",
+                "booking_number": booking.booking_number,
+            })
+            await db.commit()
+    except Exception as e:
+        print(f"[SMS ERROR] Old driver cancel SMS: {e}")
+
+    # SMS to new driver
+    try:
+        from app.services.sms_service import notify_driver_new_run
+        driver_earn = round(float(booking.base_amount) * float(new_driver.pay_percentage) / 100, 2)
+        await notify_driver_new_run(db, new_driver.phone, {
+            "driver_name": new_driver.name,
+            "pickup_name": booking.pickup_name,
+            "dropoff_name": booking.dropoff_name,
+            "pickup_date": str(booking.pickup_date),
+            "pickup_time": str(booking.pickup_time)[:5],
+            "client_name": booking.client_name,
+            "driver_earnings": f"{driver_earn:.2f}",
+            "booking_number": booking.booking_number,
+        })
+        await db.commit()
+    except Exception as e:
+        print(f"[SMS ERROR] New driver assign SMS: {e}")
+
+    return {
+        "message": "Driver reassigned",
+        "old_driver_name": old_driver.name if old_driver else None,
+        "new_driver_name": new_driver.name,
+        "booking_number": booking.booking_number,
+    }

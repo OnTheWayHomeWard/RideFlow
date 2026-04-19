@@ -83,13 +83,30 @@ async def get_available_runs(
     driver: Driver = Depends(get_current_driver),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get all unassigned, paid runs matching this driver's vehicle type."""
+    """Get all unassigned, paid runs matching this driver's vehicle type.
+    Respects driver priority — lower priority drivers see runs with a time delay."""
+    # Get delays from settings
+    from app.models.setting import Setting as SettingModel
+    normal_r = await db.execute(select(SettingModel).where(SettingModel.key == "priority_delay_normal_minutes"))
+    normal_setting = normal_r.scalar_one_or_none()
+    low_r = await db.execute(select(SettingModel).where(SettingModel.key == "priority_delay_low_minutes"))
+    low_setting = low_r.scalar_one_or_none()
+
+    delay_map = {
+        1: 0,
+        2: int(normal_setting.value) if normal_setting else 2,
+        3: int(low_setting.value) if low_setting else 5,
+    }
+    delay_minutes = delay_map.get(driver.priority_level or 2, 2)
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=delay_minutes)
+
     result = await db.execute(
         select(Booking).where(
             Booking.status == "paid",
             Booking.driver_id.is_(None),
             Booking.vehicle_type == driver.vehicle_type,
             Booking.pickup_date >= date.today(),
+            Booking.created_at <= cutoff,
         ).order_by(Booking.pickup_date, Booking.pickup_time)
     )
     bookings = result.scalars().all()

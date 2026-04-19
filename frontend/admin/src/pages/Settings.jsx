@@ -40,6 +40,7 @@ export default function Settings() {
       <SettingsGroup title="Company" settings={otherSettings.filter(s => s.key.startsWith('company_'))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Payment & Commissions" settings={otherSettings.filter(s => ['default_driver_pay_pct','default_cashier_commission_pct','cashier_commission_enabled','driver_payout_schedule','late_cancel_refund_pct','max_active_runs_per_driver'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Booking" settings={otherSettings.filter(s => ['booking_window_days','cancellation_window_hours','unassigned_alert_minutes','review_expiry_days'].includes(s.key))} saving={saving} onSave={handleSave} />
+      <SettingsGroup title="Driver Priority" settings={otherSettings.filter(s => ['priority_delay_normal_minutes','priority_delay_low_minutes'].includes(s.key))} saving={saving} onSave={handleSave} />
       {/* Service Area — countries */}
       {settings.find(s => s.key === 'available_countries') && (
         <CountriesSelector
@@ -118,6 +119,9 @@ const FRIENDLY_NAMES = {
   sms_driver_payout_released: 'Driver Payout Released SMS',
   sms_driver_payout_flagged: 'Driver Payout Flagged SMS',
   sms_driver_payout_rejected: 'Driver Payout Rejected SMS',
+  sms_driver_run_cancelled: 'Driver Run Reassigned SMS',
+  priority_delay_normal_minutes: 'Normal Priority Delay (min)',
+  priority_delay_low_minutes: 'Low Priority Delay (min)',
   stripe_connect_enabled: 'Stripe Connect Payouts',
   payout_currency: 'Payout Currency (usd, eur, gbp)',
   available_countries: 'Available Countries',
@@ -148,6 +152,7 @@ const SMS_VARIABLES = {
   sms_driver_payout_released: ['driver_name', 'amount', 'route', 'booking_number'],
   sms_driver_payout_flagged: ['driver_name', 'amount', 'route', 'booking_number'],
   sms_driver_payout_rejected: ['driver_name', 'amount', 'route', 'booking_number'],
+  sms_driver_run_cancelled: ['driver_name', 'pickup_name', 'dropoff_name', 'pickup_date', 'pickup_time', 'reason', 'booking_number'],
 }
 
 function SmsTemplates({ settings, saving, onSave }) {

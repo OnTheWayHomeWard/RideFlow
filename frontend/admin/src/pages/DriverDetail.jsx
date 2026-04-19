@@ -87,6 +87,10 @@ export default function DriverDetail() {
     try { await api.updateDriver(driverId, { status: newStatus }); load() } catch (e) { alert(e.message) }
   }
 
+  const handlePriorityChange = async (level) => {
+    try { await api.setDriverPriority(driverId, level); load() } catch (e) { alert(e.message) }
+  }
+
   const handleDelete = async () => {
     if (!confirm(`Deactivate "${data.driver.name}"? They won't be able to accept runs.`)) return
     try { await api.deleteDriver(driverId); load() } catch (e) { alert(e.message) }
@@ -142,6 +146,26 @@ export default function DriverDetail() {
               try { await api.deleteDriver(driverId, true); navigate('/drivers') } catch (e) { alert(e.message) }
             }} className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200">Delete</button>
           </div>
+        </div>
+
+        {/* Priority selector */}
+        <div className="flex items-center gap-3 mb-3 pb-3 border-b border-slate-100">
+          <span className="text-xs text-slate-500 font-medium">Priority:</span>
+          {[
+            { level: 1, label: 'High', color: 'bg-red-600 text-white', idle: 'bg-red-50 text-red-700 hover:bg-red-100' },
+            { level: 2, label: 'Normal', color: 'bg-slate-600 text-white', idle: 'bg-slate-50 text-slate-700 hover:bg-slate-100' },
+            { level: 3, label: 'Low', color: 'bg-blue-600 text-white', idle: 'bg-blue-50 text-blue-700 hover:bg-blue-100' },
+          ].map(p => (
+            <button key={p.level} onClick={() => handlePriorityChange(p.level)}
+              className={`px-3 py-1 rounded-lg text-xs font-medium ${(d.priority_level || 2) === p.level ? p.color : p.idle}`}>
+              {p.label}
+            </button>
+          ))}
+          <span className="text-xs text-slate-400 ml-auto">
+            {(d.priority_level || 2) === 1 && 'Sees runs immediately'}
+            {(d.priority_level || 2) === 2 && '2 min delay'}
+            {(d.priority_level || 2) === 3 && '5 min delay'}
+          </span>
         </div>
 
         {/* Quick stats */}

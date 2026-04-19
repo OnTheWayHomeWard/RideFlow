@@ -63,6 +63,12 @@ export const api = {
   executeDriverPayout: (id, data) => request(`/admin/drivers/${id}/payout`, { method: 'POST', body: JSON.stringify(data) }),
   getDriversWithPending: () => request('/admin/drivers-with-pending'),
 
+  // Driver priority + assignment
+  setDriverPriority: (id, level) => request(`/admin/drivers/${id}/priority`, { method: 'PATCH', body: JSON.stringify({ priority_level: level }) }),
+  getEligibleDrivers: (bookingId) => request(`/admin/eligible-drivers?booking_id=${bookingId}`),
+  assignDriver: (bookingId, driverId) => request(`/admin/bookings/${bookingId}/assign-driver`, { method: 'POST', body: JSON.stringify({ driver_id: driverId }) }),
+  reassignDriver: (bookingId, newDriverId, reason) => request(`/admin/bookings/${bookingId}/reassign-driver`, { method: 'POST', body: JSON.stringify({ new_driver_id: newDriverId, reason }) }),
+
   // Payout batches
   getPayoutBatches: (params = '') => request(`/admin/payout-batches${params ? '?' + params : ''}`),
   retryBatch: (id) => request(`/admin/payout-batches/${id}/retry`, { method: 'POST' }),

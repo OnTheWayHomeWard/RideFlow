@@ -31,6 +31,7 @@ class DriverOut(BaseModel):
     vehicle_color: str | None = None
     vehicle_photo_url: str | None = None
     status: str
+    priority_level: int = 2
     rating_avg: float
     total_rides: int
     total_earnings: float

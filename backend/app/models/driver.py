@@ -41,6 +41,7 @@ class Driver(Base):
     stripe_connect_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Status
+    priority_level: Mapped[int] = mapped_column(Integer, default=2, index=True)  # 1=High, 2=Normal, 3=Low
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     is_online: Mapped[bool] = mapped_column(Boolean, default=False)
     password_changed: Mapped[bool] = mapped_column(Boolean, default=False)
