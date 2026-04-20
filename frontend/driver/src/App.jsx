@@ -15,7 +15,18 @@ export default function App() {
   const [pwChanged, setPwChanged] = useState(localStorage.getItem('driver_pw_changed') === 'true')
   const [settings, setSettings] = useState({ company_name: '', company_logo_url: '', available_countries: ['US'] })
 
-  useEffect(() => { api.getPublicSettings().then(setSettings).catch(() => {}) }, [])
+  useEffect(() => {
+    api.getPublicSettings().then(s => {
+      setSettings(s)
+      const name = s.company_name || 'RideFlow'
+      document.title = `${name} — Driver`
+      if (s.company_logo_url) {
+        let link = document.querySelector("link[rel~='icon']")
+        if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link) }
+        link.href = s.company_logo_url
+      }
+    }).catch(() => {})
+  }, [])
 
   const login = (accessToken, name, passwordChanged) => {
     localStorage.setItem('driver_token', accessToken)
