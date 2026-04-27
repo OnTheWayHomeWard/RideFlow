@@ -1,7 +1,58 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api/client'
 
-const EMPTY = { name: '', type: 'flat', amount: '', start_time: '', end_time: '', driver_gets_upsale: false, cashier_gets_upsale: true, vehicle_types: null }
+const EMPTY = {
+  name: '', type: 'flat', amount: '',
+  start_date: '', end_date: '',
+  daily_start_time: '', daily_end_time: '',
+  driver_gets_upsale: false, cashier_gets_upsale: true,
+  vehicle_types: null,
+}
+
+const fmtTime12 = (t) => {
+  if (!t) return ''
+  const [h, m] = t.split(':').map(Number)
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`
+}
+
+const fmtDate = (d) => d ? new Date(d).toLocaleDateString() : ''
+
+function describeWindow(u) {
+  const hasDate = u.start_date || u.end_date
+  const hasTime = u.daily_start_time || u.daily_end_time
+  const parts = []
+  if (hasDate) {
+    parts.push(`${fmtDate(u.start_date) || '…'} → ${fmtDate(u.end_date) || '…'}`)
+  } else {
+    parts.push('Any date')
+  }
+  if (hasTime) {
+    parts.push(`${fmtTime12(u.daily_start_time) || '…'} – ${fmtTime12(u.daily_end_time) || '…'} daily`)
+  } else {
+    parts.push('All day')
+  }
+  return parts.join(' • ')
+}
+
+function isLive(u) {
+  if (!u.is_active) return false
+  const now = new Date()
+  const today = now.toISOString().slice(0, 10)
+  if (u.start_date && today < u.start_date) return false
+  if (u.end_date && today > u.end_date) return false
+  if (u.daily_start_time || u.daily_end_time) {
+    const cur = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    const s = u.daily_start_time, e = u.daily_end_time
+    if (s && e) {
+      if (s <= e) { if (cur < s || cur > e) return false }
+      else { if (cur < s && cur > e) return false }
+    } else if (s && cur < s) return false
+    else if (e && cur > e) return false
+  }
+  return true
+}
 
 export default function Upsales() {
   const [upsales, setUpsales] = useState([])
@@ -11,6 +62,8 @@ export default function Upsales() {
   const [form, setForm] = useState({ ...EMPTY })
   const [editId, setEditId] = useState(null)
   const [allVehicles, setAllVehicles] = useState(true)
+  const [hasDateRange, setHasDateRange] = useState(false)
+  const [hasTimeWindow, setHasTimeWindow] = useState(false)
 
   const load = () => {
     Promise.all([api.getUpsales(), api.getVehicleRates()])
@@ -19,7 +72,11 @@ export default function Upsales() {
   }
   useEffect(() => { load() }, [])
 
-  const resetForm = () => { setForm({ ...EMPTY }); setEditId(null); setShowForm(false); setAllVehicles(true) }
+  const resetForm = () => {
+    setForm({ ...EMPTY })
+    setEditId(null); setShowForm(false)
+    setAllVehicles(true); setHasDateRange(false); setHasTimeWindow(false)
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -28,6 +85,10 @@ export default function Upsales() {
         ...form,
         amount: parseFloat(form.amount),
         vehicle_types: allVehicles ? null : form.vehicle_types,
+        start_date: hasDateRange ? (form.start_date || null) : null,
+        end_date: hasDateRange ? (form.end_date || null) : null,
+        daily_start_time: hasTimeWindow ? (form.daily_start_time || null) : null,
+        daily_end_time: hasTimeWindow ? (form.daily_end_time || null) : null,
       }
       if (editId) await api.updateUpsale(editId, data)
       else await api.createUpsale(data)
@@ -39,10 +100,14 @@ export default function Upsales() {
   const startEdit = (u) => {
     const isAll = !u.vehicle_types || u.vehicle_types.length === 0
     setAllVehicles(isAll)
+    setHasDateRange(!!(u.start_date || u.end_date))
+    setHasTimeWindow(!!(u.daily_start_time || u.daily_end_time))
     setForm({
       name: u.name, type: u.type, amount: u.amount,
-      start_time: u.start_time?.slice(0, 16) || '',
-      end_time: u.end_time?.slice(0, 16) || '',
+      start_date: u.start_date || '',
+      end_date: u.end_date || '',
+      daily_start_time: u.daily_start_time ? u.daily_start_time.slice(0, 5) : '',
+      daily_end_time: u.daily_end_time ? u.daily_end_time.slice(0, 5) : '',
       driver_gets_upsale: u.driver_gets_upsale,
       cashier_gets_upsale: u.cashier_gets_upsale,
       vehicle_types: u.vehicle_types || rates.map(r => r.vehicle_type),
@@ -67,8 +132,6 @@ export default function Upsales() {
     })
   }
 
-  const isLive = (u) => u.is_active && new Date(u.start_time) <= new Date() && new Date(u.end_time) >= new Date()
-
   return (
     <div className="p-4 lg:p-6">
       <div className="flex items-center justify-between mb-4 lg:mb-6">
@@ -81,7 +144,7 @@ export default function Upsales() {
 
       {/* Info */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-xs text-blue-700">
-        Only one upsale can be active at a time. Enabling one will automatically disable all others.
+        Multiple upsales can be active and stack. Leave date range and daily time empty for "always". Set only the daily time (e.g. 04:00–06:00) to apply every day in that window — useful for early-morning or late-night surcharges.
       </div>
 
       {showForm && (
@@ -108,16 +171,53 @@ export default function Upsales() {
                   className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm" />
               </div>
             </div>
-            <div>
-              <label className="text-xs text-slate-500">Start</label>
-              <input type="datetime-local" value={form.start_time} onChange={e => setForm(p => ({ ...p, start_time: e.target.value }))} required
-                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm" />
-            </div>
-            <div>
-              <label className="text-xs text-slate-500">End</label>
-              <input type="datetime-local" value={form.end_time} onChange={e => setForm(p => ({ ...p, end_time: e.target.value }))} required
-                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm" />
-            </div>
+          </div>
+
+          {/* Date range */}
+          <div className="mb-4 border border-slate-100 rounded-lg p-3 bg-slate-50/50">
+            <label className="flex items-center gap-2 text-sm mb-2">
+              <input type="checkbox" checked={hasDateRange} onChange={e => setHasDateRange(e.target.checked)} />
+              <span className="font-medium">Limit to a date range</span>
+              <span className="text-xs text-slate-400">(unchecked = always applies)</span>
+            </label>
+            {hasDateRange && (
+              <div className="grid grid-cols-2 gap-2 ml-6">
+                <div>
+                  <label className="text-xs text-slate-500">Start date</label>
+                  <input type="date" value={form.start_date} onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))}
+                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500">End date</label>
+                  <input type="date" value={form.end_date} onChange={e => setForm(p => ({ ...p, end_date: e.target.value }))}
+                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Daily time-of-day */}
+          <div className="mb-4 border border-slate-100 rounded-lg p-3 bg-slate-50/50">
+            <label className="flex items-center gap-2 text-sm mb-2">
+              <input type="checkbox" checked={hasTimeWindow} onChange={e => setHasTimeWindow(e.target.checked)} />
+              <span className="font-medium">Apply only during a daily time window</span>
+              <span className="text-xs text-slate-400">(e.g. 04:00–06:00 every day)</span>
+            </label>
+            {hasTimeWindow && (
+              <div className="grid grid-cols-2 gap-2 ml-6">
+                <div>
+                  <label className="text-xs text-slate-500">From</label>
+                  <input type="time" value={form.daily_start_time} onChange={e => setForm(p => ({ ...p, daily_start_time: e.target.value }))}
+                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500">To</label>
+                  <input type="time" value={form.daily_end_time} onChange={e => setForm(p => ({ ...p, daily_end_time: e.target.value }))}
+                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                </div>
+                <p className="col-span-2 text-xs text-slate-500 ml-1">If "To" is earlier than "From" (e.g. 22:00 → 04:00), the window wraps over midnight.</p>
+              </div>
+            )}
           </div>
 
           {/* Vehicle types */}
@@ -178,37 +278,40 @@ export default function Upsales() {
         <div className="flex justify-center py-12"><div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>
       ) : (
         <div className="space-y-3">
-          {upsales.map(u => (
-            <div key={u.id} className={`bg-white border rounded-xl overflow-hidden ${isLive(u) ? 'border-green-300 bg-green-50/30' : 'border-slate-200'}`}>
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-1">
-                  <p className="font-bold text-sm text-slate-900">{u.name}</p>
-                  <div className="flex items-center gap-1.5">
-                    {isLive(u) && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium animate-pulse">Live</span>}
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${u.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{u.is_active ? 'Enabled' : 'Disabled'}</span>
+          {upsales.map(u => {
+            const live = isLive(u)
+            return (
+              <div key={u.id} className={`bg-white border rounded-xl overflow-hidden ${live ? 'border-green-300 bg-green-50/30' : 'border-slate-200'}`}>
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="font-bold text-sm text-slate-900">{u.name}</p>
+                    <div className="flex items-center gap-1.5">
+                      {live && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium animate-pulse">Live</span>}
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${u.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{u.is_active ? 'Enabled' : 'Disabled'}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
+                    <span><b className="text-slate-700">{u.type === 'flat' ? `+$${u.amount}` : `+${u.amount}%`}</b></span>
+                    <span>{describeWindow(u)}</span>
+                  </div>
+                  <div className="flex gap-1.5 flex-wrap mt-2">
+                    {u.vehicle_types ? u.vehicle_types.map(vt => (
+                      <span key={vt} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full capitalize">{vt.replace('_', ' ')}</span>
+                    )) : (
+                      <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">All vehicles</span>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
-                  <span><b className="text-slate-700">{u.type === 'flat' ? `+$${u.amount}` : `+${u.amount}%`}</b></span>
-                  <span>{new Date(u.start_time).toLocaleDateString()} → {new Date(u.end_time).toLocaleDateString()}</span>
-                </div>
-                <div className="flex gap-1.5 flex-wrap mt-2">
-                  {u.vehicle_types ? u.vehicle_types.map(vt => (
-                    <span key={vt} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full capitalize">{vt.replace('_', ' ')}</span>
-                  )) : (
-                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">All vehicles</span>
-                  )}
+                <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 flex gap-2 lg:justify-end">
+                  <button onClick={() => startEdit(u)} className="px-2.5 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">Edit</button>
+                  <button onClick={() => handleToggle(u.id)} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium ${u.is_active ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : 'bg-green-600 text-white hover:bg-green-700'}`}>
+                    {u.is_active ? 'Disable' : 'Enable'}
+                  </button>
+                  <button onClick={() => handleDelete(u.id, u.name)} className="px-2.5 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200">Delete</button>
                 </div>
               </div>
-              <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 flex gap-2 lg:justify-end">
-                <button onClick={() => startEdit(u)} className="px-2.5 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">Edit</button>
-                <button onClick={() => handleToggle(u.id)} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium ${u.is_active ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : 'bg-green-600 text-white hover:bg-green-700'}`}>
-                  {u.is_active ? 'Disable' : 'Enable'}
-                </button>
-                <button onClick={() => handleDelete(u.id, u.name)} className="px-2.5 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200">Delete</button>
-              </div>
-            </div>
-          ))}
+            )
+          })}
           {upsales.length === 0 && <p className="text-center text-slate-400 py-8">No upsales yet</p>}
         </div>
       )}

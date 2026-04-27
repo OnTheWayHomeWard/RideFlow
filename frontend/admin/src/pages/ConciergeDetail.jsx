@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 
+function stripPlusCode(s) {
+  if (!s) return s
+  return s.replace(/^[A-Z0-9]{4,}\+[A-Z0-9]+,?\s*/i, '').trim() || s
+}
+
 export default function ConciergeDetail() {
   const { id } = useParams()
   const [searchParams] = useSearchParams()
@@ -231,8 +236,14 @@ export default function ConciergeDetail() {
             )}
 
             <button onClick={handleRelease} disabled={releasing}
-              className="w-full py-3 bg-green-600 text-white rounded-xl font-bold text-sm hover:bg-green-700 disabled:opacity-60">
-              {releasing ? 'Releasing...' : `Release $${preview.total.toFixed(2)}`}
+              className={`w-full py-3 text-white rounded-xl font-bold text-sm disabled:opacity-60 ${
+                concierge.stripe_connect_id ? 'bg-green-600 hover:bg-green-700' : 'bg-amber-600 hover:bg-amber-700'
+              }`}>
+              {releasing
+                ? (concierge.stripe_connect_id ? 'Releasing...' : 'Recording...')
+                : concierge.stripe_connect_id
+                  ? `Release $${preview.total.toFixed(2)}`
+                  : `Manual Release $${preview.total.toFixed(2)}`}
             </button>
             {!concierge.stripe_connect_id && (
               <p className="text-xs text-amber-600 mt-2 text-center">No Stripe connected — will be marked as manual settlement</p>
@@ -330,7 +341,7 @@ export default function ConciergeDetail() {
               {concierge.hotels.map(h => (
                 <div key={h.id} className="text-sm">
                   <p className="font-medium">{h.name}</p>
-                  <p className="text-xs text-slate-500">{h.address}</p>
+                  <p className="text-xs text-slate-500">{stripPlusCode(h.address)}</p>
                 </div>
               ))}
             </div>

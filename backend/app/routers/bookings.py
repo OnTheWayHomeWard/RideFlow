@@ -20,14 +20,29 @@ router = APIRouter(prefix="/api", tags=["bookings"])
 async def create_booking(req: BookingCreateRequest, db: AsyncSession = Depends(get_db)):
     """Create a new booking. Called after client fills the form (before payment)."""
 
-    # Validate geofence
-    pickup_ok = await validate_location(db, req.pickup_lat, req.pickup_lng)
-    if not pickup_ok:
+    # Validate against configured service areas (countries + cities)
+    from app.services.service_area_service import get_service_areas, location_in_service_areas
+    areas = await get_service_areas(db)
+    if not location_in_service_areas(req.pickup_lat, req.pickup_lng, req.pickup_country, areas):
         raise HTTPException(status_code=400, detail="Pickup location is outside our service area")
-
-    dropoff_ok = await validate_location(db, req.dropoff_lat, req.dropoff_lng)
-    if not dropoff_ok:
+    if not location_in_service_areas(req.dropoff_lat, req.dropoff_lng, req.dropoff_country, areas):
         raise HTTPException(status_code=400, detail="Destination is outside our service area")
+
+    # Enforce minimum advance booking time
+    from app.models.setting import Setting as SettingModel
+    from datetime import datetime, timedelta, timezone
+    min_r = await db.execute(select(SettingModel).where(SettingModel.key == "min_advance_booking_hours"))
+    min_setting = min_r.scalar_one_or_none()
+    min_hours = float(min_setting.value) if min_setting else 0.5
+    pickup_dt = datetime.combine(req.pickup_date, req.pickup_time, tzinfo=timezone.utc)
+    earliest = datetime.now(timezone.utc) + timedelta(hours=min_hours)
+    if pickup_dt < earliest:
+        if min_hours < 1:
+            mins = int(min_hours * 60)
+            msg = f"Pickup must be at least {mins} minutes from now"
+        else:
+            msg = f"Pickup must be at least {min_hours} hours from now"
+        raise HTTPException(status_code=400, detail=msg)
 
     # Validate cross-country booking
     if req.pickup_country and req.dropoff_country:
@@ -41,12 +56,12 @@ async def create_booking(req: BookingCreateRequest, db: AsyncSession = Depends(g
                 detail=f"Cross-country bookings are not allowed. Pickup ({req.pickup_country}) and destination ({req.dropoff_country}) must be in the same country."
             )
 
-    # Calculate price
+    # Calculate price (pass pickup_dt so time-of-day upsales evaluate correctly)
     try:
         price = await calculate_price(
             db, req.pickup_lat, req.pickup_lng,
             req.dropoff_lat, req.dropoff_lng,
-            req.vehicle_type, req.extras,
+            req.vehicle_type, req.extras, pickup_dt=pickup_dt,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

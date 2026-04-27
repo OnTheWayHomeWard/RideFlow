@@ -4,6 +4,11 @@ import Pagination from '../components/Pagination'
 
 const EMPTY_FORM = { name: '', address: '', contact_name: '', contact_phone: '', default_commission_pct: 10, lat: '', lng: '', concierge_id: '' }
 
+function stripPlusCode(s) {
+  if (!s) return s
+  return s.replace(/^[A-Z0-9]{4,}\+[A-Z0-9]+,?\s*/i, '').trim() || s
+}
+
 export default function Hotels() {
   const [data, setData] = useState({ items: [], total: 0, page: 1, total_pages: 0 })
   const [page, setPage] = useState(1)
@@ -162,7 +167,7 @@ export default function Hotels() {
                       {h.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 truncate">{h.address}</p>
+                  <p className="text-xs text-slate-500 truncate">{stripPlusCode(h.address)}</p>
                   <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5 flex-wrap">
                     <span>Contact: {h.contact_name || '—'}</span>
                     <span>Commission: {h.default_commission_pct}%</span>

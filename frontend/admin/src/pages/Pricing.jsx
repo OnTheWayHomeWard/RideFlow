@@ -295,6 +295,7 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
                 placeholder="Search start location..."
                 googleApiKey={settings.google_maps_api_key}
                 countries={settings.available_countries}
+                serviceAreas={settings.service_areas}
               />
             </div>
             <div>
@@ -305,6 +306,7 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
                 placeholder="Search destination..."
                 googleApiKey={settings.google_maps_api_key}
                 countries={settings.available_countries}
+                serviceAreas={settings.service_areas}
               />
             </div>
           </div>

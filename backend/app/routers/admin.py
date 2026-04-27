@@ -270,8 +270,8 @@ async def get_notifications(
             "type": "payout_request",
             "icon": "dollar",
             "color": "amber",
-            "title": f"Payout request — ${float(split.amount):.2f}",
-            "message": f"{driver.name if driver else 'Driver'} completed {booking.booking_number} ({booking.pickup_name} → {booking.dropoff_name})",
+            "title": f"Payout pending — ${float(split.amount):.2f}",
+            "message": f"{driver.name if driver else 'Driver'} • {booking.booking_number} ({booking.pickup_name} → {booking.dropoff_name})",
             "link": "/payouts",
             "time": booking.completed_at.isoformat() if booking.completed_at else split.created_at.isoformat(),
         })
@@ -291,11 +291,11 @@ async def get_notifications(
             "color": "blue",
             "title": f"New ride — {b.booking_number}",
             "message": f"{b.client_name}: {b.pickup_name} → {b.dropoff_name} • ${float(b.total_amount):.2f}",
-            "link": "/runs",
+            "link": f"/runs/{b.id}",
             "time": b.paid_at.isoformat() if b.paid_at else b.created_at.isoformat(),
         })
 
-    # 3. Driver accepted a run
+    # 3. Driver accepted a run (only while status is still 'assigned' — i.e., not yet started)
     r = await db.execute(
         select(Booking, Driver)
         .join(Driver, Booking.driver_id == Driver.id)
@@ -311,8 +311,69 @@ async def get_notifications(
             "color": "green",
             "title": f"{d.name} accepted a run",
             "message": f"{b.booking_number}: {b.pickup_name} → {b.dropoff_name}",
-            "link": "/runs",
+            "link": f"/runs/{b.id}",
             "time": b.assigned_at.isoformat() if b.assigned_at else b.created_at.isoformat(),
+        })
+
+    # 3b. Ride in progress — driver started the ride
+    r = await db.execute(
+        select(Booking, Driver)
+        .join(Driver, Booking.driver_id == Driver.id)
+        .where(Booking.status == "in_progress")
+        .order_by(Booking.started_at.desc())
+        .limit(5)
+    )
+    for b, d in r.all():
+        notifications.append({
+            "id": f"start-{b.id}",
+            "type": "ride_started",
+            "icon": "play",
+            "color": "blue",
+            "title": f"{d.name} started a ride",
+            "message": f"{b.booking_number}: heading to {b.dropoff_name}",
+            "link": f"/runs/{b.id}",
+            "time": b.started_at.isoformat() if b.started_at else b.created_at.isoformat(),
+        })
+
+    # 3c. Ride completed (recent — last 24h)
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    r = await db.execute(
+        select(Booking, Driver)
+        .join(Driver, Booking.driver_id == Driver.id)
+        .where(Booking.status == "completed", Booking.completed_at >= cutoff)
+        .order_by(Booking.completed_at.desc())
+        .limit(5)
+    )
+    for b, d in r.all():
+        notifications.append({
+            "id": f"complete-{b.id}",
+            "type": "ride_completed",
+            "icon": "check-circle",
+            "color": "emerald",
+            "title": f"{d.name} completed a ride",
+            "message": f"{b.booking_number}: {b.pickup_name} → {b.dropoff_name}",
+            "link": f"/runs/{b.id}",
+            "time": b.completed_at.isoformat() if b.completed_at else b.created_at.isoformat(),
+        })
+
+    # 3d. Cancelled / Refunded bookings (recent — last 24h)
+    r = await db.execute(
+        select(Booking)
+        .where(Booking.status == "cancelled", Booking.created_at >= cutoff)
+        .order_by(Booking.created_at.desc())
+        .limit(5)
+    )
+    for b in r.scalars().all():
+        notifications.append({
+            "id": f"cancel-{b.id}",
+            "type": "ride_cancelled",
+            "icon": "x",
+            "color": "red",
+            "title": f"Ride cancelled — {b.booking_number}",
+            "message": f"{b.client_name}: {b.pickup_name} → {b.dropoff_name}",
+            "link": f"/runs/{b.id}",
+            "time": b.created_at.isoformat(),
         })
 
     # 4. Pending driver registrations
@@ -1683,17 +1744,9 @@ async def toggle_upsale(
     upsale = result.scalar_one_or_none()
     if not upsale:
         raise HTTPException(status_code=404, detail="Upsale not found")
-    new_state = not upsale.is_active
-
-    # Only one upsale can be active at a time — deactivate all others
-    if new_state:
-        all_upsales = await db.execute(select(Upsale).where(Upsale.is_active == True))
-        for other in all_upsales.scalars().all():
-            other.is_active = False
-
-    upsale.is_active = new_state
+    upsale.is_active = not upsale.is_active
     await db.commit()
-    return {"message": f"Upsale {'activated' if new_state else 'deactivated'}"}
+    return {"message": f"Upsale {'activated' if upsale.is_active else 'deactivated'}"}
 
 
 @router.delete("/upsales/{upsale_id}")
@@ -1925,9 +1978,12 @@ async def update_setting(
     result = await db.execute(select(Setting).where(Setting.key == req.key))
     setting = result.scalar_one_or_none()
     if not setting:
-        raise HTTPException(status_code=404, detail=f"Setting '{req.key}' not found")
-    setting.value = req.value
-    setting.updated_by = admin.id
+        # Auto-create the setting if it doesn't exist (allows new keys like service_areas to be saved)
+        setting = Setting(key=req.key, value=req.value, updated_by=admin.id)
+        db.add(setting)
+    else:
+        setting.value = req.value
+        setting.updated_by = admin.id
     await db.commit()
     return {"message": f"Setting '{req.key}' updated"}
 

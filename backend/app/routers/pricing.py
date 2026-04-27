@@ -59,7 +59,7 @@ async def calculate_ride_price(req: PriceCalculateRequest, db: AsyncSession = De
         result = await calculate_price(
             db, req.pickup_lat, req.pickup_lng,
             req.dropoff_lat, req.dropoff_lng,
-            req.vehicle_type, req.extras,
+            req.vehicle_type, req.extras, pickup_dt=req.pickup_dt,
         )
         return result
     except ValueError as e:
@@ -83,7 +83,7 @@ async def calculate_all_prices(req: AllVehiclePricesRequest, db: AsyncSession = 
     return await calculate_all_vehicle_prices(
         db, req.pickup_lat, req.pickup_lng,
         req.dropoff_lat, req.dropoff_lng,
-        req.extras,
+        req.extras, pickup_dt=req.pickup_dt,
     )
 
 
@@ -98,20 +98,22 @@ def _get_maps_key() -> str:
 @router.get("/settings/public")
 async def get_public_settings(db: AsyncSession = Depends(get_db)):
     """Public company settings — no auth needed. Used by client app for branding."""
-    keys = ["company_name", "company_phone", "company_logo_url", "available_countries", "allow_cross_country_booking"]
+    from app.services.service_area_service import get_service_areas, derive_country_codes
+    keys = ["company_name", "company_phone", "company_logo_url", "allow_cross_country_booking", "min_advance_booking_hours"]
     result = await db.execute(select(Setting).where(Setting.key.in_(keys)))
     settings = {s.key: s.value for s in result.scalars().all()}
-    countries = settings.get("available_countries", ["US"])
-    if isinstance(countries, str):
-        import json
-        try: countries = json.loads(countries)
-        except: countries = ["US"]
     cross_country = str(settings.get("allow_cross_country_booking", "false")).lower() == "true"
+
+    service_areas = await get_service_areas(db)
+    available_countries = derive_country_codes(service_areas)
+
     return {
         "company_name": str(settings.get("company_name", "RideFlow")),
         "company_phone": str(settings.get("company_phone", "")),
         "company_logo_url": str(settings.get("company_logo_url", "")),
-        "available_countries": countries,
+        "service_areas": service_areas,
+        "available_countries": available_countries,  # legacy / derived
         "allow_cross_country_booking": cross_country,
+        "min_advance_booking_hours": float(settings.get("min_advance_booking_hours", 0.5) or 0.5),
         "google_maps_api_key": _get_maps_key(),
     }

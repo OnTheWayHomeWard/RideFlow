@@ -223,12 +223,14 @@ async def book_for_guest(
         p_name, p_address = hotel.name, hotel.address
         p_lat, p_lng = float(hotel.lat), float(hotel.lng)
 
-    # Calculate price
+    # Calculate price (pass pickup_dt so time-of-day upsales evaluate correctly)
+    from datetime import datetime as _dt, timezone as _tz
+    pickup_dt = _dt.combine(req.pickup_date, req.pickup_time, tzinfo=_tz.utc)
     try:
         price = await calculate_price(
             db, p_lat, p_lng,
             req.dropoff_lat, req.dropoff_lng,
-            req.vehicle_type, req.extras,
+            req.vehicle_type, req.extras, pickup_dt=pickup_dt,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

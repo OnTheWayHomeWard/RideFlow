@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 from pydantic import BaseModel
 
@@ -55,6 +56,7 @@ class PriceCalculateRequest(BaseModel):
     dropoff_lng: float
     vehicle_type: str
     extras: list[str] = []  # list of extra slugs
+    pickup_dt: datetime | None = None  # when the ride is — used for time-of-day upsales
 
 
 class PriceCalculateResponse(BaseModel):
@@ -66,6 +68,7 @@ class PriceCalculateResponse(BaseModel):
     distance_miles: float | None = None
     common_route_id: str | None = None
     upsale_id: str | None = None
+    applied_upsales: list[dict] = []
     extras_detail: list[dict] = []
 
 
@@ -75,6 +78,7 @@ class AllVehiclePricesRequest(BaseModel):
     dropoff_lat: float
     dropoff_lng: float
     extras: list[str] = []
+    pickup_dt: datetime | None = None
 
 
 class VehiclePriceOut(BaseModel):
@@ -91,4 +95,5 @@ class VehiclePriceOut(BaseModel):
     distance_miles: float | None = None
     common_route_id: str | None = None
     upsale_id: str | None = None
+    applied_upsales: list[dict] = []
     extras_detail: list[dict] = []

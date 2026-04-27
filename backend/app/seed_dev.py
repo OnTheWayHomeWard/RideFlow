@@ -98,13 +98,15 @@ async def seed_dev():
         await db.flush()
         print(f"Created {len(drivers)} drivers (password: driver123)")
 
-        # ── UPSALE (active now for testing) ──
+        # ── UPSALE (active now for testing — applies always, all vehicles) ──
         upsale = Upsale(
             name="Weekend Surge",
             type="flat",
             amount=10.00,
-            start_time=datetime.now(timezone.utc) - timedelta(hours=1),
-            end_time=datetime.now(timezone.utc) + timedelta(days=3),
+            start_date=None,
+            end_date=None,
+            daily_start_time=None,
+            daily_end_time=None,
             vehicle_types=None,  # all vehicles
             driver_gets_upsale=False,
             cashier_gets_upsale=True,

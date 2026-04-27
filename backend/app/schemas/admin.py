@@ -189,8 +189,10 @@ class UpsaleCreateRequest(BaseModel):
     name: str
     type: str  # flat, percentage
     amount: float
-    start_time: datetime
-    end_time: datetime
+    start_date: date | None = None
+    end_date: date | None = None
+    daily_start_time: time | None = None
+    daily_end_time: time | None = None
     vehicle_types: list[str] | None = None
     driver_gets_upsale: bool = False
     cashier_gets_upsale: bool = True
@@ -201,8 +203,10 @@ class UpsaleOut(BaseModel):
     name: str
     type: str
     amount: float
-    start_time: datetime
-    end_time: datetime
+    start_date: date | None = None
+    end_date: date | None = None
+    daily_start_time: time | None = None
+    daily_end_time: time | None = None
     vehicle_types: list | None = None
     driver_gets_upsale: bool
     cashier_gets_upsale: bool

@@ -89,13 +89,19 @@ export default function RunDetail() {
           <div className="flex-1">
             <div className="mb-3">
               <p className="text-xs text-slate-400">Pickup</p>
-              <p className="font-medium text-sm">{run.pickup_name}</p>
-              <p className="text-xs text-slate-500">{run.pickup_address}</p>
+              <p className="font-medium text-sm">{stripPlusCode(run.pickup_name)}</p>
+              {run.pickup_address && run.pickup_address !== run.pickup_name && (
+                <p className="text-xs text-slate-500">{stripPlusCode(run.pickup_address)}</p>
+              )}
+              <MapsLink lat={run.pickup_lat} lng={run.pickup_lng} />
             </div>
             <div>
               <p className="text-xs text-slate-400">Destination</p>
-              <p className="font-medium text-sm">{run.dropoff_name}</p>
-              <p className="text-xs text-slate-500">{run.dropoff_address}</p>
+              <p className="font-medium text-sm">{stripPlusCode(run.dropoff_name)}</p>
+              {run.dropoff_address && run.dropoff_address !== run.dropoff_name && (
+                <p className="text-xs text-slate-500">{stripPlusCode(run.dropoff_address)}</p>
+              )}
+              <MapsLink lat={run.dropoff_lat} lng={run.dropoff_lng} />
             </div>
           </div>
         </div>
@@ -219,13 +225,54 @@ function Info({ label, value }) {
 }
 
 function TimelineItem({ label, time, location }) {
+  const [address, setAddress] = useState(null)
+
+  useEffect(() => {
+    if (!location?.lat || !location?.lng) return
+    // Try Google Maps reverse geocode if available
+    if (window.google?.maps?.Geocoder) {
+      const geocoder = new window.google.maps.Geocoder()
+      geocoder.geocode({ location: { lat: location.lat, lng: location.lng } }, (results, status) => {
+        if (status === 'OK' && results[0]) {
+          // Strip Plus Code from formatted address
+          const stripped = results[0].formatted_address.replace(/^[A-Z0-9]{4,}\+[A-Z0-9]+,?\s*/i, '').trim()
+          setAddress(stripped || results[0].formatted_address)
+        }
+      })
+    } else {
+      // Fallback: free OpenStreetMap reverse geocoding
+      fetch(`https://nominatim.openstreetmap.org/reverse?lat=${location.lat}&lon=${location.lng}&format=json`)
+        .then(r => r.json())
+        .then(d => { if (d.display_name) setAddress(d.display_name) })
+        .catch(() => {})
+    }
+  }, [location?.lat, location?.lng])
+
+  const mapsLink = location?.lat && location?.lng
+    ? `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`
+    : null
+
   return (
     <div className="flex items-start gap-3">
       <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${time ? 'bg-green-500' : 'bg-slate-200'}`}></div>
-      <div>
+      <div className="flex-1 min-w-0">
         <p className={`text-sm ${time ? 'font-medium text-slate-900' : 'text-slate-400'}`}>{label}</p>
         {time && <p className="text-xs text-slate-500">{new Date(time).toLocaleString()}</p>}
-        {location && <p className="text-xs text-slate-400 font-mono">{location.lat?.toFixed(4)}, {location.lng?.toFixed(4)}</p>}
+        {location && (
+          <div className="text-xs mt-0.5">
+            {address ? (
+              <p className="text-slate-600">{address}</p>
+            ) : (
+              <p className="text-slate-400 font-mono">{location.lat?.toFixed(4)}, {location.lng?.toFixed(4)}</p>
+            )}
+            {mapsLink && (
+              <a href={mapsLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:underline mt-0.5">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                Open in Maps
+              </a>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -310,5 +357,25 @@ function DriverPickerModal({ mode, data, currentDriverName, onClose, onAssign, o
         </div>
       </div>
     </div>
+  )
+}
+
+
+function stripPlusCode(s) {
+  if (!s) return s
+  return s.replace(/^[A-Z0-9]{4,}\+[A-Z0-9]+,?\s*/i, "").trim() || s
+}
+
+function MapsLink({ lat, lng }) {
+  if (!lat || !lng) return null
+  const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-0.5">
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+      Open in Maps
+    </a>
   )
 }

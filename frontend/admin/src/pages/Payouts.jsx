@@ -171,10 +171,26 @@ export default function Payouts() {
                   ))}
                 </div>
 
-                <button onClick={handleRelease} disabled={releasing}
-                  className="w-full py-3 bg-green-600 text-white rounded-xl font-bold text-sm hover:bg-green-700 disabled:opacity-60">
-                  {releasing ? 'Releasing...' : `Release $${preview.total.toFixed(2)} for ${preview.split_count} rides`}
-                </button>
+                {(() => {
+                  const stripeConnected = drivers.find(d => d.driver_id === selectedDriverId)?.stripe_connected
+                  return (
+                    <>
+                      <button onClick={handleRelease} disabled={releasing}
+                        className={`w-full py-3 text-white rounded-xl font-bold text-sm disabled:opacity-60 ${
+                          stripeConnected ? 'bg-green-600 hover:bg-green-700' : 'bg-amber-600 hover:bg-amber-700'
+                        }`}>
+                        {releasing
+                          ? (stripeConnected ? 'Releasing...' : 'Recording...')
+                          : stripeConnected
+                            ? `Release $${preview.total.toFixed(2)} for ${preview.split_count} rides`
+                            : `Manual Release $${preview.total.toFixed(2)} for ${preview.split_count} rides`}
+                      </button>
+                      {!stripeConnected && (
+                        <p className="text-xs text-amber-600 mt-2 text-center">No Stripe connected — will be marked as manual settlement</p>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             )}
           </div>

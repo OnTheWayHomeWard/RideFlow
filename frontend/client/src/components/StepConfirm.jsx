@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import { useSettings } from '../hooks/useSettings.jsx'
 import Toast from './Toast'
 import PhoneInput from './PhoneInput'
+import TimeSelect from './TimeSelect'
 
 export default function StepConfirm({ booking, setBooking, cashierRef, onBack }) {
   const navigate = useNavigate()
@@ -23,8 +24,27 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
   }, 0)
   const total = (vehicle?.total_amount || 0) + extrasTotal
 
-  const today = new Date().toISOString().split('T')[0]
-  const maxDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const minAdvanceHours = settings.min_advance_booking_hours || 0.5
+  const earliestPickup = new Date(Date.now() + minAdvanceHours * 60 * 60 * 1000)
+  // Use LOCAL date (not UTC) — toISOString() shifts by timezone
+  const localDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  const today = localDateStr(earliestPickup)
+  const maxDate = localDateStr(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
+  // For min time, only enforce if selected date == today's earliest date
+  const minTimeOnEarliestDate = booking.date === today
+    ? `${String(earliestPickup.getHours()).padStart(2,'0')}:${String(earliestPickup.getMinutes()).padStart(2,'0')}`
+    : '00:00'
+
+  const formatAdvance = (h) => {
+    if (h < 1) {
+      const m = Math.round(h * 60)
+      return `${m} minute${m === 1 ? '' : 's'}`
+    }
+    const hrs = Math.floor(h)
+    const mins = Math.round((h - hrs) * 60)
+    if (mins) return `${hrs}h ${mins}m`
+    return `${hrs} hour${hrs === 1 ? '' : 's'}`
+  }
 
   const hasRoomPickup = booking.extras.includes('room_pickup')
 
@@ -52,6 +72,12 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
     }
     if (booking.date < today) {
       setToast({ message: 'The pickup date cannot be in the past', type: 'error' })
+      return
+    }
+    // Enforce minimum advance booking time
+    const pickupDateTime = new Date(`${booking.date}T${booking.time}`)
+    if (pickupDateTime < earliestPickup) {
+      setToast({ message: `Pickup must be at least ${formatAdvance(minAdvanceHours)} from now`, type: 'error' })
       return
     }
     if (!booking.clientName.trim()) {
@@ -152,13 +178,15 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
             onChange={e => setBooking(prev => ({ ...prev, date: e.target.value }))}
             className="flex-1 px-3 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <input
-            type="time"
-            value={booking.time}
-            onChange={e => setBooking(prev => ({ ...prev, time: e.target.value }))}
-            className="flex-1 px-3 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          <div className="flex-1">
+            <TimeSelect
+              value={booking.time}
+              minTime={minTimeOnEarliestDate}
+              onChange={t => setBooking(prev => ({ ...prev, time: t }))}
+            />
+          </div>
         </div>
+        <p className="text-xs text-slate-400 mt-2">Pickup must be at least {formatAdvance(minAdvanceHours)} from now.</p>
       </Section>
 
       {/* Your info — placed before add-ons so it's always visible */}

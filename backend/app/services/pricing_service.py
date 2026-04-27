@@ -3,9 +3,11 @@ Pricing Engine — calculates ride prices based on:
 1. Common route fixed price (if route matches)
 2. Distance × per-mile rate + base fare (for custom routes)
 3. Extras (add-ons)
-4. Active upsales (applied silently — never shown to client)
+4. Active upsales (applied silently — never shown to client). Multiple upsales
+   may stack; each upsale optionally limits itself to a date range and/or a
+   daily time-of-day window.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timezone, time as _time
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,25 +69,41 @@ async def get_extras_by_slugs(db: AsyncSession, slugs: list[str]) -> list[Extra]
     return list(result.scalars().all())
 
 
-async def get_active_upsale(db: AsyncSession, vehicle_type: str) -> Upsale | None:
-    """Find an active upsale that applies right now for this vehicle type."""
-    now = datetime.now(timezone.utc)
-    result = await db.execute(
-        select(Upsale).where(
-            Upsale.is_active == True,
-            Upsale.start_time <= now,
-            Upsale.end_time >= now,
-        )
-    )
-    upsales = result.scalars().all()
+def _time_in_window(t: _time, start: _time | None, end: _time | None) -> bool:
+    """Both null → all-day match. End-before-start wraps midnight (e.g. 22:00–04:00)."""
+    if start is None and end is None:
+        return True
+    if start is None:
+        return t <= end
+    if end is None:
+        return t >= start
+    if start <= end:
+        return start <= t <= end
+    # wrap over midnight
+    return t >= start or t <= end
 
-    for upsale in upsales:
-        # null vehicle_types means applies to all
-        if upsale.vehicle_types is None:
-            return upsale
-        if vehicle_type in upsale.vehicle_types:
-            return upsale
-    return None
+
+def upsale_applies(upsale: Upsale, vehicle_type: str, pickup_dt: datetime) -> bool:
+    if not upsale.is_active:
+        return False
+    if upsale.vehicle_types is not None and vehicle_type not in upsale.vehicle_types:
+        return False
+    pickup_date = pickup_dt.date()
+    if upsale.start_date and pickup_date < upsale.start_date:
+        return False
+    if upsale.end_date and pickup_date > upsale.end_date:
+        return False
+    if not _time_in_window(pickup_dt.time(), upsale.daily_start_time, upsale.daily_end_time):
+        return False
+    return True
+
+
+async def get_active_upsales(
+    db: AsyncSession, vehicle_type: str, pickup_dt: datetime
+) -> list[Upsale]:
+    """Return every active upsale whose date/time/vehicle filters match."""
+    result = await db.execute(select(Upsale).where(Upsale.is_active == True))
+    return [u for u in result.scalars().all() if upsale_applies(u, vehicle_type, pickup_dt)]
 
 
 def calculate_upsale_amount(base_amount: float, upsale: Upsale) -> float:
@@ -105,6 +123,7 @@ async def calculate_price(
     vehicle_type: str,
     extra_slugs: list[str],
     distance_miles: float | None = None,
+    pickup_dt: datetime | None = None,
 ) -> dict:
     """
     Calculate the full price for a ride.
@@ -133,15 +152,10 @@ async def calculate_price(
             route_distance = float(common_route.distance_miles) if common_route.distance_miles else None
 
     if not common_route:
-        # Calculate from distance
+        # Calculate from real driving distance (Google Distance Matrix API)
         if distance_miles is None:
-            # TODO: call Google Maps Distance Matrix API
-            # For now, estimate from coordinates (rough)
-            import math
-            lat_diff = abs(pickup_lat - dropoff_lat)
-            lng_diff = abs(pickup_lng - dropoff_lng)
-            # Very rough: 1 degree ≈ 69 miles
-            distance_miles = math.sqrt(lat_diff**2 + lng_diff**2) * 69
+            from app.services.maps_service import driving_distance_miles
+            distance_miles = await driving_distance_miles(pickup_lat, pickup_lng, dropoff_lat, dropoff_lng)
 
         base_amount = float(rate.base_fare) + (distance_miles * float(rate.per_mile_rate))
         route_distance = distance_miles
@@ -153,11 +167,15 @@ async def calculate_price(
     extras_amount = sum(float(e.price) for e in extras)
     extras_detail = [{"slug": e.slug, "name": e.name, "price": float(e.price)} for e in extras]
 
-    # 3. Check for active upsale (silent — client never sees this)
-    upsale = await get_active_upsale(db, vehicle_type)
-    upsale_amount = 0.0
-    if upsale:
-        upsale_amount = calculate_upsale_amount(base_amount, upsale)
+    # 3. Sum all active upsales whose filters match (silent — client never sees this)
+    if pickup_dt is None:
+        pickup_dt = datetime.now(timezone.utc)
+    upsales = await get_active_upsales(db, vehicle_type, pickup_dt)
+    upsale_amount = round(sum(calculate_upsale_amount(base_amount, u) for u in upsales), 2)
+    applied_upsales = [
+        {"id": str(u.id), "name": u.name, "type": u.type, "amount": float(u.amount)}
+        for u in upsales
+    ]
 
     # 4. Total
     total_amount = round(base_amount + extras_amount + upsale_amount, 2)
@@ -170,7 +188,8 @@ async def calculate_price(
         "total_amount": total_amount,
         "distance_miles": round(route_distance, 1) if route_distance else None,
         "common_route_id": str(common_route.id) if common_route else None,
-        "upsale_id": str(upsale.id) if upsale else None,
+        "upsale_id": applied_upsales[0]["id"] if applied_upsales else None,
+        "applied_upsales": applied_upsales,
         "extras_detail": extras_detail,
     }
 
@@ -182,6 +201,7 @@ async def calculate_all_vehicle_prices(
     dropoff_lat: float,
     dropoff_lng: float,
     extra_slugs: list[str] | None = None,
+    pickup_dt: datetime | None = None,
 ) -> list[dict]:
     """
     Calculate prices for ALL vehicle types for a given route.
@@ -197,7 +217,7 @@ async def calculate_all_vehicle_prices(
         try:
             price = await calculate_price(
                 db, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng,
-                rate.vehicle_type, extra_slugs or [],
+                rate.vehicle_type, extra_slugs or [], pickup_dt=pickup_dt,
             )
             price["display_name"] = rate.display_name
             price["max_passengers"] = rate.max_passengers
