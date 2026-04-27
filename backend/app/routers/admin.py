@@ -276,32 +276,39 @@ async def get_notifications(
             "time": booking.completed_at.isoformat() if booking.completed_at else split.created_at.isoformat(),
         })
 
-    # 2. New bookings (paid, no driver yet)
+    # Event log is built from timestamp fields, NOT current status — a single
+    # booking can produce multiple notifications (paid → assigned → started → completed)
+    # and they all stay visible in the timeline.
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    EVENT_LIMIT = 50
+
+    # 2. New booking (when payment was received)
     r = await db.execute(
         select(Booking)
-        .where(Booking.status == "paid", Booking.driver_id.is_(None))
+        .where(Booking.paid_at.is_not(None), Booking.paid_at >= cutoff)
         .order_by(Booking.paid_at.desc())
-        .limit(10)
+        .limit(EVENT_LIMIT)
     )
     for b in r.scalars().all():
         notifications.append({
-            "id": str(b.id),
+            "id": f"paid-{b.id}",
             "type": "new_booking",
             "icon": "booking",
             "color": "blue",
             "title": f"New ride — {b.booking_number}",
             "message": f"{b.client_name}: {b.pickup_name} → {b.dropoff_name} • ${float(b.total_amount):.2f}",
             "link": f"/runs/{b.id}",
-            "time": b.paid_at.isoformat() if b.paid_at else b.created_at.isoformat(),
+            "time": b.paid_at.isoformat(),
         })
 
-    # 3. Driver accepted a run (only while status is still 'assigned' — i.e., not yet started)
+    # 3. Driver accepted (assigned_at set)
     r = await db.execute(
         select(Booking, Driver)
         .join(Driver, Booking.driver_id == Driver.id)
-        .where(Booking.status == "assigned")
+        .where(Booking.assigned_at.is_not(None), Booking.assigned_at >= cutoff)
         .order_by(Booking.assigned_at.desc())
-        .limit(5)
+        .limit(EVENT_LIMIT)
     )
     for b, d in r.all():
         notifications.append({
@@ -312,16 +319,16 @@ async def get_notifications(
             "title": f"{d.name} accepted a run",
             "message": f"{b.booking_number}: {b.pickup_name} → {b.dropoff_name}",
             "link": f"/runs/{b.id}",
-            "time": b.assigned_at.isoformat() if b.assigned_at else b.created_at.isoformat(),
+            "time": b.assigned_at.isoformat(),
         })
 
-    # 3b. Ride in progress — driver started the ride
+    # 3b. Ride started (started_at set)
     r = await db.execute(
         select(Booking, Driver)
         .join(Driver, Booking.driver_id == Driver.id)
-        .where(Booking.status == "in_progress")
+        .where(Booking.started_at.is_not(None), Booking.started_at >= cutoff)
         .order_by(Booking.started_at.desc())
-        .limit(5)
+        .limit(EVENT_LIMIT)
     )
     for b, d in r.all():
         notifications.append({
@@ -332,18 +339,16 @@ async def get_notifications(
             "title": f"{d.name} started a ride",
             "message": f"{b.booking_number}: heading to {b.dropoff_name}",
             "link": f"/runs/{b.id}",
-            "time": b.started_at.isoformat() if b.started_at else b.created_at.isoformat(),
+            "time": b.started_at.isoformat(),
         })
 
-    # 3c. Ride completed (recent — last 24h)
-    from datetime import timedelta
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    # 3c. Ride completed (completed_at set)
     r = await db.execute(
         select(Booking, Driver)
         .join(Driver, Booking.driver_id == Driver.id)
-        .where(Booking.status == "completed", Booking.completed_at >= cutoff)
+        .where(Booking.completed_at.is_not(None), Booking.completed_at >= cutoff)
         .order_by(Booking.completed_at.desc())
-        .limit(5)
+        .limit(EVENT_LIMIT)
     )
     for b, d in r.all():
         notifications.append({
@@ -354,15 +359,16 @@ async def get_notifications(
             "title": f"{d.name} completed a ride",
             "message": f"{b.booking_number}: {b.pickup_name} → {b.dropoff_name}",
             "link": f"/runs/{b.id}",
-            "time": b.completed_at.isoformat() if b.completed_at else b.created_at.isoformat(),
+            "time": b.completed_at.isoformat(),
         })
 
-    # 3d. Cancelled / Refunded bookings (recent — last 24h)
+    # 3d. Cancelled (cancelled_at set — fall back to created_at for legacy rows)
     r = await db.execute(
         select(Booking)
-        .where(Booking.status == "cancelled", Booking.created_at >= cutoff)
-        .order_by(Booking.created_at.desc())
-        .limit(5)
+        .where(Booking.status == "cancelled",
+               func.coalesce(Booking.cancelled_at, Booking.created_at) >= cutoff)
+        .order_by(func.coalesce(Booking.cancelled_at, Booking.created_at).desc())
+        .limit(EVENT_LIMIT)
     )
     for b in r.scalars().all():
         notifications.append({
@@ -373,7 +379,7 @@ async def get_notifications(
             "title": f"Ride cancelled — {b.booking_number}",
             "message": f"{b.client_name}: {b.pickup_name} → {b.dropoff_name}",
             "link": f"/runs/{b.id}",
-            "time": b.created_at.isoformat(),
+            "time": (b.cancelled_at or b.created_at).isoformat(),
         })
 
     # 4. Pending driver registrations
