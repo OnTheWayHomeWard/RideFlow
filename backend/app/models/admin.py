@@ -18,4 +18,5 @@ class Admin(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="admin")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    password_changed: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

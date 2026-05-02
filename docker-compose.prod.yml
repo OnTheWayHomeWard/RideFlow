@@ -1,0 +1,69 @@
+# Production compose. Differences from docker-compose.yml:
+#  - Backend runs without --reload and without bind-mounted source.
+#  - Frontends are built (npm run build) and served as static files by nginx,
+#    which also proxies /api -> backend over the docker network.
+#  - DB port is NOT exposed to the host (only reachable inside the docker network).
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Required env vars (in .env): DB_PASSWORD, JWT_SECRET, STRIPE_SECRET_KEY,
+#   STRIPE_WEBHOOK_SECRET, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
+#   TWILIO_PHONE_NUMBER, GOOGLE_MAPS_API_KEY.
+
+services:
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: rideflow
+      POSTGRES_USER: rideflow
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rideflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    # Run pending migrations, then start uvicorn (no --reload, no source mount).
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    expose:
+      - "8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://rideflow:${DB_PASSWORD}@db:5432/rideflow
+      DATABASE_URL_SYNC: postgresql://rideflow:${DB_PASSWORD}@db:5432/rideflow
+      JWT_SECRET: ${JWT_SECRET}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  client:
+    build:
+      context: ./frontend/client
+      dockerfile: Dockerfile.prod
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+  staff:
+    build:
+      context: ./frontend/staff
+      dockerfile: Dockerfile.prod
+    ports:
+      - "5174:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

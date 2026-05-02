@@ -18,7 +18,7 @@ from app.models.vehicle_rate import VehicleRate
 from app.models.extra import Extra
 from app.models.setting import Setting
 from app.utils.helpers import generate_ref_code
-from app.utils.security import hash_password
+from app.utils.security import hash_password, verify_password
 from app.services.split_service import get_setting_value
 from app.schemas.admin import (
     DashboardStats, PayoutRequestOut, PayoutActionRequest,
@@ -2903,3 +2903,154 @@ async def refund_booking(booking_id: str, req: RefundRequest, admin: Admin = Dep
         "refund_amount": refund_amount,
         "booking_status": booking.status,
     }
+
+
+# ═══════════════════════════════════════════
+# ADMIN SELF-SERVICE
+# ═══════════════════════════════════════════
+
+@router.get("/me")
+async def get_admin_me(admin: Admin = Depends(get_current_admin)):
+    return {
+        "id": str(admin.id),
+        "name": admin.name,
+        "email": admin.email,
+        "role": admin.role,
+        "is_super_admin": admin.role == "super_admin",
+        "password_changed": admin.password_changed,
+    }
+
+
+class ChangePasswordRequest(_BM):
+    current_password: str
+    new_password: str
+
+
+@router.post("/me/change-password")
+async def change_admin_password(
+    req: ChangePasswordRequest,
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    if not verify_password(req.current_password, admin.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if len(req.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+    admin.password_hash = hash_password(req.new_password)
+    admin.password_changed = True
+    await db.commit()
+    return {"message": "Password changed"}
+
+
+# ═══════════════════════════════════════════
+# ADMIN MANAGEMENT (super-admin only)
+# ═══════════════════════════════════════════
+
+def _require_super_admin(admin: Admin):
+    if admin.role != "super_admin":
+        raise HTTPException(status_code=403, detail="Only the super admin can perform this action")
+
+
+@router.get("/admins")
+async def list_admins(
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_super_admin(admin)
+    r = await db.execute(select(Admin).order_by(Admin.created_at.desc()))
+    return [
+        {
+            "id": str(a.id),
+            "name": a.name,
+            "email": a.email,
+            "role": a.role,
+            "is_super_admin": a.role == "super_admin",
+            "is_active": a.is_active,
+            "password_changed": a.password_changed,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+        }
+        for a in r.scalars().all()
+    ]
+
+
+class CreateAdminRequest(_BM):
+    name: str
+    email: str
+    password: str
+
+
+@router.post("/admins")
+async def create_admin(
+    req: CreateAdminRequest,
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_super_admin(admin)
+    if len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    existing = await db.execute(select(Admin).where(Admin.email == req.email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="An admin with that email already exists")
+
+    new_admin = Admin(
+        name=req.name,
+        email=req.email,
+        password_hash=hash_password(req.password),
+        role="admin",  # super-admin role is reserved for the seeded account
+        password_changed=False,  # force change on first login
+    )
+    db.add(new_admin)
+    await db.commit()
+    await db.refresh(new_admin)
+    return {
+        "id": str(new_admin.id),
+        "name": new_admin.name,
+        "email": new_admin.email,
+        "role": new_admin.role,
+        "password_changed": new_admin.password_changed,
+    }
+
+
+class ResetAdminPasswordRequest(_BM):
+    new_password: str
+
+
+@router.post("/admins/{admin_id}/reset-password")
+async def reset_admin_password(
+    admin_id: str,
+    req: ResetAdminPasswordRequest,
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_super_admin(admin)
+    if len(req.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    target_r = await db.execute(select(Admin).where(Admin.id == admin_id))
+    target = target_r.scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    target.password_hash = hash_password(req.new_password)
+    target.password_changed = False  # so the admin is nudged to change it next login
+    await db.commit()
+    return {"message": "Password reset. The admin will be asked to change it on next login."}
+
+
+@router.delete("/admins/{admin_id}")
+async def delete_admin(
+    admin_id: str,
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_super_admin(admin)
+    if str(admin.id) == admin_id:
+        raise HTTPException(status_code=400, detail="You cannot delete yourself")
+    target_r = await db.execute(select(Admin).where(Admin.id == admin_id))
+    target = target_r.scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    if target.role == "super_admin":
+        raise HTTPException(status_code=403, detail="The super admin cannot be deleted")
+    await db.delete(target)
+    await db.commit()
+    return {"message": "Admin deleted"}

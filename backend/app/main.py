@@ -1,13 +1,24 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import pricing, bookings, cashiers, auth, payments, drivers, admin
 from app.services.payment_service import is_dev_mode
+from app.services.bootstrap import ensure_default_admin, ensure_default_settings
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await ensure_default_admin()
+    await ensure_default_settings()
+    yield
+
 
 app = FastAPI(
     title="RideFlow API",
     description="Transport booking system — reservation-based ride service",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
