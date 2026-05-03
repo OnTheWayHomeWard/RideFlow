@@ -101,6 +101,15 @@ async def notify_client_booking(db: AsyncSession, client_phone: str, variables: 
     await send_sms(db, client_phone, message, "client_booking")
 
 
+async def notify_client_ride_completed(db: AsyncSession, client_phone: str, variables: dict):
+    """Notify client when their ride is completed — thanks + rating link."""
+    template = await get_template(db, "sms_client_ride_completed")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, client_phone, message, "client_ride_completed")
+
+
 async def notify_client_ride_started(db: AsyncSession, client_phone: str, variables: dict):
     """Notify client when ride starts with rating link."""
     template = await get_template(db, "sms_client_ride_started")

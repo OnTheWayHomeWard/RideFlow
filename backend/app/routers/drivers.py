@@ -375,6 +375,23 @@ async def complete_ride(
     except Exception as e:
         print(f"[SMS ERROR] Driver ride completed SMS failed: {e}")
 
+    # Send thank-you + feedback SMS to client
+    try:
+        from app.services.sms_service import notify_client_ride_completed
+        from app.utils.urls import get_client_base_url
+        confirmation_url = f"{await get_client_base_url(db)}/confirmation/{booking.booking_number}"
+        await notify_client_ride_completed(db, booking.client_phone, {
+            "client_name": booking.client_name,
+            "driver_name": driver.name,
+            "pickup_name": booking.pickup_name,
+            "dropoff_name": booking.dropoff_name,
+            "booking_number": booking.booking_number,
+            "confirmation_url": confirmation_url,
+        })
+        await db.commit()
+    except Exception as e:
+        print(f"[SMS ERROR] Client ride completed SMS failed: {e}")
+
     earnings = float(driver_split.amount) if driver_split else 0
 
     return {
