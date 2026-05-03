@@ -72,18 +72,14 @@ async def create_splits_for_booking(db: AsyncSession, booking: Booking, payment:
                 "total_earnings": f"{float(cashier.total_earnings):.2f}",
             })
 
-    # 2. Driver cut (calculated now, paid after admin releases)
+    # 2. Driver cut — same formula everywhere:
+    #    base_amount * driver_pay_pct
+    # (extras, upsale, cashier commission all come out of the company side, not driver's.)
+    # Driver isn't assigned yet, so use the global default; if a specific driver
+    # accepts the run later, drivers.accept_run will recalc with the driver's own pct.
     default_driver_pct = await get_setting_value(db, "default_driver_pay_pct", 70)
     driver_pct = float(default_driver_pct)
-
-    # Check if upsale is included in driver pay
-    if booking.upsale_amount and float(booking.upsale_amount) > 0:
-        # By default driver does NOT get upsale — calculated on base only
-        driver_base = float(booking.base_amount) + float(booking.extras_amount) - cashier_amount
-    else:
-        driver_base = total - cashier_amount
-
-    driver_amount = round(driver_base * driver_pct / 100, 2)
+    driver_amount = round(float(booking.base_amount) * driver_pct / 100, 2)
 
     splits.append(PaymentSplit(
         payment_id=payment.id,

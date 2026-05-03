@@ -62,3 +62,14 @@ vpn ipsec .... tunnel tele-cloud
 10 bandwidth
 
 elk
+
+
+
+GO BELL ME
+
+- pricing: common routes!
+- payment is showing for pending rides but only it should be showed on complete!
+- server time zone check
+- hotel? address should be google lookup
+- stripe connect from deriver
+- when we have addon payment for deriver check!!!

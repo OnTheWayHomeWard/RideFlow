@@ -221,6 +221,7 @@ function ExtrasTab({ extras, reload }) {
 
 // ═══ COMMON ROUTES ═══
 function RoutesTab({ routes, rates, reload, googleApiKey }) {
+  const settings = useSettings()
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', from_name: '', from_address: '', from_lat: '', from_lng: '', to_name: '', to_address: '', to_lat: '', to_lng: '', distance_miles: '', base_amount: '' })
   const [editId, setEditId] = useState(null)

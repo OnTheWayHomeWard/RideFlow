@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../api/adminClient'
 import Pagination from '../../components/admin/Pagination'
+import AddressInput from '../../components/admin/AddressInput'
+import { useSettings } from '../../hooks/useSettings'
 
 const EMPTY_FORM = { name: '', address: '', contact_name: '', contact_phone: '', default_commission_pct: 10, lat: '', lng: '', concierge_id: '' }
 
@@ -10,6 +12,7 @@ function stripPlusCode(s) {
 }
 
 export default function Hotels() {
+  const settings = useSettings()
   const [data, setData] = useState({ items: [], total: 0, page: 1, total_pages: 0 })
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
@@ -100,10 +103,24 @@ export default function Hotels() {
               <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} required
                 className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
-            <div>
+            <div className="lg:col-span-2">
               <label className="text-xs text-slate-500">Address</label>
-              <input value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))} required
-                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <div className="mt-1">
+                <AddressInput
+                  value={form.address}
+                  onChange={(loc) => setForm(p => ({
+                    ...p,
+                    address: loc.address || loc.name || '',
+                    lat: loc.lat || '',
+                    lng: loc.lng || '',
+                  }))}
+                  placeholder="Search for the hotel..."
+                  googleApiKey={settings.google_maps_api_key}
+                  countries={settings.available_countries}
+                  serviceAreas={settings.service_areas}
+                />
+              </div>
+              <p className="text-xs text-slate-400 mt-1">Pick from suggestions to auto-set the location coordinates.</p>
             </div>
             <div>
               <label className="text-xs text-slate-500">Contact Name</label>
@@ -129,18 +146,6 @@ export default function Hotels() {
                 {concierges.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <p className="text-xs text-slate-400 mt-1">Cashier commissions will be paid out through this concierge</p>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs text-slate-500">Latitude</label>
-                <input type="number" step="any" value={form.lat} onChange={e => setForm(p => ({ ...p, lat: e.target.value }))} placeholder="Optional"
-                  className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <div>
-                <label className="text-xs text-slate-500">Longitude</label>
-                <input type="number" step="any" value={form.lng} onChange={e => setForm(p => ({ ...p, lng: e.target.value }))} placeholder="Optional"
-                  className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
             </div>
           </div>
           <div className="flex gap-2">

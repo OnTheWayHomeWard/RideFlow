@@ -112,7 +112,8 @@ async def preview_driver_payout(db: AsyncSession, driver_id, period_start=None, 
     conditions = [
         PaymentSplit.recipient_type == "driver",
         PaymentSplit.recipient_id == driver_id,
-        PaymentSplit.payout_status.in_(["pending_review", "pending"]),
+        # Only completed-but-unreleased rides — exclude 'pending' which is set at payment time.
+        PaymentSplit.payout_status == "pending_review",
     ]
     if period_start:
         conditions.append(PaymentSplit.created_at >= period_start)

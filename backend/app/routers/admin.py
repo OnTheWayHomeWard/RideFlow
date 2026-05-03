@@ -2532,7 +2532,8 @@ async def mark_batch_manual(batch_id: str, req: BatchPayoutRequest, admin: Admin
 
 @router.get("/drivers-with-pending")
 async def drivers_with_pending(admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """List all drivers who have pending-review splits, with their totals."""
+    """List all drivers who have completed-but-unreleased splits (pending_review only).
+    Excludes 'pending' which is set at payment time before the ride is even started."""
     r = await db.execute(
         select(
             PaymentSplit.recipient_id,
@@ -2541,7 +2542,7 @@ async def drivers_with_pending(admin: Admin = Depends(get_current_admin), db: As
         )
         .where(
             PaymentSplit.recipient_type == "driver",
-            PaymentSplit.payout_status.in_(["pending_review", "pending"]),
+            PaymentSplit.payout_status == "pending_review",
         )
         .group_by(PaymentSplit.recipient_id)
     )
