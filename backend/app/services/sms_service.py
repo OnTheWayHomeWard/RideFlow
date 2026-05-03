@@ -40,13 +40,13 @@ async def send_sms(db: AsyncSession, to: str, message: str, related_type: str = 
     sms_setting = sms_enabled_r.scalar_one_or_none()
     sms_enabled = not (sms_setting and not sms_setting.value)
 
-    # Log the notification
+    # Log the notification (defensive truncation in case the DB column is narrower than expected)
     log = NotificationLog(
-        recipient=to,
+        recipient=(to or "")[:20],
         channel="sms",
         message=message,
         status="sent" if sms_enabled else "disabled",
-        related_type=related_type,
+        related_type=(related_type or None) if related_type is None else related_type[:50],
         related_id=related_id,
     )
     db.add(log)

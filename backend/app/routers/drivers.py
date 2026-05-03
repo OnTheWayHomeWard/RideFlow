@@ -296,7 +296,8 @@ async def start_ride(
     # Send SMS to client with rating link (after commit)
     try:
         from app.services.sms_service import notify_client_ride_started
-        confirmation_url = f"http://localhost:5173/confirmation/{booking.booking_number}"
+        from app.utils.urls import get_client_base_url
+        confirmation_url = f"{await get_client_base_url(db)}/confirmation/{booking.booking_number}"
         await notify_client_ride_started(db, booking.client_phone, {
             "client_name": booking.client_name,
             "driver_name": driver.name,
@@ -556,8 +557,10 @@ async def stripe_connect(driver: Driver = Depends(get_current_driver), db: Async
         await db.commit()
         return {"already_connected": True, "account_id": acct_id, "details": details}
 
-    return_url = "http://localhost:5174/profile?stripe=complete"
-    refresh_url = "http://localhost:5174/profile?stripe=refresh"
+    from app.utils.urls import get_staff_base_url
+    staff_base = await get_staff_base_url(db)
+    return_url = f"{staff_base}/driver/profile?stripe=complete"
+    refresh_url = f"{staff_base}/driver/profile?stripe=refresh"
     url = await create_onboarding_link(acct_id, return_url, refresh_url)
 
     await db.commit()
@@ -591,15 +594,17 @@ async def stripe_status(driver: Driver = Depends(get_current_driver), db: AsyncS
 
 
 @router.post("/stripe/onboarding-link")
-async def stripe_onboarding_link(driver: Driver = Depends(get_current_driver)):
+async def stripe_onboarding_link(driver: Driver = Depends(get_current_driver), db: AsyncSession = Depends(get_db)):
     """Get a fresh onboarding link (for incomplete setups)."""
     if not driver.stripe_connect_id:
         raise HTTPException(status_code=400, detail="No Stripe account found. Use /stripe/connect first.")
 
     from app.services.connect_service import create_onboarding_link
+    from app.utils.urls import get_staff_base_url
+    staff_base = await get_staff_base_url(db)
     url = await create_onboarding_link(
         driver.stripe_connect_id,
-        "http://localhost:5174/profile?stripe=complete",
-        "http://localhost:5174/profile?stripe=refresh",
+        f"{staff_base}/driver/profile?stripe=complete",
+        f"{staff_base}/driver/profile?stripe=refresh",
     )
     return {"onboarding_url": url}

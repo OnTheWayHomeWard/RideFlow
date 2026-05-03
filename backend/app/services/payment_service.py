@@ -42,7 +42,9 @@ async def create_checkout_session(db: AsyncSession, booking: Booking) -> dict:
 
     # PRODUCTION — real Stripe
     import stripe
+    from app.utils.urls import get_client_base_url
     stripe.api_key = settings.STRIPE_SECRET_KEY
+    client_base = await get_client_base_url(db)
 
     session = stripe.checkout.Session.create(
         payment_method_types=["card"],
@@ -58,8 +60,8 @@ async def create_checkout_session(db: AsyncSession, booking: Booking) -> dict:
             "quantity": 1,
         }],
         mode="payment",
-        success_url=f"http://localhost:5173/confirmation/{booking.booking_number}",
-        cancel_url=f"http://localhost:5173/booking?cancelled=true",
+        success_url=f"{client_base}/confirmation/{booking.booking_number}",
+        cancel_url=f"{client_base}/book?cancelled=true",
         metadata={
             "booking_number": booking.booking_number,
             "booking_id": str(booking.id),
@@ -99,7 +101,8 @@ async def confirm_payment(db: AsyncSession, booking: Booking, stripe_payment_id:
 
     # Send confirmation SMS to client
     from app.services.sms_service import notify_client_booking
-    confirmation_url = f"http://localhost:5173/confirmation/{booking.booking_number}"
+    from app.utils.urls import get_client_base_url
+    confirmation_url = f"{await get_client_base_url(db)}/confirmation/{booking.booking_number}"
     await notify_client_booking(db, booking.client_phone, {
         "client_name": booking.client_name,
         "pickup_name": booking.pickup_name,

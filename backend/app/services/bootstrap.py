@@ -25,6 +25,10 @@ DEFAULT_SETTINGS = [
     ("company_phone", "", "Company contact phone"),
     ("company_logo_url", "", "Company logo URL. Empty = default icon."),
 
+    # ── Public URLs ──  (used in SMS messages, Stripe redirects, QR codes)
+    ("client_base_url", "http://localhost:5173", "Public URL of the client booking app, e.g. https://ride.example.com"),
+    ("staff_base_url", "http://localhost:5174", "Public URL of the staff portal, e.g. https://staff.example.com"),
+
     # ── Payment & commissions ──
     ("default_driver_pay_pct", 70, "Default driver pay percentage of base fare"),
     ("default_cashier_commission_pct", 10, "Default cashier commission percentage of total"),

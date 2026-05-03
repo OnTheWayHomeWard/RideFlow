@@ -6,9 +6,11 @@ export default function Settings() {
   const [settings, setSettings] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(null)
+  const [me, setMe] = useState(null)
 
   useEffect(() => {
     api.getSettings().then(setSettings).catch(() => {}).finally(() => setLoading(false))
+    api.getMe().then(setMe).catch(() => {})
   }, [])
 
   const handleSave = async (key, value) => {
@@ -39,6 +41,9 @@ export default function Settings() {
 
       {/* Group settings by category */}
       <SettingsGroup title="Company" settings={otherSettings.filter(s => s.key.startsWith('company_'))} saving={saving} onSave={handleSave} />
+      {me?.is_super_admin && (
+        <SettingsGroup title="Public URLs (super-admin only)" settings={otherSettings.filter(s => ['client_base_url', 'staff_base_url'].includes(s.key))} saving={saving} onSave={handleSave} />
+      )}
       <SettingsGroup title="Payment & Commissions" settings={otherSettings.filter(s => ['default_driver_pay_pct','default_cashier_commission_pct','cashier_commission_enabled','driver_payout_schedule','late_cancel_refund_pct','max_active_runs_per_driver'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Booking" settings={otherSettings.filter(s => ['booking_window_days','cancellation_window_hours','unassigned_alert_minutes','review_expiry_days','min_advance_booking_hours'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Driver Priority" settings={otherSettings.filter(s => ['priority_delay_normal_minutes','priority_delay_low_minutes'].includes(s.key))} saving={saving} onSave={handleSave} />

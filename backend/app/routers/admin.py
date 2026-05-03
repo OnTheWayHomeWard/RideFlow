@@ -1539,11 +1539,14 @@ async def generate_qr(
     company_phone = str(await get_setting_value(db, "company_phone", ""))
 
     from app.services.qr_service import generate_cashier_qr
+    from app.utils.urls import get_client_base_url
+    client_base = await get_client_base_url(db)
     qr_base64 = generate_cashier_qr(
         ref_code=cashier.ref_code,
         cashier_name=cashier.name,
         hotel_name=hotel_name,
         company_name=company_name,
+        base_url=client_base,
     )
 
     return {
@@ -1553,7 +1556,7 @@ async def generate_qr(
         "hotel_name": hotel_name,
         "company_name": company_name,
         "company_phone": company_phone,
-        "booking_url": f"http://localhost:5173/book?ref={cashier.ref_code}",
+        "booking_url": f"{client_base}/book?ref={cashier.ref_code}",
     }
 
 
@@ -1975,12 +1978,18 @@ async def list_settings(admin: Admin = Depends(get_current_admin), db: AsyncSess
     return result.scalars().all()
 
 
+SUPER_ADMIN_ONLY_SETTINGS = {"client_base_url", "staff_base_url"}
+
+
 @router.put("/settings")
 async def update_setting(
     req: SettingUpdateRequest,
     admin: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    if req.key in SUPER_ADMIN_ONLY_SETTINGS and admin.role != "super_admin":
+        raise HTTPException(status_code=403, detail="Only the super admin can change this setting")
+
     result = await db.execute(select(Setting).where(Setting.key == req.key))
     setting = result.scalar_one_or_none()
     if not setting:
@@ -2165,7 +2174,8 @@ async def execute_concierge_payout(concierge_id: str, req: BatchPayoutRequest, a
             {"sub": str(batch.id), "role": "concierge_batch_view"},
             expires_delta=timedelta(days=30),
         )
-        batch_url = f"http://localhost:5175/concierge-batch?token={batch_token}"
+        from app.utils.urls import get_staff_base_url
+        batch_url = f"{await get_staff_base_url(db)}/concierge-batch?token={batch_token}"
 
     # SMS notifications (for both Stripe success and manual settlements)
     if batch.status in ("released", "manual"):
@@ -2246,7 +2256,8 @@ async def generate_concierge_onboarding_link(concierge_id: str, admin: Admin = D
 
     # Create a long-lived token (7 days) specifically for onboarding
     token = create_access_token({"sub": str(concierge.id), "role": "concierge_onboarding"}, expires_delta=timedelta(days=7))
-    link = f"http://localhost:5175/concierge-onboarding?token={token}"
+    from app.utils.urls import get_staff_base_url
+    link = f"{await get_staff_base_url(db)}/concierge-onboarding?token={token}"
     return {"link": link, "expires_in_days": 7}
 
 
@@ -2278,8 +2289,10 @@ async def _start_concierge_stripe(concierge_id: str, db: AsyncSession):
         await db.commit()
         return {"already_connected": True, "account_id": acct_id, "details": details}
 
-    return_url = f"http://localhost:5175/concierge-onboarding/complete?concierge_id={concierge_id}"
-    refresh_url = f"http://localhost:5175/concierge-onboarding/refresh?concierge_id={concierge_id}"
+    from app.utils.urls import get_staff_base_url
+    staff_base = await get_staff_base_url(db)
+    return_url = f"{staff_base}/concierge-onboarding/complete?concierge_id={concierge_id}"
+    refresh_url = f"{staff_base}/concierge-onboarding/refresh?concierge_id={concierge_id}"
     url = await create_onboarding_link(acct_id, return_url, refresh_url)
 
     await db.commit()
@@ -2385,7 +2398,8 @@ async def get_payout_batch_detail(batch_id: str, admin: Admin = Depends(get_curr
             {"sub": batch_id, "role": "concierge_batch_view"},
             expires_delta=timedelta(days=30),
         )
-        detail["batch"]["receipt_url"] = f"http://localhost:5175/concierge-batch?token={token}"
+        from app.utils.urls import get_staff_base_url
+        detail["batch"]["receipt_url"] = f"{await get_staff_base_url(db)}/concierge-batch?token={token}"
 
     return detail
 
