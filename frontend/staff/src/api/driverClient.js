@@ -24,6 +24,8 @@ export const api = {
   acceptRun: (id) => request(`/drivers/runs/${id}/accept`, { method: 'POST' }),
   startRide: (id, location) => request(`/drivers/runs/${id}/start`, { method: 'POST', body: JSON.stringify(location) }),
   completeRide: (id, location) => request(`/drivers/runs/${id}/complete`, { method: 'POST', body: JSON.stringify(location) }),
+  driverOnWay: (id) => request(`/drivers/runs/${id}/on-way`, { method: 'POST' }),
+  driverArrived: (id) => request(`/drivers/runs/${id}/arrived`, { method: 'POST' }),
   getMyRuns: (status) => request(`/drivers/my-runs${status ? `?status=${status}` : ''}`),
   getSchedule: () => request('/drivers/schedule'),
   getEarnings: () => request('/drivers/earnings'),

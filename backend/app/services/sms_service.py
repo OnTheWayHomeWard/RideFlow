@@ -181,6 +181,46 @@ async def notify_concierge_payout(db: AsyncSession, phone: str, variables: dict)
     await send_sms(db, phone, message, "concierge_payout")
 
 
+async def notify_client_reminder(db: AsyncSession, client_phone: str, variables: dict):
+    """Pre-ride reminder to client (X hours before)."""
+    template = await get_template(db, "sms_client_reminder")
+    if not template:
+        return
+    await send_sms(db, client_phone, render_template(template, variables), "client_reminder")
+
+
+async def notify_client_final_reminder(db: AsyncSession, client_phone: str, variables: dict):
+    """Final 'starting soon' reminder to client (X minutes before)."""
+    template = await get_template(db, "sms_client_final_reminder")
+    if not template:
+        return
+    await send_sms(db, client_phone, render_template(template, variables), "client_final_reminder")
+
+
+async def notify_driver_reminder(db: AsyncSession, driver_phone: str, variables: dict):
+    """Pre-ride reminder to driver (X hours before)."""
+    template = await get_template(db, "sms_driver_reminder")
+    if not template:
+        return
+    await send_sms(db, driver_phone, render_template(template, variables), "driver_reminder")
+
+
+async def notify_driver_on_way(db: AsyncSession, client_phone: str, variables: dict):
+    """Driver tapped 'On my way' — notify client."""
+    template = await get_template(db, "sms_driver_on_way")
+    if not template:
+        return
+    await send_sms(db, client_phone, render_template(template, variables), "driver_on_way")
+
+
+async def notify_driver_arrived(db: AsyncSession, client_phone: str, variables: dict):
+    """Driver tapped 'I've arrived' — notify client."""
+    template = await get_template(db, "sms_driver_arrived")
+    if not template:
+        return
+    await send_sms(db, client_phone, render_template(template, variables), "driver_arrived")
+
+
 async def notify_concierge_batch_link(db: AsyncSession, phone: str, variables: dict):
     template = await get_template(db, "sms_concierge_batch_link")
     if not template:

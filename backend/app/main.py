@@ -5,13 +5,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import pricing, bookings, cashiers, auth, payments, drivers, admin
 from app.services.payment_service import is_dev_mode
 from app.services.bootstrap import ensure_default_admin, ensure_default_settings
+from app.services import reminder_scheduler
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await ensure_default_admin()
     await ensure_default_settings()
-    yield
+    reminder_scheduler.start()
+    try:
+        yield
+    finally:
+        await reminder_scheduler.stop()
 
 
 app = FastAPI(

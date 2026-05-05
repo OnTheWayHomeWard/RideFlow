@@ -255,6 +255,90 @@ async def accept_run(
     }
 
 
+# ── Driver action notifications (courtesy SMS to client, manual buttons) ──
+
+@router.post("/runs/{booking_id}/on-way")
+async def driver_on_way(
+    booking_id: str,
+    driver: Driver = Depends(get_current_driver),
+    db: AsyncSession = Depends(get_db),
+):
+    """Driver tapped 'On my way'. Marks timestamp + sends courtesy SMS to client.
+    Idempotent — calling again is a no-op."""
+    r = await db.execute(select(Booking).where(
+        Booking.id == booking_id,
+        Booking.driver_id == driver.id,
+        Booking.status.in_(("assigned", "paid")),
+    ))
+    booking = r.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Run not found or not assigned to you")
+
+    if booking.driver_on_way_at:
+        return {"already_sent": True, "sent_at": booking.driver_on_way_at.isoformat()}
+
+    booking.driver_on_way_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    try:
+        from app.services.sms_service import notify_driver_on_way
+        await notify_driver_on_way(db, booking.client_phone, {
+            "client_name": booking.client_name,
+            "driver_name": driver.name,
+            "driver_phone": driver.phone,
+            "pickup_name": booking.pickup_name,
+            "dropoff_name": booking.dropoff_name,
+            "vehicle_type": booking.vehicle_type,
+            "booking_number": booking.booking_number,
+        })
+        await db.commit()
+    except Exception as e:
+        print(f"[SMS ERROR] driver_on_way for {booking.booking_number}: {e}")
+
+    return {"sent": True, "sent_at": booking.driver_on_way_at.isoformat()}
+
+
+@router.post("/runs/{booking_id}/arrived")
+async def driver_arrived(
+    booking_id: str,
+    driver: Driver = Depends(get_current_driver),
+    db: AsyncSession = Depends(get_db),
+):
+    """Driver tapped 'I've arrived'. Marks timestamp + sends courtesy SMS to client.
+    Idempotent."""
+    r = await db.execute(select(Booking).where(
+        Booking.id == booking_id,
+        Booking.driver_id == driver.id,
+        Booking.status.in_(("assigned", "paid")),
+    ))
+    booking = r.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Run not found or not assigned to you")
+
+    if booking.driver_arrived_at:
+        return {"already_sent": True, "sent_at": booking.driver_arrived_at.isoformat()}
+
+    booking.driver_arrived_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    try:
+        from app.services.sms_service import notify_driver_arrived
+        await notify_driver_arrived(db, booking.client_phone, {
+            "client_name": booking.client_name,
+            "driver_name": driver.name,
+            "driver_phone": driver.phone,
+            "pickup_name": booking.pickup_name,
+            "dropoff_name": booking.dropoff_name,
+            "vehicle_type": booking.vehicle_type,
+            "booking_number": booking.booking_number,
+        })
+        await db.commit()
+    except Exception as e:
+        print(f"[SMS ERROR] driver_arrived for {booking.booking_number}: {e}")
+
+    return {"sent": True, "sent_at": booking.driver_arrived_at.isoformat()}
+
+
 # ── Start Ride ──
 
 @router.post("/runs/{booking_id}/start")

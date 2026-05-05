@@ -64,6 +64,13 @@ class Booking(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Reminder + driver action notifications (idempotency keys for the scheduler / button presses)
+    client_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    client_final_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    driver_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    driver_on_way_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    driver_arrived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Location tracking
     start_location: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     end_location: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

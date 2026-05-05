@@ -82,6 +82,8 @@ class DriverRunOut(BaseModel):
     status: str
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    driver_on_way_at: datetime | None = None
+    driver_arrived_at: datetime | None = None
     payout_status: str | None = None
 
     model_config = {"from_attributes": True}

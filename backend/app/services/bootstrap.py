@@ -55,6 +55,14 @@ DEFAULT_SETTINGS = [
     ("priority_delay_normal_minutes", 2, "Minutes normal-priority drivers wait before seeing new runs"),
     ("priority_delay_low_minutes", 5, "Minutes low-priority drivers wait before seeing new runs"),
 
+    # ── Pre-ride reminders ──
+    # All three accept decimals (e.g. 1.5). Set to 0 to disable that reminder.
+    # The scheduler ticks every 60 seconds and uses a ±90s window so a backend
+    # restart at the wrong second won't miss a reminder.
+    ("client_reminder_hours", 1, "Hours before pickup to send the client a reminder SMS. Decimals allowed (e.g. 1.5 = 1h 30m). Set to 0 to disable. Min effective value ≈ 0.05 (≈3 min)."),
+    ("client_final_reminder_minutes", 15, "Minutes before pickup to send the client a final 'starting soon' reminder. Set to 0 to disable. Typical: 5–30."),
+    ("driver_reminder_hours", 2, "Hours before pickup to send the driver a reminder SMS. Decimals allowed (e.g. 0.5 = 30 min). Set to 0 to disable. Only fires if a driver has been assigned."),
+
     # ── SMS toggle ──
     ("sms_enabled", True, "Enable SMS notifications"),
 
@@ -73,6 +81,20 @@ DEFAULT_SETTINGS = [
     ("sms_driver_payout_flagged", "Hi {driver_name}, your payout of ${amount} for {route} has been flagged for review. Please contact support if you have questions.", "SMS to driver when payout flagged."),
     ("sms_driver_payout_rejected", "Hi {driver_name}, your payout of ${amount} for {route} has been rejected. Please contact support for details.", "SMS to driver when payout rejected."),
     ("sms_concierge_batch_link", "Payout of ${amount} sent on {date}. View full breakdown: {url}", "SMS to concierge with public receipt link."),
+
+    # ── Pre-ride reminder templates ──
+    ("sms_client_reminder", "Hi {client_name}, friendly reminder — your ride is in about {hours} hour(s) at {pickup_time}. Pickup: {pickup_name}. View details: {confirmation_url}",
+     "Sent to client X hours before pickup (X = client_reminder_hours). Vars: {client_name}, {driver_name}, {pickup_name}, {dropoff_name}, {pickup_time}, {hours}, {confirmation_url}, {booking_number}. Note: {driver_name} is empty if no driver assigned yet."),
+    ("sms_client_final_reminder", "Hi {client_name}, your ride is starting in {minutes} minutes at {pickup_name}. Make sure you're ready! {confirmation_url}",
+     "Final 'starting soon' reminder to client X minutes before pickup (X = client_final_reminder_minutes). Vars: {client_name}, {driver_name}, {pickup_name}, {dropoff_name}, {minutes}, {confirmation_url}, {booking_number}."),
+    ("sms_driver_reminder", "Hi {driver_name}, you have a run in {hours} hour(s) at {pickup_time}. {pickup_name} → {dropoff_name}. Client: {client_name} ({client_phone}).",
+     "Sent to driver X hours before pickup (X = driver_reminder_hours). Vars: {driver_name}, {client_name}, {client_phone}, {pickup_name}, {dropoff_name}, {pickup_time}, {hours}, {vehicle_type}, {booking_number}. Only sent if a driver is assigned."),
+
+    # ── Driver action button templates ──
+    ("sms_driver_on_way", "Hi {client_name}, your driver {driver_name} is on the way to pick you up at {pickup_name}. They'll be there shortly!",
+     "Sent to client when driver taps 'On my way'. Vars: {client_name}, {driver_name}, {driver_phone}, {pickup_name}, {dropoff_name}, {vehicle_type}, {booking_number}. Add {driver_phone} to the text if you want clients to be able to call the driver directly."),
+    ("sms_driver_arrived", "Hi {client_name}, your driver {driver_name} has arrived at {pickup_name} and is waiting for you.",
+     "Sent to client when driver taps 'I've arrived'. Vars: {client_name}, {driver_name}, {driver_phone}, {pickup_name}, {dropoff_name}, {vehicle_type}, {booking_number}. Add {driver_phone} to the text if you want clients to be able to call the driver directly."),
 ]
 
 

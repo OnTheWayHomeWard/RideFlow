@@ -109,6 +109,9 @@ export default function ActiveRide({ settings }) {
         {ride.payout_status && <p className="text-xs text-green-500 mt-0.5 capitalize">{ride.payout_status.replace('_', ' ')}</p>}
       </div>
 
+      {/* Pre-pickup courtesy notifications — visible within 1h of pickup, only while assigned */}
+      <PrePickupNotifications ride={ride} onUpdated={(updated) => setRide(updated)} />
+
       {/* Action buttons — fixed bottom */}
       {(isAssigned || isInProgress) && (
         <div className="fixed bottom-14 left-0 right-0 z-10">
@@ -139,6 +142,98 @@ export default function ActiveRide({ settings }) {
           Need help? Call <a href={`tel:${settings.company_phone}`} className="text-blue-600 font-medium">{settings.company_phone}</a>
         </p>
       )}
+    </div>
+  )
+}
+
+function PrePickupNotifications({ ride, onUpdated }) {
+  const [busy, setBusy] = useState(null)  // 'on-way' | 'arrived' | null
+
+  // Compute pickup datetime to gate visibility (within 1 hour of pickup_dt).
+  const pickupDt = (() => {
+    if (!ride.pickup_date || !ride.pickup_time) return null
+    const t = ride.pickup_time.length === 5 ? ride.pickup_time + ':00' : ride.pickup_time
+    return new Date(`${ride.pickup_date}T${t}Z`)
+  })()
+  const minutesUntilPickup = pickupDt ? (pickupDt.getTime() - Date.now()) / 60000 : null
+  const withinOneHour = minutesUntilPickup !== null && minutesUntilPickup <= 60
+
+  // Don't show on completed/cancelled or while ride is in progress
+  if (ride.status !== 'assigned' && ride.status !== 'paid') return null
+  if (!withinOneHour) return null
+
+  const onWaySent = !!ride.driver_on_way_at
+  const arrivedSent = !!ride.driver_arrived_at
+
+  const fmtTime = (iso) => {
+    if (!iso) return ''
+    const d = new Date(iso)
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+
+  const handleOnWay = async () => {
+    if (onWaySent || busy) return
+    setBusy('on-way')
+    try {
+      const res = await api.driverOnWay(ride.id)
+      onUpdated({ ...ride, driver_on_way_at: res.sent_at || new Date().toISOString() })
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const handleArrived = async () => {
+    if (arrivedSent || busy) return
+    setBusy('arrived')
+    try {
+      const res = await api.driverArrived(ride.id)
+      onUpdated({ ...ride, driver_arrived_at: res.sent_at || new Date().toISOString() })
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-3 mb-4 space-y-2">
+      <p className="text-xs text-slate-500 font-medium px-1">Notify the client</p>
+      <button
+        onClick={handleOnWay}
+        disabled={onWaySent || !!busy}
+        className={`w-full py-3 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 transition-all ${
+          onWaySent
+            ? 'bg-slate-100 text-slate-500 cursor-default'
+            : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-[0.98] disabled:opacity-60'
+        }`}
+      >
+        {busy === 'on-way' ? (
+          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+        ) : onWaySent ? (
+          <>✓ On the way notification sent at {fmtTime(ride.driver_on_way_at)}</>
+        ) : (
+          <>🚗 On my way</>
+        )}
+      </button>
+      <button
+        onClick={handleArrived}
+        disabled={arrivedSent || !!busy}
+        className={`w-full py-3 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 transition-all ${
+          arrivedSent
+            ? 'bg-slate-100 text-slate-500 cursor-default'
+            : 'bg-purple-600 text-white hover:bg-purple-700 active:scale-[0.98] disabled:opacity-60'
+        }`}
+      >
+        {busy === 'arrived' ? (
+          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+        ) : arrivedSent ? (
+          <>✓ Arrived notification sent at {fmtTime(ride.driver_arrived_at)}</>
+        ) : (
+          <>📍 I've arrived</>
+        )}
+      </button>
     </div>
   )
 }
