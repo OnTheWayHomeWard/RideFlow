@@ -99,7 +99,7 @@ def _get_maps_key() -> str:
 async def get_public_settings(db: AsyncSession = Depends(get_db)):
     """Public company settings — no auth needed. Used by client app for branding."""
     from app.services.service_area_service import get_service_areas, derive_country_codes
-    keys = ["company_name", "company_phone", "company_logo_url", "allow_cross_country_booking", "min_advance_booking_hours"]
+    keys = ["company_name", "company_phone", "company_email", "company_logo_url", "allow_cross_country_booking", "min_advance_booking_hours", "client_base_url"]
     result = await db.execute(select(Setting).where(Setting.key.in_(keys)))
     settings = {s.key: s.value for s in result.scalars().all()}
     cross_country = str(settings.get("allow_cross_country_booking", "false")).lower() == "true"
@@ -110,7 +110,9 @@ async def get_public_settings(db: AsyncSession = Depends(get_db)):
     return {
         "company_name": str(settings.get("company_name", "RideFlow")),
         "company_phone": str(settings.get("company_phone", "")),
+        "company_email": str(settings.get("company_email", "")),
         "company_logo_url": str(settings.get("company_logo_url", "")),
+        "client_base_url": str(settings.get("client_base_url", "")),
         "service_areas": service_areas,
         "available_countries": available_countries,  # legacy / derived
         "allow_cross_country_booking": cross_country,

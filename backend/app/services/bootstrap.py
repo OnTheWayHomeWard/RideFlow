@@ -22,7 +22,8 @@ from app.utils.security import hash_password
 DEFAULT_SETTINGS = [
     # ── Company branding ──
     ("company_name", "RideFlow", "Company display name"),
-    ("company_phone", "", "Company contact phone"),
+    ("company_phone", "", "Company contact phone (shown to clients on the confirmation page)"),
+    ("company_email", "", "Company support email (shown to clients on the confirmation page)"),
     ("company_logo_url", "", "Company logo URL. Empty = default icon."),
 
     # ── Public URLs ──  (used in SMS messages, Stripe redirects, QR codes)
