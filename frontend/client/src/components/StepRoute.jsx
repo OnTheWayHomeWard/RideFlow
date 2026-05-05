@@ -136,25 +136,24 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
   }, [])
 
   const handlePopularRoute = (route) => {
+    // Always use the route's own from + to coordinates so the backend matches
+    // it as a popular route and applies the fixed price (route_base + vehicle.base_fare),
+    // not the per-mile distance calc. Previously we kept the user's current
+    // pickup which would shift coords away from the route and force per-mile.
+    const from = {
+      name: route.from_name,
+      address: route.from_address,
+      lat: route.from_lat,
+      lng: route.from_lng,
+    }
     const to = {
       name: route.to_name,
       address: route.to_address,
       lat: route.to_lat,
       lng: route.to_lng,
     }
-    if (pickup && !editingPickup) {
-      setLoading(true)
-      onSelect(pickup, to)
-    } else {
-      const from = {
-        name: route.from_name,
-        address: route.from_address,
-        lat: route.from_lat,
-        lng: route.from_lng,
-      }
-      setLoading(true)
-      onSelect(from, to)
-    }
+    setLoading(true)
+    onSelect(from, to)
   }
 
   const handleCustomSubmit = () => {
