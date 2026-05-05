@@ -47,6 +47,7 @@ export default function Settings() {
       <SettingsGroup title="Payment & Commissions" settings={otherSettings.filter(s => ['default_driver_pay_pct','default_cashier_commission_pct','cashier_commission_enabled','driver_payout_schedule','late_cancel_refund_pct','max_active_runs_per_driver'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Booking" settings={otherSettings.filter(s => ['booking_window_days','cancellation_window_hours','unassigned_alert_minutes','review_expiry_days','min_advance_booking_hours'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Driver Priority" settings={otherSettings.filter(s => ['priority_delay_normal_minutes','priority_delay_low_minutes'].includes(s.key))} saving={saving} onSave={handleSave} />
+      <SettingsGroup title="Pre-Ride Reminders" settings={otherSettings.filter(s => ['client_reminder_hours','client_final_reminder_minutes','driver_reminder_hours'].includes(s.key))} saving={saving} onSave={handleSave} />
       {/* Service Area — countries */}
       {(settings.find(s => s.key === 'service_areas') || settings.find(s => s.key === 'available_countries')) && (
         <ServiceAreasEditor
@@ -311,37 +312,59 @@ function LogoCard({ setting, saving, onSave }) {
 }
 
 const FRIENDLY_NAMES = {
+  // Company
   company_name: 'Company Name',
   company_phone: 'Company Phone',
+  company_email: 'Company Support Email',
+  // Public URLs
+  client_base_url: 'Client App URL',
+  staff_base_url: 'Staff Portal URL',
+  // Payment & commissions
   default_driver_pay_pct: 'Driver Pay %',
   default_cashier_commission_pct: 'Cashier Commission %',
   cashier_commission_enabled: 'Cashier Commissions',
   max_active_runs_per_driver: 'Max Active Runs / Driver',
+  late_cancel_refund_pct: 'Late Cancel Refund %',
+  driver_payout_schedule: 'Driver Payout Schedule',
+  payout_currency: 'Payout Currency (usd, eur, gbp)',
+  stripe_connect_enabled: 'Stripe Connect Payouts',
+  // Booking
   booking_window_days: 'Booking Window (days)',
   cancellation_window_hours: 'Free Cancellation (hours)',
-  late_cancel_refund_pct: 'Late Cancel Refund %',
-  sms_enabled: 'SMS Notifications',
   unassigned_alert_minutes: 'Unassigned Alert (min)',
-  driver_payout_schedule: 'Driver Payout Schedule',
   review_expiry_days: 'Review Expiry (days)',
   min_advance_booking_hours: 'Min Advance Booking (hours)',
-  sms_cashier_referral: 'Cashier Referral SMS',
-  sms_cashier_payout: 'Cashier Payout SMS',
-  sms_client_booking: 'Client Booking Confirmation SMS',
-  sms_client_ride_started: 'Client Ride Started SMS',
-  sms_guest_payment_link: 'Guest Payment Link SMS',
-  sms_driver_new_run: 'Driver New Run SMS',
-  sms_driver_ride_completed: 'Driver Ride Completed SMS',
-  sms_driver_payout_released: 'Driver Payout Released SMS',
-  sms_driver_payout_flagged: 'Driver Payout Flagged SMS',
-  sms_driver_payout_rejected: 'Driver Payout Rejected SMS',
-  sms_driver_run_cancelled: 'Driver Run Reassigned SMS',
-  sms_concierge_batch_link: 'Concierge Batch Receipt Link SMS',
-  sms_client_refund: 'Client Refund SMS',
+  // Driver priority
   priority_delay_normal_minutes: 'Normal Priority Delay (min)',
   priority_delay_low_minutes: 'Low Priority Delay (min)',
-  stripe_connect_enabled: 'Stripe Connect Payouts',
-  payout_currency: 'Payout Currency (usd, eur, gbp)',
+  // Reminders
+  client_reminder_hours: 'Client Reminder (hours before pickup)',
+  client_final_reminder_minutes: 'Client Final Reminder (min before pickup)',
+  driver_reminder_hours: 'Driver Reminder (hours before pickup)',
+  // SMS toggle
+  sms_enabled: 'SMS Notifications',
+  // SMS templates — existing
+  sms_cashier_referral: 'Cashier — New Referral',
+  sms_cashier_payout: 'Cashier — Commission Paid',
+  sms_client_booking: 'Client — Booking Confirmation',
+  sms_client_ride_started: 'Client — Ride Started',
+  sms_client_ride_completed: 'Client — Ride Completed (thank-you + feedback)',
+  sms_client_refund: 'Client — Refund Issued',
+  sms_guest_payment_link: 'Guest — Payment Link from Cashier',
+  sms_driver_new_run: 'Driver — New Run Assigned',
+  sms_driver_ride_completed: 'Driver — Ride Completed',
+  sms_driver_payout_released: 'Driver — Payout Released',
+  sms_driver_payout_flagged: 'Driver — Payout Flagged',
+  sms_driver_payout_rejected: 'Driver — Payout Rejected',
+  sms_driver_run_cancelled: 'Driver — Run Reassigned',
+  sms_concierge_batch_link: 'Concierge — Batch Receipt Link',
+  // SMS templates — new (reminders + driver action buttons)
+  sms_client_reminder: 'Client — Pre-Ride Reminder (X hours before)',
+  sms_client_final_reminder: 'Client — Final Reminder (minutes before)',
+  sms_driver_reminder: 'Driver — Pre-Ride Reminder (X hours before)',
+  sms_driver_on_way: 'Client — Driver On The Way (button)',
+  sms_driver_arrived: 'Client — Driver Arrived (button)',
+  // Misc
   available_countries: 'Available Countries',
 }
 
@@ -364,6 +387,7 @@ const SMS_VARIABLES = {
   sms_cashier_payout: ['cashier_name', 'amount', 'booking_number'],
   sms_client_booking: ['client_name', 'pickup_name', 'dropoff_name', 'pickup_date', 'booking_number', 'confirmation_url'],
   sms_client_ride_started: ['client_name', 'driver_name', 'pickup_name', 'dropoff_name', 'booking_number', 'confirmation_url'],
+  sms_client_ride_completed: ['client_name', 'driver_name', 'pickup_name', 'dropoff_name', 'booking_number', 'confirmation_url'],
   sms_guest_payment_link: ['client_name', 'hotel_name', 'pickup_name', 'dropoff_name', 'pickup_date', 'pickup_time', 'total_amount', 'payment_url', 'booking_number'],
   sms_driver_new_run: ['driver_name', 'pickup_name', 'dropoff_name', 'pickup_date', 'pickup_time', 'client_name', 'driver_earnings', 'booking_number'],
   sms_driver_ride_completed: ['driver_name', 'pickup_name', 'dropoff_name', 'driver_earnings', 'booking_number'],
@@ -373,6 +397,12 @@ const SMS_VARIABLES = {
   sms_driver_run_cancelled: ['driver_name', 'pickup_name', 'dropoff_name', 'pickup_date', 'pickup_time', 'reason', 'booking_number'],
   sms_concierge_batch_link: ['concierge_name', 'amount', 'date', 'url'],
   sms_client_refund: ['client_name', 'booking_number', 'amount', 'reason'],
+  // Reminders + driver action buttons
+  sms_client_reminder: ['client_name', 'driver_name', 'pickup_name', 'dropoff_name', 'pickup_time', 'hours', 'confirmation_url', 'booking_number'],
+  sms_client_final_reminder: ['client_name', 'driver_name', 'pickup_name', 'dropoff_name', 'minutes', 'confirmation_url', 'booking_number'],
+  sms_driver_reminder: ['driver_name', 'client_name', 'client_phone', 'pickup_name', 'dropoff_name', 'pickup_time', 'hours', 'vehicle_type', 'booking_number'],
+  sms_driver_on_way: ['client_name', 'driver_name', 'driver_phone', 'pickup_name', 'dropoff_name', 'vehicle_type', 'booking_number'],
+  sms_driver_arrived: ['client_name', 'driver_name', 'driver_phone', 'pickup_name', 'dropoff_name', 'vehicle_type', 'booking_number'],
 }
 
 function SmsTemplates({ settings, saving, onSave }) {
@@ -397,11 +427,14 @@ function SmsTemplateCard({ setting, saving, onSave }) {
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-sm font-medium text-slate-900">{friendlyName}</p>
+      <div className="flex items-start justify-between mb-2 gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-900">{friendlyName}</p>
+          {setting.description && <p className="text-xs text-slate-400 mt-0.5">{setting.description}</p>}
+        </div>
         {changed && (
           <button onClick={() => onSave(setting.key, value)} disabled={saving}
-            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-60">
+            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-60 shrink-0">
             {saving ? 'Saving...' : 'Save'}
           </button>
         )}
@@ -410,7 +443,7 @@ function SmsTemplateCard({ setting, saving, onSave }) {
         className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none mb-2" />
       {variables.length > 0 && (
         <div className="flex gap-1.5 flex-wrap">
-          <span className="text-xs text-slate-400">Variables:</span>
+          <span className="text-xs text-slate-400">Variables (click to insert):</span>
           {variables.map(v => (
             <button key={v} onClick={() => setValue(val => val + `{${v}}`)}
               className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono hover:bg-blue-100 hover:text-blue-700 transition-colors cursor-pointer">
