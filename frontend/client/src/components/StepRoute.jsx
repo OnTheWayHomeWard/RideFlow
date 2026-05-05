@@ -19,6 +19,7 @@ function getIcon(name) {
 export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, onError }) {
   const settings = useSettings()
   const [routes, setRoutes] = useState([])
+  const [vehicleRates, setVehicleRates] = useState([])
   const [pickup, setPickup] = useState(booking.pickup)
   const [dropoff, setDropoff] = useState(booking.dropoff)
   const [pickupText, setPickupText] = useState(booking.pickup?.address || '')
@@ -33,11 +34,27 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
   const hasPickup = !!pickup && !editingPickup
 
   useEffect(() => {
-    api.getCommonRoutes()
-      .then(setRoutes)
-      .catch(() => {})
-      .finally(() => setRoutesLoading(false))
+    Promise.all([
+      api.getCommonRoutes().catch(() => []),
+      api.getVehicleRates().catch(() => []),
+    ]).then(([rs, rates]) => {
+      setRoutes(rs)
+      setVehicleRates((rates || []).filter(r => r.is_active))
+    }).finally(() => setRoutesLoading(false))
   }, [])
+
+  // "from $X" floor for a popular route: route base + cheapest active vehicle's base fare.
+  // Backend pricing engine uses the same formula (no per-mile applied for matched routes).
+  const floorPriceFor = (route) => {
+    const prices = route.prices || {}
+    const routeBase = prices._base !== undefined
+      ? Number(prices._base)
+      : Math.min(...Object.values(prices).filter(v => typeof v === 'number'))
+    if (!Number.isFinite(routeBase)) return null
+    if (vehicleRates.length === 0) return routeBase  // no rates loaded yet — show route base only
+    const cheapestVehicleBase = Math.min(...vehicleRates.map(v => Number(v.base_fare) || 0))
+    return Math.round(routeBase + cheapestVehicleBase)
+  }
 
   // When pickup comes from QR
   useEffect(() => {
@@ -332,16 +349,19 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
               className="w-full bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-3 hover:border-blue-300 hover:shadow-sm active:scale-[0.99] transition-all text-left disabled:opacity-60"
             >
               <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-2xl">
-                {getIcon(route.to_name)}
+                {getIcon(route.name || route.to_name)}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-slate-900 text-sm">{route.to_name}</p>
-                <p className="text-xs text-slate-500 truncate">{route.to_address}</p>
+                <p className="font-semibold text-slate-900 text-sm truncate">{route.name || route.to_name}</p>
+                <p className="text-xs text-slate-500 truncate">{route.from_name} → {route.to_name}</p>
               </div>
               <div className="text-right">
-                <p className="text-sm font-bold text-slate-900">
-                  from ${Math.min(...Object.values(route.prices))}
-                </p>
+                {(() => {
+                  const floor = floorPriceFor(route)
+                  return floor !== null ? (
+                    <p className="text-sm font-bold text-slate-900">from ${floor}</p>
+                  ) : null
+                })()}
                 {route.distance_miles && (
                   <p className="text-xs text-slate-400">{route.distance_miles} mi</p>
                 )}
