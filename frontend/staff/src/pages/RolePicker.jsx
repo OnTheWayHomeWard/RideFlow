@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 const ROLES = [
@@ -32,6 +32,23 @@ const TOKEN_KEY = { admin: 'admin_token', driver: 'driver_token', cashier: 'cash
 
 export default function RolePicker() {
   const navigate = useNavigate()
+  const [settings, setSettings] = useState({ company_name: '', company_logo_url: '', client_base_url: '' })
+
+  // Fetch public settings (logo, name, client URL). Endpoint is public — no auth needed.
+  useEffect(() => {
+    fetch('/api/settings/public')
+      .then(r => r.json())
+      .then(s => {
+        setSettings(s)
+        if (s.company_name) document.title = `${s.company_name} — Staff`
+        if (s.company_logo_url) {
+          let link = document.querySelector("link[rel~='icon']")
+          if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link) }
+          link.href = s.company_logo_url
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   // If already logged in to a role, jump straight there. Prefer the most recently used.
   useEffect(() => {
@@ -54,12 +71,16 @@ export default function RolePicker() {
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold text-white">UniRide Staff</h1>
+          {settings.company_logo_url ? (
+            <img src={settings.company_logo_url} alt="" className="w-14 h-14 object-contain rounded-2xl mx-auto mb-4 bg-white/10 p-1" />
+          ) : (
+            <div className="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+            </div>
+          )}
+          <h1 className="text-2xl font-bold text-white">{settings.company_name || 'RideFlow'} Staff</h1>
           <p className="text-slate-400 text-sm mt-1">Choose how you'd like to sign in</p>
         </div>
 
@@ -86,9 +107,11 @@ export default function RolePicker() {
           ))}
         </div>
 
-        <p className="text-center text-xs text-slate-500 mt-6">
-          Looking to book a ride? <a href="http://localhost:5173" className="text-blue-400 hover:underline">Open the booking app</a>
-        </p>
+        {settings.client_base_url && (
+          <p className="text-center text-xs text-slate-500 mt-6">
+            Looking to book a ride? <a href={settings.client_base_url} className="text-blue-400 hover:underline">Open the booking app</a>
+          </p>
+        )}
       </div>
     </div>
   )
