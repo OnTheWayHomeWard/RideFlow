@@ -22,11 +22,14 @@ const VEHICLE_DESCRIPTIONS = {
   large_van: 'Large passenger van for bigger groups. Maximum comfort and cargo capacity.',
 }
 
-export default function StepVehicle({ prices, pickup, dropoff, onSelect }) {
+export default function StepVehicle({ prices: rawPrices, pickup, dropoff, onSelect }) {
   const settings = useSettings()
   const [expandedIdx, setExpandedIdx] = useState(null)
   const [activeIdx, setActiveIdx] = useState(0)
   const scrollRef = useRef(null)
+
+  // Always show vehicles cheapest → most expensive based on this route's total.
+  const prices = (rawPrices || []).slice().sort((a, b) => (a.total_amount ?? 0) - (b.total_amount ?? 0))
 
   // Track which card is most visible for the dot indicators
   useEffect(() => {
