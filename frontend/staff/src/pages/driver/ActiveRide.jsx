@@ -2,6 +2,30 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../../api/driverClient'
 
+const EXTRA_LABELS = {
+  room_pickup: 'Room Pickup',
+  extra_luggage: 'Extra Luggage (3+)',
+  child_seat: 'Child Seat',
+}
+
+function fmtDate(d) {
+  if (!d) return ''
+  const today = new Date().toISOString().split('T')[0]
+  const tmrw = new Date(Date.now() + 86400000).toISOString().split('T')[0]
+  if (d === today) return 'Today'
+  if (d === tmrw) return 'Tomorrow'
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+function InfoCard({ label, value }) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-3">
+      <p className="text-xs text-slate-400">{label}</p>
+      <p className="text-sm font-bold text-slate-900">{value}</p>
+    </div>
+  )
+}
+
 export default function ActiveRide({ settings }) {
   const { bookingId } = useParams()
   const navigate = useNavigate()
@@ -80,11 +104,48 @@ export default function ActiveRide({ settings }) {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3 text-xs text-slate-500 border-t border-slate-100 pt-3">
-          <span>{ride.pickup_date} at {ride.pickup_time?.slice(0, 5)}</span>
-          <span className="uppercase font-medium">{ride.vehicle_type}</span>
-        </div>
       </div>
+
+      {/* Details grid */}
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <InfoCard label="Date" value={fmtDate(ride.pickup_date)} />
+        <InfoCard label="Time" value={ride.pickup_time?.slice(0, 5)} />
+        <InfoCard label="Vehicle" value={ride.vehicle_type?.toUpperCase()} />
+      </div>
+
+      {/* Trip details */}
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        <InfoCard label="Passengers" value={ride.passengers || 1} />
+        <InfoCard label="Luggage" value={(ride.luggage || 'none').replace('_', ' ')} />
+      </div>
+
+      {/* Add-ons / Special Requests */}
+      {ride.extras_chosen && ride.extras_chosen.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+          <h3 className="text-xs text-amber-700 uppercase tracking-wide font-medium mb-2">Add-ons / Special Requests</h3>
+          <div className="space-y-1.5">
+            {ride.extras_chosen.map(e => (
+              <div key={e} className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-amber-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-sm text-amber-900 font-medium">{EXTRA_LABELS[e] || e.replace(/_/g, ' ')}</p>
+              </div>
+            ))}
+          </div>
+          {ride.extras_chosen.includes('room_pickup') && ride.client_room && (
+            <p className="text-xs text-amber-700 mt-2">Pick up client from Room {ride.client_room}</p>
+          )}
+        </div>
+      )}
+
+      {/* Client notes */}
+      {ride.notes && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+          <h3 className="text-xs text-blue-700 uppercase tracking-wide font-medium mb-1">Client notes</h3>
+          <p className="text-sm text-blue-900 whitespace-pre-wrap">{ride.notes}</p>
+        </div>
+      )}
 
       {/* Client info */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 mb-4">
@@ -149,18 +210,23 @@ export default function ActiveRide({ settings }) {
 function PrePickupNotifications({ ride, onUpdated }) {
   const [busy, setBusy] = useState(null)  // 'on-way' | 'arrived' | null
 
-  // Compute pickup datetime to gate visibility (within 1 hour of pickup_dt).
+  // Compute pickup datetime to gate visibility (within 1 hour before pickup,
+  // or any time after — driver might be late and still want to notify client).
+  // pickup_time is stored as a tz-naive value the user entered as their local
+  // time, so parse without the Z suffix to interpret in the browser's local tz.
   const pickupDt = (() => {
     if (!ride.pickup_date || !ride.pickup_time) return null
     const t = ride.pickup_time.length === 5 ? ride.pickup_time + ':00' : ride.pickup_time
-    return new Date(`${ride.pickup_date}T${t}Z`)
+    return new Date(`${ride.pickup_date}T${t}`)
   })()
   const minutesUntilPickup = pickupDt ? (pickupDt.getTime() - Date.now()) / 60000 : null
-  const withinOneHour = minutesUntilPickup !== null && minutesUntilPickup <= 60
+  // Show within 1 hour BEFORE pickup; also keep showing after pickup time
+  // (driver running late may still want to ping the client).
+  const withinWindow = minutesUntilPickup !== null && minutesUntilPickup <= 60
 
   // Don't show on completed/cancelled or while ride is in progress
   if (ride.status !== 'assigned' && ride.status !== 'paid') return null
-  if (!withinOneHour) return null
+  if (!withinWindow) return null
 
   const onWaySent = !!ride.driver_on_way_at
   const arrivedSent = !!ride.driver_arrived_at

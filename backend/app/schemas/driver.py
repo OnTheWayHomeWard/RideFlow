@@ -75,6 +75,8 @@ class DriverRunOut(BaseModel):
     passengers: int
     luggage: str
     vehicle_type: str
+    extras_chosen: list | None = None
+    notes: str | None = None
     client_name: str
     client_phone: str
     client_room: str | None = None
