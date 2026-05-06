@@ -65,5 +65,19 @@ services:
     depends_on:
       - backend
 
+  website:
+    build:
+      context: ./frontend/website
+      dockerfile: Dockerfile
+    ports:
+      - "5172:5172"
+    volumes:
+      - ./frontend/website:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://backend:8000
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:

@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+:root {
+  --emerald: #065f46;
+  --emerald-dark: #064e3b;
+  --emerald-deep: #022c22;
+  --cream: #fef9f0;
+  --gold: #d4a017;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--cream);
+  color: #1f2937;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display { font-family: 'DM Serif Display', Georgia, serif; letter-spacing: -0.01em; }
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fade-up 0.6s cubic-bezier(0.4, 0, 0.2, 1) backwards; }
+
+/* Hide scrollbar on horizontal carousels */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

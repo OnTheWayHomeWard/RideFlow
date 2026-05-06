@@ -65,5 +65,14 @@ services:
     depends_on:
       - backend
 
+  website:
+    build:
+      context: ./frontend/website
+      dockerfile: Dockerfile.prod
+    ports:
+      - "5172:80"
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:

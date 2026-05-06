@@ -414,6 +414,26 @@ async def get_notifications(
             "time": c.created_at.isoformat(),
         })
 
+    # 6. Recent contact-form submissions (status='new', last 7 days)
+    from app.models.contact_submission import ContactSubmission
+    r = await db.execute(
+        select(ContactSubmission)
+        .where(ContactSubmission.status == "new", ContactSubmission.created_at >= cutoff)
+        .order_by(ContactSubmission.created_at.desc())
+        .limit(EVENT_LIMIT)
+    )
+    for c in r.scalars().all():
+        notifications.append({
+            "id": f"contact-{c.id}",
+            "type": "contact_submission",
+            "icon": "user",
+            "color": "amber",
+            "title": f"New contact from {c.name}",
+            "message": (c.message[:120] + ('…' if len(c.message) > 120 else '')) if c.message else "",
+            "link": "/contacts",
+            "time": c.created_at.isoformat(),
+        })
+
     # Sort all by time descending
     notifications.sort(key=lambda x: x["time"], reverse=True)
 
@@ -943,7 +963,11 @@ async def list_reviews(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
         driver_name = (await db.execute(select(Driver.name).where(Driver.id == r.driver_id))).scalar_one_or_none()
         reviews.append({"id": str(r.id), "booking_id": str(r.booking_id), "booking_number": b.booking_number if b else None,
             "client_name": b.client_name if b else None, "route": f"{b.pickup_name} → {b.dropoff_name}" if b else None,
-            "driver_name": driver_name, "rating": r.rating, "comment": r.comment, "created_at": r.created_at.isoformat() if r.created_at else None})
+            "driver_name": driver_name, "rating": r.rating, "comment": r.comment,
+            "is_featured": r.is_featured,
+            "display_name_override": r.display_name_override,
+            "display_comment_override": r.display_comment_override,
+            "created_at": r.created_at.isoformat() if r.created_at else None})
     return {"items": reviews, "total": total, "page": page, "per_page": per_page, "total_pages": (total + per_page - 1) // per_page}
 
 

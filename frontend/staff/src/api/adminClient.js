@@ -34,6 +34,16 @@ export const api = {
   resetAdminPassword: (id, newPassword) => request(`/admin/admins/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ new_password: newPassword }) }),
   deleteAdmin: (id) => request(`/admin/admins/${id}`, { method: 'DELETE' }),
 
+  // Reviews — feature for website + display overrides
+  featureReview: (id, isFeatured) => request(`/admin/reviews/${id}/feature`, { method: 'PUT', body: JSON.stringify({ is_featured: isFeatured }) }),
+  setReviewDisplay: (id, data) => request(`/admin/reviews/${id}/display`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Contact form submissions from the marketing site
+  listContacts: (status, page = 1) => request(`/admin/contacts?${status ? `status=${status}&` : ''}page=${page}&per_page=20`),
+  unreadContactCount: () => request('/admin/contacts/unread-count'),
+  setContactStatus: (id, status) => request(`/admin/contacts/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  setContactNotes: (id, notes) => request(`/admin/contacts/${id}/notes`, { method: 'PUT', body: JSON.stringify({ admin_notes: notes }) }),
+
   // Pickup groups (auto-applied add-ons by pickup location)
   listPickupGroups: () => request('/admin/pickup-groups'),
   createPickupGroup: (data) => request('/admin/pickup-groups', { method: 'POST', body: JSON.stringify(data) }),
