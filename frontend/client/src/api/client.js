@@ -21,6 +21,7 @@ export const api = {
   getExtras: () => request('/extras'),
   getCommonRoutes: () => request('/common-routes'),
   calculateAllPrices: (data) => request('/pricing/calculate-all', { method: 'POST', body: JSON.stringify(data) }),
+  matchPickupGroup: (lat, lng) => request(`/pickup-groups/match?lat=${lat}&lng=${lng}`),
 
   // Cashier validation
   validateCashier: (refCode) => request(`/cashiers/${refCode}/validate`),

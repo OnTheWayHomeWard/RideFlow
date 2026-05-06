@@ -12,10 +12,38 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState(null)
   const [extrasList, setExtrasList] = useState([])
+  // Forced extras from a matching pickup-group (e.g. airports auto-add Extra Luggage)
+  const [forcedExtras, setForcedExtras] = useState([])  // list of slugs
+  const [forcedGroupNames, setForcedGroupNames] = useState([])
 
   useEffect(() => {
     api.getExtras().then(setExtrasList).catch(() => {})
   }, [])
+
+  // Match pickup against pickup-groups whenever pickup changes
+  useEffect(() => {
+    const lat = booking?.pickup?.lat
+    const lng = booking?.pickup?.lng
+    if (!lat || !lng) { setForcedExtras([]); setForcedGroupNames([]); return }
+    api.matchPickupGroup(lat, lng).then(matches => {
+      const slugs = []
+      const names = []
+      for (const m of matches || []) {
+        if (m.group_name && !names.includes(m.group_name)) names.push(m.group_name)
+        for (const s of (m.forced_extra_slugs || [])) if (!slugs.includes(s)) slugs.push(s)
+      }
+      setForcedExtras(slugs)
+      setForcedGroupNames(names)
+      // Make sure each forced slug is selected
+      if (slugs.length) {
+        setBooking(prev => {
+          const merged = [...prev.extras]
+          for (const s of slugs) if (!merged.includes(s)) merged.push(s)
+          return merged.length === prev.extras.length ? prev : { ...prev, extras: merged }
+        })
+      }
+    }).catch(() => { setForcedExtras([]); setForcedGroupNames([]) })
+  }, [booking?.pickup?.lat, booking?.pickup?.lng])
 
   const vehicle = booking.vehicle
   const extrasTotal = booking.extras.reduce((sum, slug) => {
@@ -49,6 +77,7 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
   const hasRoomPickup = booking.extras.includes('room_pickup')
 
   const toggleExtra = (slug) => {
+    if (forcedExtras.includes(slug)) return  // can't uncheck a forced extra
     setBooking(prev => {
       const newExtras = prev.extras.includes(slug)
         ? prev.extras.filter(s => s !== slug)
@@ -210,37 +239,58 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
       {/* Add-ons */}
       {extrasList.length > 0 && (
         <Section title="Add-ons">
+          {forcedGroupNames.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-3 flex items-start gap-2">
+              <svg className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-xs text-blue-800">
+                Pickup detected at <b>{forcedGroupNames.join(', ')}</b>.
+                {' '}Required add-ons have been included automatically.
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
-            {extrasList.map(extra => (
+            {extrasList.map(extra => {
+              const isForced = forcedExtras.includes(extra.slug)
+              const isChecked = booking.extras.includes(extra.slug) || isForced
+              return (
               <label
                 key={extra.slug}
-                className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                  booking.extras.includes(extra.slug)
-                    ? 'bg-blue-50 border-blue-300'
-                    : 'bg-white border-slate-200 hover:border-slate-300'
+                className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                  isForced
+                    ? 'bg-blue-50 border-blue-300 cursor-not-allowed'
+                    : isChecked
+                      ? 'bg-blue-50 border-blue-300 cursor-pointer'
+                      : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
                 }`}
               >
                 <input
                   type="checkbox"
-                  checked={booking.extras.includes(extra.slug)}
+                  checked={isChecked}
+                  disabled={isForced}
                   onChange={() => toggleExtra(extra.slug)}
                   className="sr-only"
                 />
                 <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${
-                  booking.extras.includes(extra.slug)
+                  isChecked
                     ? 'bg-blue-600 border-blue-600'
                     : 'border-slate-300'
                 }`}>
-                  {booking.extras.includes(extra.slug) && (
+                  {isChecked && (
                     <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                     </svg>
                   )}
                 </div>
-                <span className="flex-1 text-sm text-slate-700">{extra.name}</span>
+                <span className="flex-1 text-sm text-slate-700">
+                  {extra.name}
+                  {isForced && <span className="ml-2 text-xs text-blue-600 font-medium">(required)</span>}
+                </span>
                 <span className="text-sm font-semibold text-slate-900">+${extra.price}</span>
               </label>
-            ))}
+              )
+            })}
           </div>
         </Section>
       )}

@@ -223,34 +223,62 @@ function ExtrasTab({ extras, reload }) {
 function RoutesTab({ routes, rates, reload, googleApiKey }) {
   const settings = useSettings()
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', from_name: '', from_address: '', from_lat: '', from_lng: '', to_name: '', to_address: '', to_lat: '', to_lng: '', distance_miles: '', base_amount: '' })
+  const activeRates = rates.filter(r => r.is_active)
+
+  const emptyForm = () => ({
+    name: '', from_name: '', from_address: '', from_lat: '', from_lng: '',
+    to_name: '', to_address: '', to_lat: '', to_lng: '', distance_miles: '',
+    // per-vehicle prices, keyed by vehicle_type
+    prices: Object.fromEntries(activeRates.map(r => [r.vehicle_type, ''])),
+  })
+  const [form, setForm] = useState(emptyForm())
   const [editId, setEditId] = useState(null)
 
-  // Extract base amount from prices — take the lowest value as the route base
-  const getBaseAmount = (prices) => {
-    if (!prices || typeof prices !== 'object') return 0
-    // If it has a _base key, use that; otherwise take min value
-    if (prices._base !== undefined) return prices._base
-    const vals = Object.values(prices).filter(v => typeof v === 'number')
-    return vals.length ? Math.min(...vals) : 0
+  // Resolve a per-vehicle price to display when the stored prices object uses
+  // the legacy {_base: X} format. We pre-fill each vehicle row with
+  // (base + vehicle.base_fare), which is what clients are paying today.
+  const resolvePerVehicle = (prices) => {
+    const out = {}
+    if (prices && '_base' in prices) {
+      const base = Number(prices._base) || 0
+      for (const r of activeRates) {
+        out[r.vehicle_type] = String(base + Number(r.base_fare))
+      }
+    } else if (prices && typeof prices === 'object') {
+      for (const r of activeRates) {
+        const v = prices[r.vehicle_type]
+        out[r.vehicle_type] = v !== undefined ? String(v) : ''
+      }
+    } else {
+      for (const r of activeRates) out[r.vehicle_type] = ''
+    }
+    return out
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
-      const baseAmt = parseFloat(form.base_amount) || 0
+      // Build per-vehicle prices object — only include rows the admin actually filled
+      const prices = {}
+      for (const [vt, val] of Object.entries(form.prices)) {
+        const num = parseFloat(val)
+        if (!isNaN(num) && num > 0) prices[vt] = num
+      }
+      if (Object.keys(prices).length === 0) {
+        alert('Please enter a price for at least one vehicle.')
+        return
+      }
       const data = {
         name: form.name, from_name: form.from_name, from_address: form.from_address,
         from_lat: parseFloat(form.from_lat) || null, from_lng: parseFloat(form.from_lng) || null,
         to_name: form.to_name, to_address: form.to_address,
         to_lat: parseFloat(form.to_lat) || null, to_lng: parseFloat(form.to_lng) || null,
         distance_miles: form.distance_miles ? parseFloat(form.distance_miles) : null,
-        // Store base amount — pricing engine will add vehicle base fare on top
-        prices: { _base: baseAmt },
+        prices,
       }
       if (editId) await api.updateRoute(editId, data)
       else await api.createRoute(data)
-      setShowForm(false); setEditId(null); setForm({ name: '', from_name: '', from_address: '', from_lat: '', from_lng: '', to_name: '', to_address: '', to_lat: '', to_lng: '', distance_miles: '', base_amount: '' })
+      setShowForm(false); setEditId(null); setForm(emptyForm())
       reload()
     } catch (err) { alert(err.message) }
   }
@@ -262,7 +290,7 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
       to_name: r.to_name, to_address: r.to_address,
       to_lat: r.to_lat || '', to_lng: r.to_lng || '',
       distance_miles: r.distance_miles || '',
-      base_amount: getBaseAmount(r.prices),
+      prices: resolvePerVehicle(r.prices),
     })
     setEditId(r.id); setShowForm(true)
   }
@@ -278,7 +306,7 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
   return (
     <div>
       <div className="flex justify-end mb-3">
-        <button onClick={() => { setShowForm(!showForm); setEditId(null); setForm({ name: '', from_name: '', from_address: '', from_lat: '', from_lng: '', to_name: '', to_address: '', to_lat: '', to_lng: '', distance_miles: '', base_amount: '' }) }}
+        <button onClick={() => { setShowForm(!showForm); setEditId(null); setForm(emptyForm()) }}
           className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">{showForm ? 'Cancel' : '+ Add Route'}</button>
       </div>
 
@@ -311,14 +339,25 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
               />
             </div>
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
-            <div>
-              <label className="text-xs text-slate-500">Route Base Amount ($)</label>
-              <input type="number" step="any" value={form.base_amount} onChange={e => setForm(p => ({ ...p, base_amount: e.target.value }))} required
-                placeholder="e.g. 100"
-                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <p className="text-xs text-slate-400 mt-1">Client pays: this amount + vehicle base fare. E.g. $100 route + $15 sedan base = $115 for sedan.</p>
+          {/* Per-vehicle prices */}
+          <div className="mb-3">
+            <label className="text-xs text-slate-500 block mb-1">Price per vehicle ($)</label>
+            <p className="text-xs text-slate-400 mb-2">Flat price the client pays for each vehicle on this route. No additions, no per-mile.</p>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+              {activeRates.map(r => (
+                <div key={r.vehicle_type}>
+                  <label className="text-xs text-slate-500">{r.display_name}</label>
+                  <input type="number" step="any" min="0"
+                    value={form.prices[r.vehicle_type] ?? ''}
+                    onChange={e => setForm(p => ({ ...p, prices: { ...p.prices, [r.vehicle_type]: e.target.value } }))}
+                    placeholder="0"
+                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              ))}
             </div>
+            {activeRates.length === 0 && (
+              <p className="text-xs text-amber-600 mt-2">No active vehicles. Add vehicle types in the Vehicle Rates tab first.</p>
+            )}
           </div>
           <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">{editId ? 'Save' : 'Create'}</button>
         </form>
@@ -337,18 +376,21 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
               </div>
               <p className="text-xs text-slate-500 mb-2">{r.from_name} → {r.to_name}</p>
               {(() => {
-                const routeBase = r.prices?._base ?? (r.prices ? Math.min(...Object.values(r.prices).filter(v => typeof v === 'number')) : 0)
-                const activeRates = rates.filter(rt => rt.is_active)
+                const perVehicle = resolvePerVehicle(r.prices)
+                const isLegacy = r.prices && '_base' in r.prices
                 return (
                   <div>
-                    <p className="text-xs text-slate-400 mb-1">Route base: <b className="text-blue-700">${routeBase}</b></p>
+                    {isLegacy && <p className="text-xs text-amber-600 mb-1">⚠ Old base+fare format — open Edit to confirm or adjust per-vehicle prices.</p>}
                     <div className="flex gap-2 flex-wrap">
-                      {activeRates.map(rt => (
-                        <span key={rt.vehicle_type} className="text-xs bg-slate-100 px-2 py-1 rounded font-medium">
-                          {rt.display_name}: <b>${(routeBase + rt.base_fare).toFixed(0)}</b>
-                          <span className="text-slate-400 font-normal ml-0.5">({routeBase}+{rt.base_fare})</span>
-                        </span>
-                      ))}
+                      {activeRates.map(rt => {
+                        const v = perVehicle[rt.vehicle_type]
+                        if (!v || isNaN(Number(v))) return null
+                        return (
+                          <span key={rt.vehicle_type} className="text-xs bg-slate-100 px-2 py-1 rounded font-medium">
+                            {rt.display_name}: <b>${Number(v).toFixed(0)}</b>
+                          </span>
+                        )
+                      })}
                     </div>
                   </div>
                 )

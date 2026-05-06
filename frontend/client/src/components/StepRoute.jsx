@@ -43,17 +43,21 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
     }).finally(() => setRoutesLoading(false))
   }, [])
 
-  // "from $X" floor for a popular route: route base + cheapest active vehicle's base fare.
-  // Backend pricing engine uses the same formula (no per-mile applied for matched routes).
+  // "from $X" floor for a popular route. Two storage formats:
+  //  - new per-vehicle:  {sedan: 100, suv: 125}  → cheapest = min(values), already a total
+  //  - legacy _base:     {_base: 100}            → must add cheapest vehicle base_fare
   const floorPriceFor = (route) => {
     const prices = route.prices || {}
-    const routeBase = prices._base !== undefined
-      ? Number(prices._base)
-      : Math.min(...Object.values(prices).filter(v => typeof v === 'number'))
-    if (!Number.isFinite(routeBase)) return null
-    if (vehicleRates.length === 0) return routeBase  // no rates loaded yet — show route base only
-    const cheapestVehicleBase = Math.min(...vehicleRates.map(v => Number(v.base_fare) || 0))
-    return Math.round(routeBase + cheapestVehicleBase)
+    if ('_base' in prices) {
+      const base = Number(prices._base) || 0
+      const cheapestVehicleBase = vehicleRates.length
+        ? Math.min(...vehicleRates.map(v => Number(v.base_fare) || 0))
+        : 0
+      return Math.round(base + cheapestVehicleBase)
+    }
+    const vals = Object.values(prices).filter(v => typeof v === 'number' && v > 0)
+    if (!vals.length) return null
+    return Math.round(Math.min(...vals))
   }
 
   // When pickup comes from QR

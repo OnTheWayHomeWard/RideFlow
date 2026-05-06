@@ -13,9 +13,11 @@ from app.models.rating import Rating
 from app.models.setting import Setting
 from app.models.geofence import Geofence
 from app.models.notification_log import NotificationLog
+from app.models.pickup_group import PickupGroup, PickupGroupLocation
 
 __all__ = [
     "Admin", "Hotel", "Cashier", "Driver", "VehicleRate", "Extra",
     "CommonRoute", "Upsale", "Booking", "Payment", "PaymentSplit",
     "Rating", "Setting", "Geofence", "NotificationLog",
+    "PickupGroup", "PickupGroupLocation",
 ]

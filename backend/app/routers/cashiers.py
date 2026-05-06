@@ -226,11 +226,16 @@ async def book_for_guest(
     # Calculate price (pass pickup_dt so time-of-day upsales evaluate correctly)
     from datetime import datetime as _dt, timezone as _tz
     pickup_dt = _dt.combine(req.pickup_date, req.pickup_time, tzinfo=_tz.utc)
+
+    # Merge any forced extras from matching pickup-group (defense in depth)
+    from app.services.pickup_group_service import merge_forced_extras
+    final_extras, _matched = await merge_forced_extras(db, p_lat, p_lng, req.extras)
+
     try:
         price = await calculate_price(
             db, p_lat, p_lng,
             req.dropoff_lat, req.dropoff_lng,
-            req.vehicle_type, req.extras, pickup_dt=pickup_dt,
+            req.vehicle_type, final_extras, pickup_dt=pickup_dt,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -270,7 +275,7 @@ async def book_for_guest(
         total_amount=price["total_amount"],
         common_route_id=price["common_route_id"],
         upsale_id=price["upsale_id"],
-        extras_chosen=req.extras if req.extras else None,
+        extras_chosen=final_extras if final_extras else None,
         cashier_id=cashier.id,
         hotel_id=cashier.hotel_id,
         status="pending",

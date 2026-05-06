@@ -34,6 +34,14 @@ export const api = {
   resetAdminPassword: (id, newPassword) => request(`/admin/admins/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ new_password: newPassword }) }),
   deleteAdmin: (id) => request(`/admin/admins/${id}`, { method: 'DELETE' }),
 
+  // Pickup groups (auto-applied add-ons by pickup location)
+  listPickupGroups: () => request('/admin/pickup-groups'),
+  createPickupGroup: (data) => request('/admin/pickup-groups', { method: 'POST', body: JSON.stringify(data) }),
+  updatePickupGroup: (id, data) => request(`/admin/pickup-groups/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePickupGroup: (id) => request(`/admin/pickup-groups/${id}`, { method: 'DELETE' }),
+  addPickupGroupLocation: (groupId, data) => request(`/admin/pickup-groups/${groupId}/locations`, { method: 'POST', body: JSON.stringify(data) }),
+  deletePickupGroupLocation: (groupId, locId) => request(`/admin/pickup-groups/${groupId}/locations/${locId}`, { method: 'DELETE' }),
+
   // Dashboard
   getStats: () => request('/admin/dashboard/stats'),
   getNotifications: (page = 1, perPage = 10) => request(`/admin/notifications?page=${page}&per_page=${perPage}`),

@@ -13,6 +13,7 @@ import Hotels from './pages/admin/Hotels'
 import Concierges from './pages/admin/Concierges'
 import ConciergeDetail from './pages/admin/ConciergeDetail'
 import Pricing from './pages/admin/Pricing'
+import PickupGroups from './pages/admin/PickupGroups'
 import Upsales from './pages/admin/Upsales'
 import RunDetail from './pages/admin/RunDetail'
 import Reviews from './pages/admin/Reviews'
@@ -38,6 +39,7 @@ export default function AdminApp() {
           <Route path="concierges" element={<Concierges />} />
           <Route path="concierges/:id" element={<ConciergeDetail />} />
           <Route path="pricing" element={<Pricing />} />
+          <Route path="pickup-groups" element={<PickupGroups />} />
           <Route path="upsales" element={<Upsales />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="settings" element={<Settings />} />

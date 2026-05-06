@@ -56,12 +56,17 @@ async def create_booking(req: BookingCreateRequest, db: AsyncSession = Depends(g
                 detail=f"Cross-country bookings are not allowed. Pickup ({req.pickup_country}) and destination ({req.dropoff_country}) must be in the same country."
             )
 
+    # If pickup falls inside a pickup-group, merge in any forced extras the
+    # group requires (defense-in-depth — even a bad client can't bypass).
+    from app.services.pickup_group_service import merge_forced_extras
+    final_extras, _matched_group_names = await merge_forced_extras(db, req.pickup_lat, req.pickup_lng, req.extras)
+
     # Calculate price (pass pickup_dt so time-of-day upsales evaluate correctly)
     try:
         price = await calculate_price(
             db, req.pickup_lat, req.pickup_lng,
             req.dropoff_lat, req.dropoff_lng,
-            req.vehicle_type, req.extras, pickup_dt=pickup_dt,
+            req.vehicle_type, final_extras, pickup_dt=pickup_dt,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -118,7 +123,7 @@ async def create_booking(req: BookingCreateRequest, db: AsyncSession = Depends(g
         total_amount=price["total_amount"],
         common_route_id=price["common_route_id"],
         upsale_id=price["upsale_id"],
-        extras_chosen=req.extras if req.extras else None,
+        extras_chosen=final_extras if final_extras else None,
         cashier_id=cashier_id,
         hotel_id=hotel_id,
         status="pending",
