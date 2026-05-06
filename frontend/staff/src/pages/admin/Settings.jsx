@@ -44,6 +44,8 @@ export default function Settings() {
       {me?.is_super_admin && (
         <SettingsGroup title="Public URLs (super-admin only)" settings={otherSettings.filter(s => ['client_base_url', 'staff_base_url'].includes(s.key))} saving={saving} onSave={handleSave} />
       )}
+      <SettingsGroup title="Website — Hero Section" settings={otherSettings.filter(s => ['website_hero_badge', 'website_hero_title', 'website_hero_title_accent', 'website_hero_subtitle', 'website_hero_image_url', 'website_stat_rides', 'website_stat_rating', 'website_stat_uptime'].includes(s.key))} saving={saving} onSave={handleSave} />
+      <SettingsGroup title="Website — Section Headings" settings={otherSettings.filter(s => ['website_how_title','website_how_subtitle','website_why_title','website_why_subtitle','website_fleet_title','website_fleet_subtitle','website_testimonials_title','website_testimonials_subtitle','website_service_title','website_service_subtitle','website_contact_title','website_contact_subtitle'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Payment & Commissions" settings={otherSettings.filter(s => ['default_driver_pay_pct','default_cashier_commission_pct','cashier_commission_enabled','driver_payout_schedule','late_cancel_refund_pct','max_active_runs_per_driver'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Booking" settings={otherSettings.filter(s => ['booking_window_days','cancellation_window_hours','unassigned_alert_minutes','review_expiry_days','min_advance_booking_hours'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Driver Priority" settings={otherSettings.filter(s => ['priority_delay_normal_minutes','priority_delay_low_minutes'].includes(s.key))} saving={saving} onSave={handleSave} />
@@ -341,6 +343,28 @@ const FRIENDLY_NAMES = {
   client_reminder_hours: 'Client Reminder (hours before pickup)',
   client_final_reminder_minutes: 'Client Final Reminder (min before pickup)',
   driver_reminder_hours: 'Driver Reminder (hours before pickup)',
+  // Website — hero section
+  website_hero_badge: 'Hero Badge (small pill)',
+  website_hero_title: 'Hero Title',
+  website_hero_title_accent: 'Hero Title — Accent Line (gold)',
+  website_hero_subtitle: 'Hero Subtitle',
+  website_hero_image_url: 'Hero Image URL (optional)',
+  website_stat_rides: 'Stat — Number of Rides',
+  website_stat_rating: 'Stat — Rating',
+  website_stat_uptime: 'Stat — Availability',
+  // Website — section headings
+  website_how_title: 'How It Works — Title',
+  website_how_subtitle: 'How It Works — Subtitle',
+  website_why_title: 'Why Us — Title',
+  website_why_subtitle: 'Why Us — Subtitle',
+  website_fleet_title: 'Fleet — Title',
+  website_fleet_subtitle: 'Fleet — Subtitle',
+  website_testimonials_title: 'Testimonials — Title',
+  website_testimonials_subtitle: 'Testimonials — Subtitle',
+  website_service_title: 'Service Area — Title',
+  website_service_subtitle: 'Service Area — Subtitle',
+  website_contact_title: 'Contact — Title',
+  website_contact_subtitle: 'Contact — Subtitle',
   // SMS toggle
   sms_enabled: 'SMS Notifications',
   // SMS templates — existing

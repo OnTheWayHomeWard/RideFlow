@@ -30,6 +30,28 @@ DEFAULT_SETTINGS = [
     ("client_base_url", "http://localhost:5173", "Public URL of the client booking app, e.g. https://ride.example.com"),
     ("staff_base_url", "http://localhost:5174", "Public URL of the staff portal, e.g. https://staff.example.com"),
 
+    # ── Marketing website content (gobellme.com landing page) ──
+    ("website_hero_badge", "Pre-booked private rides", "Small pill above the hero headline."),
+    ("website_hero_title", "Reserve your ride.", "Main hero headline (first line)."),
+    ("website_hero_title_accent", "Anywhere. Anytime.", "Hero headline accent line — shown in gold."),
+    ("website_hero_subtitle", "Pre-book a private vehicle from A to B and we'll take it from there. Transparent pricing, professional drivers, zero surprises.", "Paragraph under the hero headline."),
+    ("website_hero_image_url", "", "Optional hero image URL (a car photo or illustration). Empty = use default decorative pattern."),
+    ("website_stat_rides", "10,000+", "Big stat shown under the hero — e.g. number of rides."),
+    ("website_stat_rating", "4.9★", "Big stat — average rating."),
+    ("website_stat_uptime", "24/7", "Big stat — availability."),
+    ("website_how_title", "How it works", "Section heading for the 3-step explainer."),
+    ("website_how_subtitle", "Three steps. Designed for travelers who don't want to gamble on a curbside ride.", "Section subhead."),
+    ("website_why_title", "Why ride with us", ""),
+    ("website_why_subtitle", "The little things that make pre-booking better than the alternative.", ""),
+    ("website_fleet_title", "Our fleet", ""),
+    ("website_fleet_subtitle", "Pick the size that fits your group. Every vehicle is regularly inspected and clean.", ""),
+    ("website_testimonials_title", "What our riders say", ""),
+    ("website_testimonials_subtitle", "Real reviews from real rides.", ""),
+    ("website_service_title", "Where we operate", ""),
+    ("website_service_subtitle", "Currently serving these cities.", ""),
+    ("website_contact_title", "Let's talk", ""),
+    ("website_contact_subtitle", "Booking question? Special trip request? Anything else? Send us a message — we'll get back to you the same day.", ""),
+
     # ── Payment & commissions ──
     ("default_driver_pay_pct", 70, "Default driver pay percentage of base fare"),
     ("default_cashier_commission_pct", 10, "Default cashier commission percentage of total"),
