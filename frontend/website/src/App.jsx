@@ -128,12 +128,11 @@ function Hero({ settings, bookUrl, brandName }) {
             <span className="inline-block bg-white/10 backdrop-blur-sm text-xs font-semibold tracking-wide uppercase px-4 py-1.5 rounded-full mb-7 border border-white/15">
               {T(settings, 'hero_badge')}
             </span>
-            <h1 className="font-display text-5xl md:text-6xl lg:text-7xl leading-[1.05] mb-6">
-              {T(settings, 'hero_title')}
-              <br />
+            <h1 className="font-display text-4xl md:text-5xl lg:text-6xl leading-[1.1] mb-5 max-w-[18ch]" style={{ textWrap: 'balance' }}>
+              {T(settings, 'hero_title')}{' '}
               <span className="text-[var(--gold-soft)]">{T(settings, 'hero_title_accent')}</span>
             </h1>
-            <p className="text-lg lg:text-xl text-white/80 max-w-xl mb-9 leading-relaxed">
+            <p className="text-base lg:text-lg text-white/80 max-w-lg mb-8 leading-relaxed" style={{ textWrap: 'pretty' }}>
               {T(settings, 'hero_subtitle')}
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -214,11 +213,12 @@ function HeroVisual({ imageUrl, brandName }) {
           <circle cx="290" cy="175" r="11" fill="#444" />
           <circle cx="290" cy="175" r="4" fill="#fef9f0" />
         </svg>
-        <p className="text-center font-display text-2xl text-white/90 mt-4">{brandName} fleet</p>
-        <div className="flex items-center justify-center gap-2 mt-2">
-          <span className="w-2 h-2 rounded-full bg-[var(--gold)]"></span>
-          <span className="w-2 h-2 rounded-full bg-white/40"></span>
-          <span className="w-2 h-2 rounded-full bg-white/40"></span>
+        <div className="flex items-center justify-center gap-2 mt-5">
+          <span className="relative flex w-2 h-2">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping"></span>
+            <span className="relative inline-flex w-2 h-2 rounded-full bg-emerald-400"></span>
+          </span>
+          <p className="text-sm text-white/85 font-medium">Drivers available right now</p>
         </div>
       </div>
     </div>
@@ -329,10 +329,19 @@ function Fleet({ vehicles, bookUrl, settings }) {
   )
 }
 
+function bestForLabel(v) {
+  // Friendly use-case suggestion based on capacity. Marketing copy, not exact.
+  const p = Number(v.max_passengers || 0)
+  if (p <= 3) return 'Solo trips & couples'
+  if (p <= 5) return 'Small groups & families'
+  if (p <= 8) return 'Group of friends'
+  return 'Large groups & events'
+}
+
 function VehicleCard({ v, bookUrl, delay }) {
   return (
     <a href={bookUrl}
-      className="group relative bg-white rounded-3xl overflow-hidden border border-slate-100 hover:border-[var(--gold)]/50 hover:shadow-2xl hover:-translate-y-2 transition-all fade-up"
+      className="group relative bg-white rounded-3xl overflow-hidden border border-slate-100 hover:border-[var(--gold)]/50 hover:shadow-2xl hover:-translate-y-2 transition-all fade-up flex flex-col"
       style={{ animationDelay: `${delay}s` }}>
       <div className="relative aspect-[4/3] bg-gradient-to-br from-[var(--emerald)] to-[var(--emerald-deep)] overflow-hidden">
         <svg className="absolute inset-0 w-full h-full opacity-10" preserveAspectRatio="none" viewBox="0 0 200 150" aria-hidden>
@@ -349,39 +358,33 @@ function VehicleCard({ v, bookUrl, delay }) {
             <CarGlyph className="w-32 h-32 text-white/80" />
           )}
         </div>
-        <div className="absolute top-3 right-3 flex gap-1">
-          <span className="bg-black/40 backdrop-blur-sm text-white text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1">
-            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-            {v.max_passengers}
-          </span>
-          <span className="bg-black/40 backdrop-blur-sm text-white text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1">
-            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M9 5h6v2h2a2 2 0 012 2v9a2 2 0 01-2 2H7a2 2 0 01-2-2V9a2 2 0 012-2h2V5z" /></svg>
-            {v.max_luggage}
-          </span>
-        </div>
       </div>
 
-      <div className="p-5">
-        <h3 className="font-display text-2xl text-[var(--emerald-deep)] mb-1">{v.display_name}</h3>
-        {v.description && <p className="text-xs text-slate-500 line-clamp-2 mb-3 leading-relaxed">{v.description}</p>}
+      <div className="p-5 flex flex-col flex-1">
+        <h3 className="font-display text-2xl text-[var(--emerald-deep)] leading-tight">{v.display_name}</h3>
+        <p className="text-xs uppercase tracking-wider text-[var(--gold)] font-bold mt-1">{bestForLabel(v)}</p>
+        {v.description && <p className="text-sm text-slate-600 mt-3 leading-relaxed line-clamp-3">{v.description}</p>}
 
-        <div className="mt-3 pt-3 border-t border-dashed border-slate-200">
-          <div className="flex items-end justify-between">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Starts from</p>
-              <p className="font-display text-3xl text-[var(--emerald-deep)] leading-none">
-                <span className="text-base align-top text-slate-400">$</span>{Number(v.base_fare).toFixed(0)}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Per mile</p>
-              <p className="font-semibold text-sm text-slate-700">+${Number(v.per_mile_rate).toFixed(2)}</p>
-            </div>
+        {/* Capacity row — visual icons with labels */}
+        <div className="flex items-center gap-4 mt-4 text-slate-700">
+          <div className="flex items-center gap-1.5">
+            <svg className="w-5 h-5 text-[var(--emerald)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+            <span className="text-sm"><b className="font-display text-base">{v.max_passengers}</b> seat{v.max_passengers !== 1 ? 's' : ''}</span>
           </div>
-          <div className="mt-3 inline-flex items-center gap-1 text-xs text-[var(--emerald)] group-hover:text-[var(--gold)] transition-colors font-semibold">
-            Book this vehicle
+          <div className="flex items-center gap-1.5">
+            <svg className="w-5 h-5 text-[var(--emerald)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 5h6v2h2a2 2 0 012 2v9a2 2 0 01-2 2H7a2 2 0 01-2-2V9a2 2 0 012-2h2V5zM10 7v0M14 7v0" /></svg>
+            <span className="text-sm"><b className="font-display text-base">{v.max_luggage}</b> bag{v.max_luggage !== 1 ? 's' : ''}</span>
+          </div>
+        </div>
+
+        <div className="mt-auto pt-5 flex items-center justify-between">
+          <span className="inline-flex items-center gap-1 text-sm text-[var(--emerald)] group-hover:text-[var(--gold)] transition-colors font-semibold">
+            Book this
             <svg className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-          </div>
+          </span>
+          <span className="bg-[var(--cream-warm)] text-[var(--emerald-deep)] text-xs font-bold px-2.5 py-1 rounded-full border border-[var(--gold)]/20">
+            from ${Number(v.base_fare).toFixed(0)}
+          </span>
         </div>
       </div>
     </a>
