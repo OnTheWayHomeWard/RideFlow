@@ -59,17 +59,21 @@ async def send_sms(db: AsyncSession, to: str, message: str, related_type: str = 
         print(f"[SMS DEV] To: {to} | Message: {message}")
         return
 
-    # Production — send via Twilio
+    # Production — send via Twilio.
+    # Prefer the campaign-linked Messaging Service (required for reliable US
+    # A2P 10DLC delivery); fall back to the raw sender number if not set.
     try:
         from twilio.rest import Client
         client = Client(app_settings.TWILIO_ACCOUNT_SID, app_settings.TWILIO_AUTH_TOKEN)
-        client.messages.create(
-            body=message,
-            from_=app_settings.TWILIO_PHONE_NUMBER,
-            to=to,
-        )
+        kwargs = {"body": message, "to": to}
+        if app_settings.TWILIO_MESSAGING_SERVICE_SID:
+            kwargs["messaging_service_sid"] = app_settings.TWILIO_MESSAGING_SERVICE_SID
+        else:
+            kwargs["from_"] = app_settings.TWILIO_PHONE_NUMBER
+        client.messages.create(**kwargs)
         log.status = "delivered"
     except Exception as e:
+        # e.g. 21610 = recipient previously replied STOP (opted out). Don't crash.
         log.status = "failed"
         print(f"[SMS ERROR] {e}")
 

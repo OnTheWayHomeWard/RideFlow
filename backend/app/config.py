@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_PHONE_NUMBER: str = ""
+    # Preferred for US A2P 10DLC — send via the campaign-linked Messaging Service.
+    # When set, takes priority over TWILIO_PHONE_NUMBER.
+    TWILIO_MESSAGING_SERVICE_SID: str = ""
     GOOGLE_MAPS_API_KEY: str = ""
 
     class Config:
