@@ -29,6 +29,7 @@ DEFAULT_SETTINGS = [
     # ── Public URLs ──  (used in SMS messages, Stripe redirects, QR codes)
     ("client_base_url", "http://localhost:5173", "Public URL of the client booking app, e.g. https://ride.example.com"),
     ("staff_base_url", "http://localhost:5174", "Public URL of the staff portal, e.g. https://staff.example.com"),
+    ("website_base_url", "", "Public URL of the marketing website, e.g. https://gobellme.com. Used for legal-page links (privacy, terms, SMS terms) shown in consent text."),
 
     # ── Marketing website content (gobellme.com landing page) ──
     ("website_hero_badge", "Pre-booked private rides", "Small pill above the hero headline."),

@@ -2002,7 +2002,7 @@ async def list_settings(admin: Admin = Depends(get_current_admin), db: AsyncSess
     return result.scalars().all()
 
 
-SUPER_ADMIN_ONLY_SETTINGS = {"client_base_url", "staff_base_url"}
+SUPER_ADMIN_ONLY_SETTINGS = {"client_base_url", "staff_base_url", "website_base_url"}
 
 
 @router.put("/settings")

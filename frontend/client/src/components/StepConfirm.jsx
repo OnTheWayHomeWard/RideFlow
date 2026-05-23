@@ -12,6 +12,7 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState(null)
   const [extrasList, setExtrasList] = useState([])
+  const [smsConsent, setSmsConsent] = useState(false)
   // Forced extras from a matching pickup-group (e.g. airports auto-add Extra Luggage)
   const [forcedExtras, setForcedExtras] = useState([])  // list of slugs
   const [forcedGroupNames, setForcedGroupNames] = useState([])
@@ -119,6 +120,10 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
     }
     if (hasRoomPickup && !booking.clientRoom.trim()) {
       setToast({ message: 'Please enter your room number for room pickup', type: 'warning' })
+      return
+    }
+    if (!smsConsent) {
+      setToast({ message: 'Please agree to receive booking text messages to continue', type: 'warning' })
       return
     }
 
@@ -307,6 +312,31 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
           />
         </Section>
       )}
+
+      {/* SMS consent — required (Twilio A2P 10DLC) */}
+      <div className="mb-5">
+        <label className="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-xl cursor-pointer">
+          <input type="checkbox" checked={smsConsent} onChange={e => setSmsConsent(e.target.checked)}
+            className="mt-0.5 w-4 h-4 shrink-0 accent-blue-600" />
+          <span className="text-xs text-slate-500 leading-relaxed">
+            I agree to receive booking confirmations, ride reminders, and status updates by text message from{' '}
+            {settings.company_name || 'us'} at the number provided. Message frequency varies. Message &amp; data
+            rates may apply. Reply STOP to opt out, HELP for help.
+            {(() => {
+              const w = (settings.website_base_url || '').replace(/\/$/, '')
+              if (!w) return null
+              return (
+                <> See our{' '}
+                  <a href={`${w}/sms-terms`} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">SMS Terms</a>{' '}and{' '}
+                  <a href={`${w}/privacy-policy`} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Privacy Policy</a>.</>
+              )
+            })()}
+          </span>
+        </label>
+      </div>
+
+      {/* Spacer so content isn't hidden behind the fixed pay bar */}
+      <div className="h-4"></div>
 
       {/* Fixed bottom pay bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 z-20">

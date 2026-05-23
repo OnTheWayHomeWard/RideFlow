@@ -42,7 +42,7 @@ export default function Settings() {
       {/* Group settings by category */}
       <SettingsGroup title="Company" settings={otherSettings.filter(s => s.key.startsWith('company_'))} saving={saving} onSave={handleSave} />
       {me?.is_super_admin && (
-        <SettingsGroup title="Public URLs (super-admin only)" settings={otherSettings.filter(s => ['client_base_url', 'staff_base_url'].includes(s.key))} saving={saving} onSave={handleSave} />
+        <SettingsGroup title="Public URLs (super-admin only)" settings={otherSettings.filter(s => ['client_base_url', 'staff_base_url', 'website_base_url'].includes(s.key))} saving={saving} onSave={handleSave} />
       )}
       <SettingsGroup title="Website — Hero Section" settings={otherSettings.filter(s => ['website_hero_badge', 'website_hero_title', 'website_hero_title_accent', 'website_hero_subtitle', 'website_hero_image_url', 'website_stat_rides', 'website_stat_rating', 'website_stat_uptime'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Website — Section Headings" settings={otherSettings.filter(s => ['website_how_title','website_how_subtitle','website_why_title','website_why_subtitle','website_fleet_title','website_fleet_subtitle','website_testimonials_title','website_testimonials_subtitle','website_service_title','website_service_subtitle','website_contact_title','website_contact_subtitle'].includes(s.key))} saving={saving} onSave={handleSave} />
@@ -321,6 +321,7 @@ const FRIENDLY_NAMES = {
   // Public URLs
   client_base_url: 'Client App URL',
   staff_base_url: 'Staff Portal URL',
+  website_base_url: 'Marketing Website URL',
   // Payment & commissions
   default_driver_pay_pct: 'Driver Pay %',
   default_cashier_commission_pct: 'Cashier Commission %',
