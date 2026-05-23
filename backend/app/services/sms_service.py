@@ -5,6 +5,7 @@ Templates are stored in the settings table and support variable interpolation.
 Variables: {cashier_name}, {driver_name}, {client_name}, {amount}, {route},
            {booking_number}, {total_earnings}, {pickup_date}, {pickup_time}
 """
+import re
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings as app_settings
@@ -50,11 +51,45 @@ def to_gsm_safe(text: str) -> str:
     return text
 
 
+# Strip a leading Plus Code like "2QJR+85, " from a place string.
+_PLUS_CODE_RE = re.compile(r'^[A-Z0-9]{4,}\+[A-Z0-9]+,?\s*', re.I)
+
+
+def short_place(name) -> str:
+    """Turn a long formatted address into a short label for SMS.
+    'Bole ... Airport, Addis Ababa, Ethiopia' -> 'Bole ... Airport'.
+    Drops a leading Plus Code, then keeps the text before the first comma."""
+    if not name:
+        return name
+    s = _PLUS_CODE_RE.sub('', str(name)).strip()
+    first = s.split(',')[0].strip()
+    return first or s or str(name)
+
+
+def _short_route(route: str) -> str:
+    """Shorten both endpoints of a 'A -> B' / 'A → B' route string."""
+    parts = re.split(r'\s*(?:->|→)\s*', str(route), maxsplit=1)
+    if len(parts) == 2:
+        return f"{short_place(parts[0])} -> {short_place(parts[1])}"
+    return short_place(route)
+
+
+# Variables that hold place names — shortened automatically in SMS so messages
+# stay compact (and ideally single-segment). Full addresses remain on the
+# receipt/confirmation page.
+_PLACE_KEYS = {"pickup_name", "dropoff_name"}
+
+
 def render_template(template: str, variables: dict) -> str:
-    """Replace {variable} placeholders with actual values."""
+    """Replace {variable} placeholders with actual values, shortening place names."""
     message = template
     for key, value in variables.items():
-        message = message.replace(f"{{{key}}}", str(value))
+        v = str(value)
+        if key in _PLACE_KEYS:
+            v = short_place(v)
+        elif key == "route":
+            v = _short_route(v)
+        message = message.replace(f"{{{key}}}", v)
     return message
 
 
