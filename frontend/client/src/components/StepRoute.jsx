@@ -19,6 +19,7 @@ function getIcon(name) {
 export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, onError }) {
   const settings = useSettings()
   const [routes, setRoutes] = useState([])
+  const [nearbyRoutes, setNearbyRoutes] = useState(null)  // directional options sorted nearest-first
   const [vehicleRates, setVehicleRates] = useState([])
   const [pickup, setPickup] = useState(booking.pickup)
   const [dropoff, setDropoff] = useState(booking.dropoff)
@@ -138,6 +139,17 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
     if (booking.pickup) return
     useCurrentLocation()
   }, [])
+
+  // When we know the user's location (pickup), fetch popular routes ordered
+  // nearest-origin-first so they discover fixed-price routes from where they are.
+  useEffect(() => {
+    const lat = pickup?.lat
+    const lng = pickup?.lng
+    if (!lat || !lng) { setNearbyRoutes(null); return }
+    api.getNearbyRoutes(lat, lng)
+      .then(res => setNearbyRoutes(res?.routes || []))
+      .catch(() => setNearbyRoutes(null))
+  }, [pickup?.lat, pickup?.lng])
 
   const handlePopularRoute = (route) => {
     // Always use the route's own from + to coordinates so the backend matches
@@ -331,51 +343,81 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
       {/* Divider */}
       <div className="flex items-center gap-3 my-4">
         <div className="flex-1 h-px bg-slate-200"></div>
-        <span className="text-xs text-slate-400 font-medium">Popular destinations</span>
+        <span className="text-xs text-slate-400 font-medium">
+          {nearbyRoutes && nearbyRoutes.length ? 'Popular routes near you' : 'Popular destinations'}
+        </span>
         <div className="flex-1 h-px bg-slate-200"></div>
       </div>
 
-      {/* Popular Routes */}
+      {/* Popular Routes — prefer location-sorted nearby options, else the plain list */}
       {routesLoading ? (
         <div className="flex justify-center py-8">
           <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      ) : (nearbyRoutes && nearbyRoutes.length) ? (
+        <div className="space-y-2.5">
+          {nearbyRoutes.map(opt => (
+            <RouteCard
+              key={`${opt.route_id}-${opt.direction}`}
+              route={opt}
+              floor={floorPriceFor(opt)}
+              near={opt.near}
+              distanceKm={opt.origin_distance_km}
+              onClick={() => handlePopularRoute(opt)}
+              disabled={loading}
+            />
+          ))}
         </div>
       ) : routes.length === 0 ? (
         <p className="text-center text-sm text-slate-400 py-8">No popular routes available. Type your destination above.</p>
       ) : (
         <div className="space-y-2.5">
           {routes.map(route => (
-            <button
+            <RouteCard
               key={route.id}
+              route={route}
+              floor={floorPriceFor(route)}
               onClick={() => handlePopularRoute(route)}
               disabled={loading}
-              className="w-full bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-3 hover:border-blue-300 hover:shadow-sm active:scale-[0.99] transition-all text-left disabled:opacity-60"
-            >
-              <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-2xl">
-                {getIcon(route.name || route.to_name)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-slate-900 text-sm truncate">{route.name || route.to_name}</p>
-                <p className="text-xs text-slate-500 truncate">{route.from_name} → {route.to_name}</p>
-              </div>
-              <div className="text-right">
-                {(() => {
-                  const floor = floorPriceFor(route)
-                  return floor !== null ? (
-                    <p className="text-sm font-bold text-slate-900">from ${floor}</p>
-                  ) : null
-                })()}
-                {route.distance_miles && (
-                  <p className="text-xs text-slate-400">{route.distance_miles} mi</p>
-                )}
-              </div>
-              <svg className="w-5 h-5 text-slate-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
+            />
           ))}
         </div>
       )}
     </div>
+  )
+}
+
+function RouteCard({ route, floor, near, distanceKm, onClick, disabled }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-full bg-white border rounded-xl p-4 flex items-center gap-3 hover:shadow-sm active:scale-[0.99] transition-all text-left disabled:opacity-60 ${
+        near ? 'border-green-300' : 'border-slate-200 hover:border-blue-300'
+      }`}
+    >
+      <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-2xl shrink-0">
+        {getIcon(route.name || route.to_name)}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <p className="font-semibold text-slate-900 text-sm truncate">{route.name || route.to_name}</p>
+          {near && <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 text-green-700 px-1.5 py-0.5 rounded shrink-0">Near you</span>}
+        </div>
+        <p className="text-xs text-slate-500 truncate">{route.from_name} → {route.to_name}</p>
+        {typeof distanceKm === 'number' && (
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            {distanceKm < 1 ? 'Starts near you' : `Starts ~${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km away`}
+          </p>
+        )}
+      </div>
+      <div className="text-right shrink-0">
+        {floor !== null && <p className="text-sm font-bold text-slate-900">from ${floor}</p>}
+        {route.distance_miles && <p className="text-xs text-slate-400">{route.distance_miles} mi</p>}
+      </div>
+      <svg className="w-5 h-5 text-slate-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+      </svg>
+    </button>
   )
 }

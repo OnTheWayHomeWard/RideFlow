@@ -34,18 +34,21 @@ async def find_matching_common_route(
     )
     routes = result.scalars().all()
 
+    def near(a_lat, a_lng, b_lat, b_lng):
+        return (abs(float(a_lat) - b_lat) < COORD_MATCH_THRESHOLD
+                and abs(float(a_lng) - b_lng) < COORD_MATCH_THRESHOLD)
+
     for route in routes:
         if route.from_lat is None or route.to_lat is None:
             continue
-        from_match = (
-            abs(float(route.from_lat) - pickup_lat) < COORD_MATCH_THRESHOLD
-            and abs(float(route.from_lng) - pickup_lng) < COORD_MATCH_THRESHOLD
-        )
-        to_match = (
-            abs(float(route.to_lat) - dropoff_lat) < COORD_MATCH_THRESHOLD
-            and abs(float(route.to_lng) - dropoff_lng) < COORD_MATCH_THRESHOLD
-        )
-        if from_match and to_match:
+        # Forward: pickup≈from and dropoff≈to
+        if near(route.from_lat, route.from_lng, pickup_lat, pickup_lng) and \
+           near(route.to_lat, route.to_lng, dropoff_lat, dropoff_lng):
+            return route
+        # Reverse (B->A): pickup≈to and dropoff≈from — only if bidirectional
+        if getattr(route, "bidirectional", True) and \
+           near(route.to_lat, route.to_lng, pickup_lat, pickup_lng) and \
+           near(route.from_lat, route.from_lng, dropoff_lat, dropoff_lng):
             return route
     return None
 

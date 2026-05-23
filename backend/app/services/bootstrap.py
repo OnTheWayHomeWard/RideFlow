@@ -68,6 +68,7 @@ DEFAULT_SETTINGS = [
     ("min_advance_booking_hours", 0.5, "Minimum hours before pickup that a client can book. Decimals allowed (0.5 = 30 min)."),
     ("review_expiry_days", 3, "How many days after a ride a client can submit a review"),
     ("unassigned_alert_minutes", 15, "Alert admin if run unassigned after X minutes"),
+    ("common_route_nearby_radius_km", 8, "Popular routes whose start point is within this many km of the client's location get a 'Near you' badge. All routes are shown either way, sorted nearest-first."),
 
     # ── Service area & cross-country ──
     ("service_areas", [], "Service areas where bookings can be made. Each entry: {type:'country'|'city', country, name, [bounds, lat, lng, place_id]}. Configurable from admin Settings."),

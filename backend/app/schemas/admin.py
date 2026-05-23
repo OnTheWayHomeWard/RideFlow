@@ -230,6 +230,7 @@ class RouteCreateRequest(BaseModel):
     to_lng: float | None = None
     distance_miles: float | None = None
     prices: dict
+    bidirectional: bool = True
     sort_order: int = 0
 
 

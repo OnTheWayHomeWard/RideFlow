@@ -228,6 +228,7 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
   const emptyForm = () => ({
     name: '', from_name: '', from_address: '', from_lat: '', from_lng: '',
     to_name: '', to_address: '', to_lat: '', to_lng: '', distance_miles: '',
+    bidirectional: true,
     // per-vehicle prices, keyed by vehicle_type
     prices: Object.fromEntries(activeRates.map(r => [r.vehicle_type, ''])),
   })
@@ -274,6 +275,7 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
         to_name: form.to_name, to_address: form.to_address,
         to_lat: parseFloat(form.to_lat) || null, to_lng: parseFloat(form.to_lng) || null,
         distance_miles: form.distance_miles ? parseFloat(form.distance_miles) : null,
+        bidirectional: form.bidirectional,
         prices,
       }
       if (editId) await api.updateRoute(editId, data)
@@ -290,6 +292,7 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
       to_name: r.to_name, to_address: r.to_address,
       to_lat: r.to_lat || '', to_lng: r.to_lng || '',
       distance_miles: r.distance_miles || '',
+      bidirectional: r.bidirectional !== false,
       prices: resolvePerVehicle(r.prices),
     })
     setEditId(r.id); setShowForm(true)
@@ -359,6 +362,16 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
               <p className="text-xs text-amber-600 mt-2">No active vehicles. Add vehicle types in the Vehicle Rates tab first.</p>
             )}
           </div>
+          {/* Bidirectional */}
+          <label className="flex items-start gap-2 mb-4 cursor-pointer">
+            <input type="checkbox" checked={form.bidirectional}
+              onChange={e => setForm(p => ({ ...p, bidirectional: e.target.checked }))}
+              className="mt-0.5" />
+            <span className="text-sm text-slate-700">
+              Also offer the return trip (<b>{form.to_name || 'B'} → {form.from_name || 'A'}</b>) at the same price
+              <span className="block text-xs text-slate-400">Recommended. Uncheck only for genuinely one-way routes.</span>
+            </span>
+          </label>
           <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">{editId ? 'Save' : 'Create'}</button>
         </form>
       )}
@@ -374,7 +387,7 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
                 </div>
                 {r.distance_miles && <span className="text-xs text-slate-400">{r.distance_miles} mi</span>}
               </div>
-              <p className="text-xs text-slate-500 mb-2">{r.from_name} → {r.to_name}</p>
+              <p className="text-xs text-slate-500 mb-2">{r.from_name} {r.bidirectional !== false ? '↔' : '→'} {r.to_name}</p>
               {(() => {
                 const perVehicle = resolvePerVehicle(r.prices)
                 const isLegacy = r.prices && '_base' in r.prices

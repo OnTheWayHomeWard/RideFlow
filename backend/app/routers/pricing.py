@@ -1,5 +1,6 @@
 import os
-from fastapi import APIRouter, Depends, HTTPException
+import math
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +42,76 @@ async def get_common_routes(db: AsyncSession = Depends(get_db)):
         select(CommonRoute).where(CommonRoute.is_active == True).order_by(CommonRoute.sort_order)
     )
     return result.scalars().all()
+
+
+def _haversine_km(lat1, lng1, lat2, lng2) -> float:
+    R = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+@router.get("/common-routes/nearby")
+async def get_nearby_common_routes(
+    lat: float = Query(...),
+    lng: float = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns directional route options (forward + virtual reverse for
+    bidirectional routes), each oriented from→to, sorted by how close the
+    guest is to the option's ORIGIN. Each option is flagged `near` if its
+    origin is within the configured radius."""
+    # Configurable "near you" radius
+    rkm_r = await db.execute(select(Setting).where(Setting.key == "common_route_nearby_radius_km"))
+    rkm_s = rkm_r.scalar_one_or_none()
+    try:
+        radius_km = float(rkm_s.value) if rkm_s and rkm_s.value not in (None, "") else 8.0
+    except (TypeError, ValueError):
+        radius_km = 8.0
+
+    result = await db.execute(
+        select(CommonRoute).where(CommonRoute.is_active == True).order_by(CommonRoute.sort_order)
+    )
+    routes = result.scalars().all()
+
+    options = []
+    for r in routes:
+        if r.from_lat is None or r.to_lat is None:
+            continue
+        # Forward A->B (origin = from)
+        options.append(_route_option(r, "forward", lat, lng))
+        # Reverse B->A (origin = to)
+        if getattr(r, "bidirectional", True):
+            options.append(_route_option(r, "reverse", lat, lng))
+
+    # Sort nearest-origin first; flag those within radius
+    options.sort(key=lambda o: o["origin_distance_km"])
+    for o in options:
+        o["near"] = o["origin_distance_km"] <= radius_km
+
+    return {"radius_km": radius_km, "routes": options}
+
+
+def _route_option(r: CommonRoute, direction: str, lat: float, lng: float) -> dict:
+    if direction == "reverse":
+        o_name, o_addr, o_lat, o_lng = r.to_name, r.to_address, float(r.to_lat), float(r.to_lng)
+        d_name, d_addr, d_lat, d_lng = r.from_name, r.from_address, float(r.from_lat), float(r.from_lng)
+    else:
+        o_name, o_addr, o_lat, o_lng = r.from_name, r.from_address, float(r.from_lat), float(r.from_lng)
+        d_name, d_addr, d_lat, d_lng = r.to_name, r.to_address, float(r.to_lat), float(r.to_lng)
+
+    return {
+        "route_id": str(r.id),
+        "name": r.name,
+        "direction": direction,
+        "from_name": o_name, "from_address": o_addr, "from_lat": o_lat, "from_lng": o_lng,
+        "to_name": d_name, "to_address": d_addr, "to_lat": d_lat, "to_lng": d_lng,
+        "distance_miles": float(r.distance_miles) if r.distance_miles else None,
+        "prices": r.prices,
+        "origin_distance_km": round(_haversine_km(o_lat, o_lng, lat, lng), 2),
+    }
 
 
 @router.post("/pricing/calculate", response_model=PriceCalculateResponse)

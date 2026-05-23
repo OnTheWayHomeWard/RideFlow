@@ -20,6 +20,7 @@ export const api = {
   getVehicleRates: () => request('/vehicle-rates'),
   getExtras: () => request('/extras'),
   getCommonRoutes: () => request('/common-routes'),
+  getNearbyRoutes: (lat, lng) => request(`/common-routes/nearby?lat=${lat}&lng=${lng}`),
   calculateAllPrices: (data) => request('/pricing/calculate-all', { method: 'POST', body: JSON.stringify(data) }),
   matchPickupGroup: (lat, lng) => request(`/pickup-groups/match?lat=${lat}&lng=${lng}`),
 

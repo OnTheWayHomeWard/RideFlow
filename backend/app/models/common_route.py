@@ -24,6 +24,8 @@ class CommonRoute(Base):
     to_lng: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
     distance_miles: Mapped[float | None] = mapped_column(Numeric(6, 1), nullable=True)
     prices: Mapped[dict] = mapped_column(JSONB, nullable=False)  # {"sedan": 35, "suv": 45, ...}
+    # If true, the reverse trip (B->A) is offered virtually at the same price.
+    bidirectional: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
