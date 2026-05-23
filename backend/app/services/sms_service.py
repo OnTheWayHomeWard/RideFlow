@@ -22,6 +22,34 @@ async def get_template(db: AsyncSession, key: str) -> str:
     return ""
 
 
+# Common non-GSM punctuation → GSM-7 safe equivalents. A single non-GSM char
+# forces the whole SMS into UCS2 (70 chars/segment instead of 160), which
+# multiplies cost and hurts international deliverability. We can't fix genuinely
+# non-Latin content (e.g. Amharic place names), but we can stop fancy punctuation
+# from silently bloating every message.
+_GSM_REPLACEMENTS = {
+    "→": "->",   # → arrow
+    "←": "<-",   # ←
+    "↔": "<->",  # ↔
+    "–": "-",    # – en dash
+    "—": "-",    # — em dash
+    "‘": "'", "’": "'",   # ' ' smart single quotes
+    "“": '"', "”": '"',   # " " smart double quotes
+    "…": "...",  # … ellipsis
+    "•": "*",    # • bullet
+    " ": " ",    # non-breaking space
+    "€": "EUR",  # € (not in GSM default unless using extension)
+}
+
+
+def to_gsm_safe(text: str) -> str:
+    if not text:
+        return text
+    for bad, good in _GSM_REPLACEMENTS.items():
+        text = text.replace(bad, good)
+    return text
+
+
 def render_template(template: str, variables: dict) -> str:
     """Replace {variable} placeholders with actual values."""
     message = template
@@ -35,6 +63,9 @@ async def send_sms(db: AsyncSession, to: str, message: str, related_type: str = 
     Send an SMS message. In dev mode, just logs it. In production, uses Twilio.
     Always logs to notification_log table.
     """
+    # Normalize fancy punctuation to keep the message in GSM-7 where possible
+    # (cheaper, more reliable internationally than UCS2).
+    message = to_gsm_safe(message)
     # Check if SMS is enabled (before adding log to avoid autoflush issues)
     sms_enabled_r = await db.execute(select(Setting).where(Setting.key == "sms_enabled"))
     sms_setting = sms_enabled_r.scalar_one_or_none()
