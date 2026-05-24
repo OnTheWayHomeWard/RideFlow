@@ -105,7 +105,10 @@ export default function RouteCard({ route, floor, near, distanceKm, onBook, disa
   const bidir = route.bidirectional !== false
   const a = { name: route.from_name, address: route.from_address, lat: route.from_lat, lng: route.from_lng }
   const b = { name: route.to_name, address: route.to_address, lat: route.to_lat, lng: route.to_lng }
-  const hasBadges = near || bidir || typeof distanceKm === 'number'
+  // Only surface the distance for routes that are actually nearby — "~120 km
+  // away" on a far route is noise.
+  const showDistance = near && typeof distanceKm === 'number'
+  const hasBadges = near || bidir || showDistance
 
   return (
     <div className={`bg-white border rounded-xl overflow-hidden transition-all ${
@@ -127,7 +130,7 @@ export default function RouteCard({ route, floor, near, distanceKm, onBook, disa
             <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
               {near && <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Near you</span>}
               {bidir && <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded" title="Available both ways at the same price">↔ Both ways</span>}
-              {typeof distanceKm === 'number' && (
+              {showDistance && (
                 <span className="text-[10px] text-slate-400">
                   {distanceKm < 1 ? 'Starts near you' : `~${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km away`}
                 </span>
