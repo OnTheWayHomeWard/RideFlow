@@ -19,6 +19,7 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
   const [editingPickup, setEditingPickup] = useState(false)
   const [locationStatus, setLocationStatus] = useState(null) // 'requesting', 'granted', 'denied'
   const [userCountry, setUserCountry] = useState(null) // detected country from geolocation
+  const [geoCoords, setGeoCoords] = useState(null) // raw detected location — kept even if pickup is cleared
 
   const hasQR = !!cashierInfo
   const hasPickup = !!pickup && !editingPickup
@@ -71,6 +72,9 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
       (pos) => {
         /* success handler below */
         setLocationStatus('granted')
+        // Remember the real detected location so nearby suggestions survive a
+        // pickup clear (manual typing) until the user picks a new pickup.
+        setGeoCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
         const loc = {
           name: 'Your current location',
           address: `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`,
@@ -138,16 +142,19 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
     useCurrentLocation()
   }, [])
 
-  // When we know the user's location (pickup), fetch popular routes ordered
-  // nearest-origin-first so they discover fixed-price routes from where they are.
+  // Fetch popular routes ordered nearest-origin-first so the rider discovers
+  // fixed-price routes from where they are. Sort by the SELECTED pickup when set,
+  // otherwise fall back to the detected location — so clearing the pickup to type
+  // manually doesn't wipe the suggestions; they only re-sort once a new pickup is
+  // chosen.
   useEffect(() => {
-    const lat = pickup?.lat
-    const lng = pickup?.lng
-    if (!lat || !lng) { setNearbyRoutes(null); return }
+    const lat = pickup?.lat ?? geoCoords?.lat
+    const lng = pickup?.lng ?? geoCoords?.lng
+    if (lat == null || lng == null) { setNearbyRoutes(null); return }
     api.getNearbyRoutes(lat, lng)
       .then(res => setNearbyRoutes(res?.routes || []))
       .catch(() => setNearbyRoutes(null))
-  }, [pickup?.lat, pickup?.lng])
+  }, [pickup?.lat, pickup?.lng, geoCoords?.lat, geoCoords?.lng])
 
   // Book a popular route in a specific direction. Passing the exact endpoint
   // coords ensures the backend matches it as a fixed-price common route (forward
