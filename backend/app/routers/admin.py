@@ -1866,6 +1866,22 @@ async def activate_route(
     return {"message": "Route activated"}
 
 
+@router.delete("/common-routes/{route_id}/permanent")
+async def delete_route_permanent(
+    route_id: str,
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Hard delete — permanently removes the route row."""
+    result = await db.execute(select(CommonRoute).where(CommonRoute.id == route_id))
+    route = result.scalar_one_or_none()
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    await db.delete(route)
+    await db.commit()
+    return {"message": "Route deleted"}
+
+
 # ═══════════════════════════════════════════
 # VEHICLE RATES
 # ═══════════════════════════════════════════

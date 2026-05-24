@@ -145,6 +145,7 @@ export const api = {
   updateRoute: (id, data) => request(`/admin/common-routes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteRoute: (id) => request(`/admin/common-routes/${id}`, { method: 'DELETE' }),
   activateRoute: (id) => request(`/admin/common-routes/${id}/activate`, { method: 'PUT' }),
+  deleteRoutePermanent: (id) => request(`/admin/common-routes/${id}/permanent`, { method: 'DELETE' }),
 
   // Upsales
   getUpsales: () => request('/admin/upsales'),

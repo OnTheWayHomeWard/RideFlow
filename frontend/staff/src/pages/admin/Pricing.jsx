@@ -306,6 +306,11 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
     } catch (err) { alert(err.message) }
   }
 
+  const handleDelete = async (r) => {
+    if (!confirm(`Permanently delete the route "${r.name}"? This cannot be undone.`)) return
+    try { await api.deleteRoutePermanent(r.id); reload() } catch (err) { alert(err.message) }
+  }
+
   return (
     <div>
       <div className="flex justify-end mb-3">
@@ -411,9 +416,10 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
             </div>
             <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 flex gap-2">
               <button onClick={() => startEdit(r)} className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700">Edit</button>
-              <button onClick={() => handleToggle(r)} className={`px-3 py-1 rounded text-xs font-medium ${r.is_active ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-green-600 text-white hover:bg-green-700'}`}>
+              <button onClick={() => handleToggle(r)} className={`px-3 py-1 rounded text-xs font-medium ${r.is_active ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-green-600 text-white hover:bg-green-700'}`}>
                 {r.is_active ? 'Deactivate' : 'Activate'}
               </button>
+              <button onClick={() => handleDelete(r)} className="ml-auto px-3 py-1 bg-red-100 text-red-700 rounded text-xs font-medium hover:bg-red-200">Delete</button>
             </div>
           </div>
         ))}
