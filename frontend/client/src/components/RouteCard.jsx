@@ -96,19 +96,34 @@ export function collapseByRoute(options) {
   return out
 }
 
+// Arrow shown between the two endpoint names in a route title:
+// double-headed for two-way routes, single for one-way.
+function ArrowBetween({ bidir }) {
+  return (
+    <svg className="w-4 h-4 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d={bidir ? 'M3 12h18M15 6l6 6-6 6M9 18l-6-6 6-6' : 'M3 12h18M15 6l6 6-6 6'} />
+    </svg>
+  )
+}
+
 // Expandable popular-route card. Tap the header to reveal the full pickup +
 // destination (with map links) and direction-aware booking buttons.
 // `onBook(from, to)` receives {name, address, lat, lng} endpoints.
 export default function RouteCard({ route, floor, near, distanceKm, onBook, disabled }) {
   const [expanded, setExpanded] = useState(false)
-  const title = route.name || shortName(route.to_name)
   const bidir = route.bidirectional !== false
+  // Build the title from the two endpoint fields (e.g. "Goro ⇄ Kazanchise")
+  // rather than the manually-typed name, so it always reflects the actual
+  // pickup/destination and the direction.
+  const fromShort = shortName(route.from_name)
+  const toShort = shortName(route.to_name)
   const a = { name: route.from_name, address: route.from_address, lat: route.from_lat, lng: route.from_lng }
   const b = { name: route.to_name, address: route.to_address, lat: route.to_lat, lng: route.to_lng }
   // Only surface the distance for routes that are actually nearby — "~120 km
   // away" on a far route is noise.
   const showDistance = near && typeof distanceKm === 'number'
-  const hasBadges = near || bidir || showDistance
+  const hasBadges = near || showDistance
 
   return (
     <div className={`bg-white border rounded-xl overflow-hidden transition-all ${
@@ -121,15 +136,18 @@ export default function RouteCard({ route, floor, near, distanceKm, onBook, disa
         className="w-full p-4 flex items-start gap-3 text-left hover:bg-slate-50/70 transition-colors"
       >
         <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-2xl shrink-0">
-          {getIcon(title)}
+          {getIcon(route.to_name)}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-slate-900 text-sm leading-snug">{title}</p>
-          <p className="text-xs text-slate-500 truncate mt-0.5">{shortName(route.from_name)} → {shortName(route.to_name)}</p>
+          {/* Title built from the two endpoints + a direction arrow */}
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-semibold text-slate-900 text-sm leading-snug">
+            <span>{fromShort}</span>
+            <ArrowBetween bidir={bidir} />
+            <span>{toShort}</span>
+          </div>
           {hasBadges && (
             <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
               {near && <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Near you</span>}
-              {bidir && <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded" title="Available both ways at the same price">↔ Both ways</span>}
               {showDistance && (
                 <span className="text-[10px] text-slate-400">
                   {distanceKm < 1 ? 'Starts near you' : `~${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km away`}
