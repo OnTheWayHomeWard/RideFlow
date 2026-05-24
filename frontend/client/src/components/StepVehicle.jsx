@@ -50,6 +50,8 @@ export default function StepVehicle({ prices: rawPrices, pickup, dropoff, onSele
   }, [pickup?.lat, pickup?.lng, dropoff?.lat, dropoff?.lng])
 
   const routeFloor = (o) => {
+    // Backend-computed, upsale-adjusted floor — matches the vehicle prices.
+    if (o.from_price != null && !isNaN(Number(o.from_price))) return Math.round(Number(o.from_price))
     const vals = Object.values(o.prices || {}).filter(v => typeof v === 'number' && v > 0)
     return vals.length ? Math.round(Math.min(...vals)) : null
   }

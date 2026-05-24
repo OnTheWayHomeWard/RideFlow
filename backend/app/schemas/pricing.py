@@ -43,6 +43,7 @@ class CommonRouteOut(BaseModel):
     to_lng: float | None = None
     distance_miles: float | None = None
     prices: dict
+    from_price: float | None = None  # lowest upsale-adjusted price across vehicles
     bidirectional: bool = True
     sort_order: int
     is_active: bool

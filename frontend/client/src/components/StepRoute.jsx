@@ -48,6 +48,8 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
   //  - new per-vehicle:  {sedan: 100, suv: 125}  → cheapest = min(values), already a total
   //  - legacy _base:     {_base: 100}            → must add cheapest vehicle base_fare
   const floorPriceFor = (route) => {
+    // Backend-computed, upsale-adjusted floor — matches the vehicle screen.
+    if (route.from_price != null && !isNaN(Number(route.from_price))) return Math.round(Number(route.from_price))
     const prices = route.prices || {}
     if ('_base' in prices) {
       const base = Number(prices._base) || 0

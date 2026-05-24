@@ -36,12 +36,55 @@ async def get_extras(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
+async def _active_upsales_and_rates(db: AsyncSession):
+    from app.models.upsale import Upsale
+    ur = await db.execute(select(Upsale).where(Upsale.is_active == True))
+    rr = await db.execute(select(VehicleRate).where(VehicleRate.is_active == True))
+    return list(ur.scalars().all()), list(rr.scalars().all())
+
+
+def _route_from_price(prices, upsales, rates, pickup_dt):
+    """Lowest price a customer would actually pay for this route across vehicles,
+    INCLUDING any active upsale — so the route list matches the vehicle screen."""
+    from app.services.pricing_service import upsale_applies, calculate_upsale_amount
+    per_vehicle = {}
+    if prices and "_base" in prices:
+        try:
+            base = float(prices["_base"])
+        except (TypeError, ValueError):
+            base = 0.0
+        for r in rates:
+            per_vehicle[r.vehicle_type] = base + float(r.base_fare)
+    elif prices:
+        for vt, p in prices.items():
+            if vt == "_base":
+                continue
+            try:
+                per_vehicle[vt] = float(p)
+            except (TypeError, ValueError):
+                pass
+    if not per_vehicle:
+        return None
+    best = None
+    for vt, p in per_vehicle.items():
+        adj = p + sum(calculate_upsale_amount(p, u) for u in upsales if upsale_applies(u, vt, pickup_dt))
+        if best is None or adj < best:
+            best = adj
+    return round(best) if best is not None else None
+
+
 @router.get("/common-routes", response_model=list[CommonRouteOut])
 async def get_common_routes(db: AsyncSession = Depends(get_db)):
+    from datetime import datetime, timezone
     result = await db.execute(
         select(CommonRoute).where(CommonRoute.is_active == True).order_by(CommonRoute.sort_order)
     )
-    return result.scalars().all()
+    routes = result.scalars().all()
+    upsales, rates = await _active_upsales_and_rates(db)
+    now = datetime.now(timezone.utc)
+    for r in routes:
+        r.from_price = _route_from_price(r.prices, upsales, rates, now)
+    return routes
 
 
 def _haversine_km(lat1, lng1, lat2, lng2) -> float:
@@ -76,15 +119,21 @@ async def get_nearby_common_routes(
     )
     routes = result.scalars().all()
 
+    # Upsale-adjusted floor so the list matches the vehicle screen
+    from datetime import datetime, timezone
+    upsales, rates = await _active_upsales_and_rates(db)
+    now = datetime.now(timezone.utc)
+
     options = []
     for r in routes:
         if r.from_lat is None or r.to_lat is None:
             continue
-        # Forward A->B (origin = from)
-        options.append(_route_option(r, "forward", lat, lng))
-        # Reverse B->A (origin = to)
+        from_price = _route_from_price(r.prices, upsales, rates, now)
+        fwd = _route_option(r, "forward", lat, lng); fwd["from_price"] = from_price
+        options.append(fwd)
         if getattr(r, "bidirectional", True):
-            options.append(_route_option(r, "reverse", lat, lng))
+            rev = _route_option(r, "reverse", lat, lng); rev["from_price"] = from_price
+            options.append(rev)
 
     # Sort nearest-origin first; flag those within radius
     options.sort(key=lambda o: o["origin_distance_km"])
