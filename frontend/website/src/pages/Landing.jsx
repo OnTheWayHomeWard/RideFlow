@@ -51,6 +51,7 @@ export default function Landing({ site }) {
       <Testimonials items={testimonials} settings={settings} />
       <ServiceArea areas={settings.service_areas} settings={settings} />
       <ContactForm settings={settings} />
+      <SmsDisclosure settings={settings} brandName={brandName} />
       <SiteFooter settings={settings} bookUrl={bookUrl} brandName={brandName} />
     </div>
   )
@@ -587,6 +588,49 @@ function ContactForm({ settings }) {
         </div>
       </div>
     </Section>
+  )
+}
+
+
+/* ────────────────  SMS OPT-IN DISCLOSURE  ────────────────
+   Visible consent/CTA block so A2P 10DLC reviewers can verify the opt-in
+   at the campaign URL (gobellme.com). Mirrors the booking-form checkbox. */
+
+function SmsDisclosure({ settings, brandName }) {
+  const name = brandName || 'GoBellMe'
+  return (
+    <section id="sms-updates" className="px-5 pb-16">
+      <div className="max-w-3xl mx-auto bg-white border border-slate-200 rounded-2xl p-6 lg:p-8">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-9 h-9 rounded-xl bg-[var(--emerald)]/10 flex items-center justify-center">
+            <svg className="w-5 h-5 text-[var(--emerald)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 3v-3z" /></svg>
+          </div>
+          <h3 className="font-display text-xl text-[var(--emerald-deep)]">Text message updates</h3>
+        </div>
+        <p className="text-sm text-slate-600 leading-relaxed mb-3">
+          When you book a ride or create an account with {name}, you can opt in to receive SMS
+          notifications by entering your mobile number and checking the consent box on our booking form.
+          We send booking confirmations, ride reminders, driver status updates (on the way, arrived,
+          started, completed), and customer-support replies.
+        </p>
+        <div className="bg-[var(--cream-warm)] border border-[var(--gold)]/20 rounded-xl p-4 text-sm text-slate-700">
+          <p className="font-semibold text-[var(--emerald-deep)] mb-1">Consent statement shown at sign-up / booking:</p>
+          <p className="italic">
+            "I agree to receive booking confirmations, ride reminders, and status updates by text message
+            from {name} at the number provided. Message frequency varies. Message &amp; data rates may apply.
+            Reply STOP to opt out, HELP for help."
+          </p>
+        </div>
+        <p className="text-xs text-slate-500 mt-4 leading-relaxed">
+          Message frequency varies. Message and data rates may apply. Reply <b>STOP</b> to unsubscribe at any
+          time, or <b>HELP</b> for assistance. Your mobile information is never sold or shared with third
+          parties for marketing. See our{' '}
+          <a href="/sms-terms" className="text-[var(--emerald)] underline">SMS Terms</a>,{' '}
+          <a href="/privacy-policy" className="text-[var(--emerald)] underline">Privacy Policy</a>, and{' '}
+          <a href="/terms-and-conditions" className="text-[var(--emerald)] underline">Terms &amp; Conditions</a>.
+        </p>
+      </div>
+    </section>
   )
 }
 
