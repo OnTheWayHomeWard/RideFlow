@@ -72,7 +72,7 @@ async def list_testimonials(db: AsyncSession = Depends(get_db)):
             "stars": rating.rating,
             "comment": comment,
             "name": display_name,
-            "route": f"{booking.pickup_name} → {booking.dropoff_name}",
+            # Trip pickup/dropoff intentionally omitted for rider privacy.
             "driver_name": _polish_name(driver.name),
             "date": rating.created_at.date().isoformat() if rating.created_at else None,
         })

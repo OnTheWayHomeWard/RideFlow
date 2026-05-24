@@ -405,7 +405,7 @@ function Testimonials({ items, settings }) {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-sm truncate">{t.name}</p>
-                    {t.route && <p className="text-xs text-white/50 truncate">{t.route}</p>}
+                    <p className="text-xs text-white/50">Verified rider</p>
                   </div>
                 </div>
               </div>
