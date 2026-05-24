@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSettings } from '../hooks/useSettings.jsx'
 import { api } from '../api/client'
+import RouteCard, { MapLink, collapseByRoute } from './RouteCard'
 
 const VEHICLE_IMAGES = {
   sedan: 'https://img.icons8.com/fluency/240/sedan.png',
@@ -23,31 +24,6 @@ const VEHICLE_DESCRIPTIONS = {
   large_van: 'Large passenger van for bigger groups. Maximum comfort and cargo capacity.',
 }
 
-// Open a location in Google Maps (new tab). Prefer exact coords, fall back to name.
-function mapUrl(lat, lng, name) {
-  if (lat != null && lng != null && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
-    return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
-  }
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name || '')}`
-}
-
-function MapLink({ lat, lng, name }) {
-  return (
-    <a
-      href={mapUrl(lat, lng, name)}
-      target="_blank"
-      rel="noopener noreferrer"
-      title="View on map"
-      className="shrink-0 w-9 h-9 rounded-lg bg-slate-100 hover:bg-blue-100 text-slate-500 hover:text-blue-600 flex items-center justify-center transition-colors"
-    >
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    </a>
-  )
-}
-
 export default function StepVehicle({ prices: rawPrices, pickup, dropoff, onSelect, onPickRoute }) {
   const settings = useSettings()
   const [expandedIdx, setExpandedIdx] = useState(null)
@@ -57,16 +33,14 @@ export default function StepVehicle({ prices: rawPrices, pickup, dropoff, onSele
   const scrollRef = useRef(null)
   const topRef = useRef(null)
 
-  // The "near you" routes sit below the car list, so tapping one updates the
+  // The "near you" routes sit below the car list, so booking one updates the
   // prices in the carousel above — off-screen. Scroll back up + show a brief
-  // "updating" overlay so the refresh is actually visible.
-  const handlePickRoute = (o) => {
+  // "updating" overlay so the refresh is actually visible. (from, to) come from
+  // the RouteCard's chosen direction.
+  const handleBook = (from, to) => {
     setUpdating(true)
     try { topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) } catch { /* noop */ }
-    onPickRoute(
-      { name: o.from_name, address: o.from_address, lat: o.from_lat, lng: o.from_lng },
-      { name: o.to_name, address: o.to_address, lat: o.to_lat, lng: o.to_lng },
-    )
+    onPickRoute(from, to)
   }
 
   // Clear the "updating" overlay once fresh prices arrive (parent always passes
@@ -259,28 +233,18 @@ export default function StepVehicle({ prices: rawPrices, pickup, dropoff, onSele
             <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 text-green-700 px-2 py-0.5 rounded">Near you</span>
             <p className="text-sm font-semibold text-slate-700">Fixed-price routes from here</p>
           </div>
-          <div className="space-y-2">
-            {nearbyRoutes.map(o => {
-              const floor = routeFloor(o)
-              return (
-                <button key={`${o.route_id}-${o.direction}`} onClick={() => handlePickRoute(o)}
-                  className="w-full bg-white border border-green-200 rounded-xl p-3 flex items-center gap-3 hover:border-green-400 hover:shadow-sm active:scale-[0.99] transition-all text-left">
-                  <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center text-green-600 shrink-0">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-900 text-sm truncate">{o.direction === 'reverse' ? o.to_name : (o.name || o.to_name)}</p>
-                    <p className="text-xs text-slate-500 truncate">{o.from_name} → {o.to_name}</p>
-                  </div>
-                  {floor !== null && (
-                    <div className="text-right shrink-0">
-                      <p className="text-[10px] uppercase tracking-wide text-slate-400">Fixed</p>
-                      <p className="text-sm font-bold text-green-700">from ${floor}</p>
-                    </div>
-                  )}
-                </button>
-              )
-            })}
+          <div className="space-y-2.5">
+            {collapseByRoute(nearbyRoutes).map(o => (
+              <RouteCard
+                key={o.route_id}
+                route={o}
+                floor={routeFloor(o)}
+                near={o.near}
+                distanceKm={o.origin_distance_km}
+                onBook={handleBook}
+                disabled={updating}
+              />
+            ))}
           </div>
         </div>
       )}
