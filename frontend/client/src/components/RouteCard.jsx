@@ -1,14 +1,36 @@
 import { useState } from 'react'
 
-const DESTINATION_ICONS = {
-  'Airport': '✈️', 'Downtown': '🏙️', 'Beach': '🏖️',
-  'Mall': '🛍️', 'Resort': '🏨', 'Hotel': '🏨', 'Port': '⚓',
-}
+// Keyword → emoji. First match wins, so order specific before generic
+// (e.g. "airport" before "port", which is a substring of it).
+const DESTINATION_ICONS = [
+  ['airport', '✈️'],
+  ['cruise', '🚢'], ['port', '⚓'], ['harbor', '⚓'], ['harbour', '⚓'], ['pier', '⚓'], ['dock', '⚓'], ['marina', '⚓'], ['cape', '⚓'],
+  ['beach', '🏖️'],
+  ['theme park', '🎢'], ['studios', '🎢'], ['universal', '🎢'], ['disney', '🎢'], ['magic kingdom', '🎢'], ['epcot', '🎢'], ['adventure', '🎢'],
+  ['seaworld', '🐳'], ['sea world', '🐳'], ['aquarium', '🐠'], ['zoo', '🦁'],
+  ['resort', '🏨'], ['hotel', '🏨'], ['motel', '🏨'], ['lodge', '🏨'], ['suites', '🏨'], ['hostel', '🏨'],
+  ['marriott', '🏨'], ['hyatt', '🏨'], ['hilton', '🏨'], ['sheraton', '🏨'], ['westin', '🏨'], ['regency', '🏨'], ['waldorf', '🏨'], ['ritz', '🏨'], ['carlton', '🏨'], ['signia', '🏨'],
+  ['outlet', '🛍️'], ['mall', '🛍️'], ['shopping', '🛍️'], ['plaza', '🛍️'], ['market', '🛒'],
+  ['downtown', '🏙️'], ['city center', '🏙️'], ['city centre', '🏙️'], ['square', '🏙️'],
+  ['train station', '🚉'], ['railway', '🚉'], ['rail station', '🚉'], ['metro', '🚇'], ['subway', '🚇'],
+  ['bus station', '🚌'], ['bus terminal', '🚌'], ['greyhound', '🚌'],
+  ['hospital', '🏥'], ['clinic', '🏥'], ['medical center', '🏥'],
+  ['university', '🎓'], ['college', '🎓'], ['campus', '🎓'], ['academy', '🎓'], ['school', '🏫'],
+  ['stadium', '🏟️'], ['arena', '🏟️'],
+  ['golf', '⛳'], ['country club', '⛳'],
+  ['national park', '🏞️'], ['lake', '🏞️'], ['garden', '🌳'], ['park', '🌳'],
+  ['cathedral', '⛪'], ['church', '⛪'], ['chapel', '⛪'], ['mosque', '🕌'], ['temple', '🛕'],
+  ['museum', '🏛️'], ['gallery', '🏛️'],
+  ['convention', '🏢'], ['conference', '🏢'], ['expo', '🏢'], ['office', '🏢'], ['tower', '🏢'],
+  ['casino', '🎰'],
+  ['restaurant', '🍽️'], ['cafe', '☕'],
+  ['apartment', '🏠'], ['residence', '🏠'], ['villa', '🏠'], ['condo', '🏠'], ['estate', '🏠'],
+]
 
 export function getIcon(name) {
   const n = (name || '').toLowerCase()
-  for (const [key, icon] of Object.entries(DESTINATION_ICONS)) {
-    if (n.includes(key.toLowerCase())) return icon
+  for (const [key, icon] of DESTINATION_ICONS) {
+    if (n.includes(key)) return icon
   }
   return '📍'
 }
@@ -53,11 +75,11 @@ export function MapLink({ lat, lng, name }) {
 // One pickup/destination row inside an expanded card: full name + address
 // (no truncation) and a map-pin button.
 function LocationRow({ color, label, name, address, lat, lng }) {
-  const dot = color === 'blue' ? 'bg-blue-500' : 'bg-green-500'
+  const ring = color === 'blue' ? 'bg-blue-50 ring-blue-200' : 'bg-green-50 ring-green-200'
   const showAddr = address && address !== name
   return (
     <div className="flex items-start gap-2.5">
-      <div className={`w-2.5 h-2.5 ${dot} rounded-full mt-1.5 shrink-0`} />
+      <div className={`w-7 h-7 rounded-full ${ring} ring-1 flex items-center justify-center text-sm shrink-0`}>{getIcon(name)}</div>
       <div className="flex-1 min-w-0">
         <p className="text-[11px] uppercase tracking-wide text-slate-400">{label}</p>
         <p className="text-sm text-slate-800 break-words">{name}</p>
@@ -135,15 +157,12 @@ export default function RouteCard({ route, floor, near, distanceKm, onBook, disa
         onClick={() => setExpanded(e => !e)}
         className="w-full p-4 flex items-start gap-3 text-left hover:bg-slate-50/70 transition-colors"
       >
-        <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-2xl shrink-0">
-          {getIcon(route.to_name)}
-        </div>
         <div className="flex-1 min-w-0">
-          {/* Title built from the two endpoints + a direction arrow */}
+          {/* Title built from the two endpoints, each with its own location icon */}
           <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-semibold text-slate-900 text-sm leading-snug">
-            <span>{fromShort}</span>
+            <span className="inline-flex items-center gap-1"><span className="text-base leading-none">{getIcon(route.from_name)}</span>{fromShort}</span>
             <ArrowBetween bidir={bidir} />
-            <span>{toShort}</span>
+            <span className="inline-flex items-center gap-1"><span className="text-base leading-none">{getIcon(route.to_name)}</span>{toShort}</span>
           </div>
           {hasBadges && (
             <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
