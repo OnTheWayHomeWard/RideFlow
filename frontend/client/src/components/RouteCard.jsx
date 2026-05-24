@@ -118,17 +118,6 @@ export function collapseByRoute(options) {
   return out
 }
 
-// Vertical connector arrow between the stacked endpoint names:
-// double-headed (⇅) for two-way routes, single (↓) for one-way.
-function ArrowVertical({ bidir }) {
-  return (
-    <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-        d={bidir ? 'M12 5v14M7 14l5 5 5-5M7 10l5-5 5 5' : 'M12 5v14M7 14l5 5 5-5'} />
-    </svg>
-  )
-}
-
 // Expandable popular-route card. Tap the header to reveal the full pickup +
 // destination (with map links) and direction-aware booking buttons.
 // `onBook(from, to)` receives {name, address, lat, lng} endpoints.
@@ -145,7 +134,7 @@ export default function RouteCard({ route, floor, near, distanceKm, onBook, disa
   // Only surface the distance for routes that are actually nearby — "~120 km
   // away" on a far route is noise.
   const showDistance = near && typeof distanceKm === 'number'
-  const hasBadges = near || showDistance
+  const hasBadges = near || showDistance || bidir
 
   return (
     <div className={`bg-white border rounded-xl overflow-hidden transition-all ${
@@ -158,20 +147,21 @@ export default function RouteCard({ route, floor, near, distanceKm, onBook, disa
         className="w-full p-4 flex items-start gap-3 text-left hover:bg-slate-50/70 transition-colors"
       >
         <div className="flex-1 min-w-0">
-          {/* Endpoints stacked vertically with a connector arrow in the middle,
-              so long names wrap cleanly instead of crowding an inline arrow. */}
-          <div className="flex items-center gap-2">
-            <span className="w-5 text-center text-base leading-none shrink-0">{getIcon(route.from_name)}</span>
+          {/* Itinerary style: two location-icon circles joined by a line, names
+              beside. Cleaner than an inline arrow and matches the expanded view. */}
+          <div className="flex items-center gap-2.5">
+            <span className="w-6 h-6 rounded-full bg-blue-50 ring-1 ring-blue-200 flex items-center justify-center text-xs shrink-0">{getIcon(route.from_name)}</span>
             <span className="font-semibold text-slate-900 text-sm break-words min-w-0">{fromShort}</span>
           </div>
-          <div className="w-5 flex justify-center py-0.5"><ArrowVertical bidir={bidir} /></div>
-          <div className="flex items-center gap-2">
-            <span className="w-5 text-center text-base leading-none shrink-0">{getIcon(route.to_name)}</span>
+          <div className="ml-[11px] h-3 w-px bg-slate-300"></div>
+          <div className="flex items-center gap-2.5">
+            <span className="w-6 h-6 rounded-full bg-green-50 ring-1 ring-green-200 flex items-center justify-center text-xs shrink-0">{getIcon(route.to_name)}</span>
             <span className="font-semibold text-slate-900 text-sm break-words min-w-0">{toShort}</span>
           </div>
           {hasBadges && (
-            <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
+            <div className="flex items-center flex-wrap gap-1.5 mt-2">
               {near && <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Near you</span>}
+              {bidir && <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded" title="Available both ways at the same price">↕ Both ways</span>}
               {showDistance && (
                 <span className="text-[10px] text-slate-400">
                   {distanceKm < 1 ? 'Starts near you' : `~${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km away`}
