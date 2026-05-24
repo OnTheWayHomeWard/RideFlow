@@ -97,47 +97,6 @@ export default function StepVehicle({ prices: rawPrices, pickup, dropoff, onSele
           )}
         </div>
 
-        {/* Fixed-price common routes near the pickup — tap to switch */}
-        {nearbyRoutes.length > 0 && (
-          <div className="mb-5">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wide bg-green-100 text-green-700 px-2 py-0.5 rounded">Near you</span>
-              <p className="text-sm font-semibold text-slate-700">Fixed-price routes from here</p>
-            </div>
-            <div className="space-y-2">
-              {nearbyRoutes.map(o => {
-                const floor = routeFloor(o)
-                return (
-                  <button key={`${o.route_id}-${o.direction}`} onClick={() => onPickRoute(
-                    { name: o.from_name, address: o.from_address, lat: o.from_lat, lng: o.from_lng },
-                    { name: o.to_name, address: o.to_address, lat: o.to_lat, lng: o.to_lng },
-                  )}
-                    className="w-full bg-white border border-green-200 rounded-xl p-3 flex items-center gap-3 hover:border-green-400 hover:shadow-sm active:scale-[0.99] transition-all text-left">
-                    <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center text-green-600 shrink-0">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-slate-900 text-sm truncate">{o.name || o.to_name}</p>
-                      <p className="text-xs text-slate-500 truncate">{o.from_name} → {o.to_name}</p>
-                    </div>
-                    {floor !== null && (
-                      <div className="text-right shrink-0">
-                        <p className="text-[10px] uppercase tracking-wide text-slate-400">Fixed</p>
-                        <p className="text-sm font-bold text-green-700">from ${floor}</p>
-                      </div>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="flex items-center gap-3 mt-4">
-              <div className="flex-1 h-px bg-slate-200"></div>
-              <span className="text-xs text-slate-400">or pick a vehicle for your trip</span>
-              <div className="flex-1 h-px bg-slate-200"></div>
-            </div>
-          </div>
-        )}
-
         <h2 className="text-xl font-bold text-slate-900 mb-1">Choose your ride</h2>
         <p className="text-slate-500 text-sm mb-4">Swipe to see more — tap to select</p>
       </div>
@@ -218,6 +177,48 @@ export default function StepVehicle({ prices: rawPrices, pickup, dropoff, onSele
           {prices.map((_, idx) => (
             <div key={idx} className={`h-1.5 rounded-full transition-all ${activeIdx === idx ? 'w-6 bg-blue-600' : 'w-1.5 bg-slate-300'}`}></div>
           ))}
+        </div>
+      )}
+
+      {/* Fixed-price common routes near the pickup — shown below the cars so the
+          vehicle choices come first (there may be several nearby routes). */}
+      {nearbyRoutes.length > 0 && (
+        <div className="px-4 pb-6">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="flex-1 h-px bg-slate-200"></div>
+            <span className="text-xs text-slate-400">or take a fixed-price route near you</span>
+            <div className="flex-1 h-px bg-slate-200"></div>
+          </div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 text-green-700 px-2 py-0.5 rounded">Near you</span>
+            <p className="text-sm font-semibold text-slate-700">Fixed-price routes from here</p>
+          </div>
+          <div className="space-y-2">
+            {nearbyRoutes.map(o => {
+              const floor = routeFloor(o)
+              return (
+                <button key={`${o.route_id}-${o.direction}`} onClick={() => onPickRoute(
+                  { name: o.from_name, address: o.from_address, lat: o.from_lat, lng: o.from_lng },
+                  { name: o.to_name, address: o.to_address, lat: o.to_lat, lng: o.to_lng },
+                )}
+                  className="w-full bg-white border border-green-200 rounded-xl p-3 flex items-center gap-3 hover:border-green-400 hover:shadow-sm active:scale-[0.99] transition-all text-left">
+                  <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center text-green-600 shrink-0">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-900 text-sm truncate">{o.direction === 'reverse' ? o.to_name : (o.name || o.to_name)}</p>
+                    <p className="text-xs text-slate-500 truncate">{o.from_name} → {o.to_name}</p>
+                  </div>
+                  {floor !== null && (
+                    <div className="text-right shrink-0">
+                      <p className="text-[10px] uppercase tracking-wide text-slate-400">Fixed</p>
+                      <p className="text-sm font-bold text-green-700">from ${floor}</p>
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
