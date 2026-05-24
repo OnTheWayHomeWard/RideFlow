@@ -23,6 +23,31 @@ const VEHICLE_DESCRIPTIONS = {
   large_van: 'Large passenger van for bigger groups. Maximum comfort and cargo capacity.',
 }
 
+// Open a location in Google Maps (new tab). Prefer exact coords, fall back to name.
+function mapUrl(lat, lng, name) {
+  if (lat != null && lng != null && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
+    return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name || '')}`
+}
+
+function MapLink({ lat, lng, name }) {
+  return (
+    <a
+      href={mapUrl(lat, lng, name)}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="View on map"
+      className="shrink-0 w-9 h-9 rounded-lg bg-slate-100 hover:bg-blue-100 text-slate-500 hover:text-blue-600 flex items-center justify-center transition-colors"
+    >
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    </a>
+  )
+}
+
 export default function StepVehicle({ prices: rawPrices, pickup, dropoff, onSelect, onPickRoute }) {
   const settings = useSettings()
   const [expandedIdx, setExpandedIdx] = useState(null)
@@ -99,22 +124,32 @@ export default function StepVehicle({ prices: rawPrices, pickup, dropoff, onSele
   return (
     <div className="animate-[fadeIn_0.3s_ease]">
       <div ref={topRef} className="scroll-mt-16" />
-      {/* Route summary */}
+      {/* Route summary — full location names + tap-to-map for each endpoint */}
       <div className="p-4 pb-0">
-        <div className="bg-white border border-slate-200 rounded-xl p-3 mb-5 flex items-center gap-3">
-          <div className="flex flex-col items-center gap-1">
-            <div className="w-2.5 h-2.5 bg-blue-500 rounded-full"></div>
-            <div className="w-px h-5 bg-slate-300"></div>
-            <div className="w-2.5 h-2.5 bg-green-500 rounded-full"></div>
+        <div className="bg-white border border-slate-200 rounded-xl p-3 mb-5 space-y-2">
+          <div className="flex items-start gap-2.5">
+            <div className="w-2.5 h-2.5 bg-blue-500 rounded-full mt-1.5 shrink-0"></div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] uppercase tracking-wide text-slate-400">Pickup</p>
+              <p className="text-sm font-medium text-slate-900 break-words">{pickup?.name}</p>
+            </div>
+            {pickup && <MapLink lat={pickup.lat} lng={pickup.lng} name={pickup.name} />}
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-slate-900 truncate">{pickup?.name}</p>
-            <p className="text-sm text-slate-500 truncate mt-1">{dropoff?.name}</p>
+          <div className="ml-[4px] border-l border-dashed border-slate-200 h-2.5"></div>
+          <div className="flex items-start gap-2.5">
+            <div className="w-2.5 h-2.5 bg-green-500 rounded-full mt-1.5 shrink-0"></div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] uppercase tracking-wide text-slate-400">Destination</p>
+              <p className="text-sm font-medium text-slate-900 break-words">{dropoff?.name}</p>
+            </div>
+            {dropoff && <MapLink lat={dropoff.lat} lng={dropoff.lng} name={dropoff.name} />}
           </div>
           {prices[0]?.distance_miles && (
-            <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-medium">
-              {prices[0].distance_miles} mi
-            </span>
+            <div className="pt-1 flex justify-end">
+              <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-medium">
+                {prices[0].distance_miles} mi
+              </span>
+            </div>
           )}
         </div>
 

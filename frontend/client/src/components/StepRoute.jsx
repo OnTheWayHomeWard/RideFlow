@@ -153,23 +153,10 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
       .catch(() => setNearbyRoutes(null))
   }, [pickup?.lat, pickup?.lng])
 
-  const handlePopularRoute = (route) => {
-    // Always use the route's own from + to coordinates so the backend matches
-    // it as a popular route and applies the fixed price (route_base + vehicle.base_fare),
-    // not the per-mile distance calc. Previously we kept the user's current
-    // pickup which would shift coords away from the route and force per-mile.
-    const from = {
-      name: route.from_name,
-      address: route.from_address,
-      lat: route.from_lat,
-      lng: route.from_lng,
-    }
-    const to = {
-      name: route.to_name,
-      address: route.to_address,
-      lat: route.to_lat,
-      lng: route.to_lng,
-    }
+  // Book a popular route in a specific direction. Passing the exact endpoint
+  // coords ensures the backend matches it as a fixed-price common route (forward
+  // OR reverse), instead of falling back to the per-mile distance calc.
+  const bookRoute = (from, to) => {
     setLoading(true)
     onSelect(from, to)
   }
@@ -358,14 +345,14 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
         </div>
       ) : (nearbyRoutes && nearbyRoutes.length) ? (
         <div className="space-y-2.5">
-          {nearbyRoutes.map(opt => (
+          {collapseByRoute(nearbyRoutes).map(opt => (
             <RouteCard
-              key={`${opt.route_id}-${opt.direction}`}
+              key={opt.route_id}
               route={opt}
               floor={floorPriceFor(opt)}
               near={opt.near}
               distanceKm={opt.origin_distance_km}
-              onClick={() => handlePopularRoute(opt)}
+              onBook={bookRoute}
               disabled={loading}
             />
           ))}
@@ -374,12 +361,12 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
         <p className="text-center text-sm text-slate-400 py-8">No popular routes available. Type your destination above.</p>
       ) : (
         <div className="space-y-2.5">
-          {expandDirections(routes).map(opt => (
+          {routes.map(r => (
             <RouteCard
-              key={`${opt.id}-${opt.direction}`}
-              route={opt}
-              floor={floorPriceFor(opt)}
-              onClick={() => handlePopularRoute(opt)}
+              key={r.id}
+              route={r}
+              floor={floorPriceFor(r)}
+              onBook={bookRoute}
               disabled={loading}
             />
           ))}
@@ -389,58 +376,156 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
   )
 }
 
-// Expand stored routes into directional display cards: forward always, plus a
-// reverse (B->A) card for bidirectional routes — so customers can book either way.
-function expandDirections(routes) {
-  const out = []
-  for (const r of routes) {
-    out.push({ ...r, direction: 'forward' })
-    if (r.bidirectional !== false && r.from_lat != null && r.to_lat != null) {
-      out.push({
-        ...r,
-        direction: 'reverse',
-        from_name: r.to_name, from_address: r.to_address, from_lat: r.to_lat, from_lng: r.to_lng,
-        to_name: r.from_name, to_address: r.from_address, to_lat: r.from_lat, to_lng: r.from_lng,
-      })
+// The /nearby endpoint returns one entry per bookable direction (forward + a
+// reverse for bidirectional routes), each sorted by how close its origin is.
+// Collapse them back to one card per route — keeping the forward (A->B) display
+// orientation — but flag the card "near" if EITHER direction starts nearby, and
+// use the nearest origin for the distance label. Both directions are still
+// bookable from the card's expanded view.
+function collapseByRoute(options) {
+  const byId = new Map()
+  for (const o of options) {
+    const dist = typeof o.origin_distance_km === 'number' ? o.origin_distance_km : Infinity
+    const cur = byId.get(o.route_id)
+    if (!cur) {
+      byId.set(o.route_id, { forward: o.direction === 'forward' ? o : null, any: o, near: !!o.near, minDist: dist })
+    } else {
+      cur.near = cur.near || !!o.near
+      cur.minDist = Math.min(cur.minDist, dist)
+      if (o.direction === 'forward') cur.forward = o
+      if (!cur.any) cur.any = o
     }
   }
+  const out = []
+  for (const v of byId.values()) {
+    const base = v.forward || v.any
+    out.push({ ...base, near: v.near, origin_distance_km: v.minDist === Infinity ? base.origin_distance_km : v.minDist })
+  }
+  out.sort((a, b) => (a.origin_distance_km ?? Infinity) - (b.origin_distance_km ?? Infinity))
   return out
 }
 
-function RouteCard({ route, floor, near, distanceKm, onClick, disabled }) {
-  // The admin's route.name describes the FORWARD direction, so only use it on
-  // forward cards. Reverse cards show the destination, which is always correct.
-  const title = route.direction === 'reverse' ? route.to_name : (route.name || route.to_name)
+// Open a location in Google Maps (new tab). Prefer exact coords, fall back to name.
+function mapUrl(lat, lng, name) {
+  if (lat != null && lng != null && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
+    return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name || '')}`
+}
+
+// One pickup/destination row inside an expanded route card: full name + address
+// (no truncation) and a map-pin button that opens the spot in a new tab.
+function LocationRow({ color, label, name, address, lat, lng }) {
+  const dot = color === 'blue' ? 'bg-blue-500' : 'bg-green-500'
+  const showAddr = address && address !== name
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`w-full bg-white border rounded-xl p-4 flex items-center gap-3 hover:shadow-sm active:scale-[0.99] transition-all text-left disabled:opacity-60 ${
-        near ? 'border-green-300' : 'border-slate-200 hover:border-blue-300'
-      }`}
-    >
-      <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-2xl shrink-0">
-        {getIcon(title)}
-      </div>
+    <div className="flex items-start gap-2.5">
+      <div className={`w-2.5 h-2.5 ${dot} rounded-full mt-1.5 shrink-0`} />
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <p className="font-semibold text-slate-900 text-sm truncate">{title}</p>
-          {near && <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 text-green-700 px-1.5 py-0.5 rounded shrink-0">Near you</span>}
+        <p className="text-[11px] uppercase tracking-wide text-slate-400">{label}</p>
+        <p className="text-sm text-slate-800 break-words">{name}</p>
+        {showAddr && <p className="text-xs text-slate-500 break-words mt-0.5">{address}</p>}
+      </div>
+      <a
+        href={mapUrl(lat, lng, name)}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        title="View on map"
+        className="shrink-0 w-9 h-9 rounded-lg bg-slate-100 hover:bg-blue-100 text-slate-500 hover:text-blue-600 flex items-center justify-center transition-colors"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </a>
+    </div>
+  )
+}
+
+function RouteCard({ route, floor, near, distanceKm, onBook, disabled }) {
+  const [expanded, setExpanded] = useState(false)
+  const title = route.name || route.to_name
+  const bidir = route.bidirectional !== false
+  // Endpoint objects in the route's stored A->B orientation.
+  const a = { name: route.from_name, address: route.from_address, lat: route.from_lat, lng: route.from_lng }
+  const b = { name: route.to_name, address: route.to_address, lat: route.to_lat, lng: route.to_lng }
+
+  return (
+    <div className={`bg-white border rounded-xl overflow-hidden transition-all ${
+      near ? 'border-green-300' : 'border-slate-200'
+    }`}>
+      {/* Header — tap to expand (no longer jumps straight to car selection) */}
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="w-full p-4 flex items-center gap-3 text-left hover:bg-slate-50/70 transition-colors"
+      >
+        <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-2xl shrink-0">
+          {getIcon(title)}
         </div>
-        <p className="text-xs text-slate-500 truncate">{route.from_name} → {route.to_name}</p>
-        {typeof distanceKm === 'number' && (
-          <p className="text-[11px] text-slate-400 mt-0.5">
-            {distanceKm < 1 ? 'Starts near you' : `Starts ~${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km away`}
-          </p>
-        )}
-      </div>
-      <div className="text-right shrink-0">
-        {floor !== null && <p className="text-sm font-bold text-slate-900">from ${floor}</p>}
-        {route.distance_miles && <p className="text-xs text-slate-400">{route.distance_miles} mi</p>}
-      </div>
-      <svg className="w-5 h-5 text-slate-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-      </svg>
-    </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <p className="font-semibold text-slate-900 text-sm truncate">{title}</p>
+            {near && <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 text-green-700 px-1.5 py-0.5 rounded shrink-0">Near you</span>}
+            {bidir && <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded shrink-0" title="Available both ways at the same price">↔ Both ways</span>}
+          </div>
+          <p className="text-xs text-slate-500 truncate">{route.from_name} → {route.to_name}</p>
+          {typeof distanceKm === 'number' && (
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              {distanceKm < 1 ? 'Starts near you' : `Starts ~${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km away`}
+            </p>
+          )}
+        </div>
+        <div className="text-right shrink-0">
+          {floor !== null && <p className="text-sm font-bold text-slate-900">from ${floor}</p>}
+          {route.distance_miles && <p className="text-xs text-slate-400">{route.distance_miles} mi</p>}
+        </div>
+        <svg className={`w-5 h-5 text-slate-300 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+
+      {/* Expanded: full from/to names, map links, and direction-aware booking */}
+      {expanded && (
+        <div className="px-4 pb-4 pt-1 border-t border-slate-100 space-y-3 animate-[fadeIn_0.2s_ease]">
+          <LocationRow color="blue" label="Pickup" name={a.name} address={a.address} lat={a.lat} lng={a.lng} />
+          <LocationRow color="green" label="Destination" name={b.name} address={b.address} lat={b.lat} lng={b.lng} />
+          {bidir ? (
+            <>
+              <p className="text-[11px] text-blue-600 bg-blue-50 rounded-lg px-2.5 py-1.5 flex items-start gap-1.5">
+                <span className="font-bold">↔</span>
+                <span>This route runs both ways at the same price — pick your direction.</span>
+              </p>
+              <div className="grid grid-cols-1 gap-2">
+                <button
+                  onClick={() => onBook(a, b)}
+                  disabled={disabled}
+                  className="w-full py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 active:scale-[0.98] transition-all disabled:opacity-60"
+                >
+                  {disabled ? '…' : <>Go to <b>{b.name}</b></>}
+                </button>
+                <button
+                  onClick={() => onBook(b, a)}
+                  disabled={disabled}
+                  className="w-full py-2.5 bg-white border border-blue-600 text-blue-700 rounded-xl text-sm font-semibold hover:bg-blue-50 active:scale-[0.98] transition-all disabled:opacity-60"
+                >
+                  {disabled ? '…' : <>Go to <b>{a.name}</b></>}
+                </button>
+              </div>
+            </>
+          ) : (
+            <button
+              onClick={() => onBook(a, b)}
+              disabled={disabled}
+              className="w-full py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {disabled
+                ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                : 'Select this route'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
