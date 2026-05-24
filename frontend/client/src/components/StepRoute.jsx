@@ -69,6 +69,7 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
     setLocationStatus('requesting')
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        /* success handler below */
         setLocationStatus('granted')
         const loc = {
           name: 'Your current location',
@@ -119,9 +120,15 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
             .catch(() => {})
         }
       },
-      () => {
-        setLocationStatus('denied')
-      }
+      (err) => {
+        // Distinguish the failure modes — they're NOT all "denied". An in-app
+        // browser timing out or a device with location off is different from
+        // the user actively refusing the prompt.
+        if (err && err.code === 1) setLocationStatus('denied')        // PERMISSION_DENIED
+        else if (err && err.code === 3) setLocationStatus('timeout')  // TIMEOUT
+        else setLocationStatus('unavailable')                         // POSITION_UNAVAILABLE / other
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     )
   }
 
@@ -202,13 +209,20 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
         </button>
       )}
 
-      {/* Location denied notice */}
-      {locationStatus === 'denied' && !hasPickup && !hasQR && (
-        <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2">
-          <svg className="w-5 h-5 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      {/* Location-failed notice — message depends on WHY it failed */}
+      {['denied', 'timeout', 'unavailable'].includes(locationStatus) && !hasPickup && !hasQR && (
+        <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+          <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
           </svg>
-          <p className="text-xs text-amber-700">Location access denied. Please type your pickup address below.</p>
+          <p className="text-xs text-amber-700">
+            {locationStatus === 'denied'
+              ? "We couldn't access your location — it may be blocked for this site or in your browser. "
+              : locationStatus === 'timeout'
+              ? "Finding your location is taking too long (this often happens when the link is opened inside another app). "
+              : "Your location isn't available right now. "}
+            Just type your pickup address below to continue.
+          </p>
         </div>
       )}
 
