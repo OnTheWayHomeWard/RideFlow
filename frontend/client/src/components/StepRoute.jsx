@@ -226,14 +226,13 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
             </p>
           </div>
           <button
-            onClick={() => useCurrentLocation(true)}
+            onClick={() => window.location.reload()}
             className="mt-2.5 ml-7 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 bg-amber-100 hover:bg-amber-200 active:scale-[0.98] px-3 py-1.5 rounded-lg transition-all"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            Use my location
+            Refresh &amp; try again
           </button>
         </div>
       )}
