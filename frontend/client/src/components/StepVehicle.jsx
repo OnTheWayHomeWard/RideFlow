@@ -28,7 +28,25 @@ export default function StepVehicle({ prices: rawPrices, pickup, dropoff, onSele
   const [expandedIdx, setExpandedIdx] = useState(null)
   const [activeIdx, setActiveIdx] = useState(0)
   const [nearbyRoutes, setNearbyRoutes] = useState([])
+  const [updating, setUpdating] = useState(false)
   const scrollRef = useRef(null)
+  const topRef = useRef(null)
+
+  // The "near you" routes sit below the car list, so tapping one updates the
+  // prices in the carousel above — off-screen. Scroll back up + show a brief
+  // "updating" overlay so the refresh is actually visible.
+  const handlePickRoute = (o) => {
+    setUpdating(true)
+    try { topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) } catch { /* noop */ }
+    onPickRoute(
+      { name: o.from_name, address: o.from_address, lat: o.from_lat, lng: o.from_lng },
+      { name: o.to_name, address: o.to_address, lat: o.to_lat, lng: o.to_lng },
+    )
+  }
+
+  // Clear the "updating" overlay once fresh prices arrive (parent always passes
+  // a new array, so this fires on every successful recompute).
+  useEffect(() => { setUpdating(false) }, [rawPrices])
 
   // Always show vehicles cheapest → most expensive based on this route's total.
   const prices = (rawPrices || []).slice().sort((a, b) => (a.total_amount ?? 0) - (b.total_amount ?? 0))
@@ -80,6 +98,7 @@ export default function StepVehicle({ prices: rawPrices, pickup, dropoff, onSele
 
   return (
     <div className="animate-[fadeIn_0.3s_ease]">
+      <div ref={topRef} className="scroll-mt-16" />
       {/* Route summary */}
       <div className="p-4 pb-0">
         <div className="bg-white border border-slate-200 rounded-xl p-3 mb-5 flex items-center gap-3">
@@ -104,6 +123,15 @@ export default function StepVehicle({ prices: rawPrices, pickup, dropoff, onSele
       </div>
 
       {/* Horizontal carousel */}
+      <div className="relative">
+      {updating && (
+        <div className="absolute inset-0 z-10 bg-white/70 backdrop-blur-[1px] flex items-center justify-center rounded-xl">
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+            <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            Updating prices…
+          </div>
+        </div>
+      )}
       <div
         ref={scrollRef}
         className="flex overflow-x-auto snap-x snap-mandatory gap-3 px-4 pb-4 scrollbar-hide"
@@ -172,6 +200,7 @@ export default function StepVehicle({ prices: rawPrices, pickup, dropoff, onSele
           )
         })}
       </div>
+      </div>
 
       {/* Dots indicator */}
       {prices.length > 1 && (
@@ -199,10 +228,7 @@ export default function StepVehicle({ prices: rawPrices, pickup, dropoff, onSele
             {nearbyRoutes.map(o => {
               const floor = routeFloor(o)
               return (
-                <button key={`${o.route_id}-${o.direction}`} onClick={() => onPickRoute(
-                  { name: o.from_name, address: o.from_address, lat: o.from_lat, lng: o.from_lng },
-                  { name: o.to_name, address: o.to_address, lat: o.to_lat, lng: o.to_lng },
-                )}
+                <button key={`${o.route_id}-${o.direction}`} onClick={() => handlePickRoute(o)}
                   className="w-full bg-white border border-green-200 rounded-xl p-3 flex items-center gap-3 hover:border-green-400 hover:shadow-sm active:scale-[0.99] transition-all text-left">
                   <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center text-green-600 shrink-0">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
