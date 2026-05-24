@@ -372,12 +372,12 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
         <p className="text-center text-sm text-slate-400 py-8">No popular routes available. Type your destination above.</p>
       ) : (
         <div className="space-y-2.5">
-          {routes.map(route => (
+          {expandDirections(routes).map(opt => (
             <RouteCard
-              key={route.id}
-              route={route}
-              floor={floorPriceFor(route)}
-              onClick={() => handlePopularRoute(route)}
+              key={`${opt.id}-${opt.direction}`}
+              route={opt}
+              floor={floorPriceFor(opt)}
+              onClick={() => handlePopularRoute(opt)}
               disabled={loading}
             />
           ))}
@@ -387,7 +387,28 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
   )
 }
 
+// Expand stored routes into directional display cards: forward always, plus a
+// reverse (B->A) card for bidirectional routes — so customers can book either way.
+function expandDirections(routes) {
+  const out = []
+  for (const r of routes) {
+    out.push({ ...r, direction: 'forward' })
+    if (r.bidirectional !== false && r.from_lat != null && r.to_lat != null) {
+      out.push({
+        ...r,
+        direction: 'reverse',
+        from_name: r.to_name, from_address: r.to_address, from_lat: r.to_lat, from_lng: r.to_lng,
+        to_name: r.from_name, to_address: r.from_address, to_lat: r.from_lat, to_lng: r.from_lng,
+      })
+    }
+  }
+  return out
+}
+
 function RouteCard({ route, floor, near, distanceKm, onClick, disabled }) {
+  // The admin's route.name describes the FORWARD direction, so only use it on
+  // forward cards. Reverse cards show the destination, which is always correct.
+  const title = route.direction === 'reverse' ? route.to_name : (route.name || route.to_name)
   return (
     <button
       onClick={onClick}
@@ -397,11 +418,11 @@ function RouteCard({ route, floor, near, distanceKm, onClick, disabled }) {
       }`}
     >
       <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-2xl shrink-0">
-        {getIcon(route.name || route.to_name)}
+        {getIcon(title)}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <p className="font-semibold text-slate-900 text-sm truncate">{route.name || route.to_name}</p>
+          <p className="font-semibold text-slate-900 text-sm truncate">{title}</p>
           {near && <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 text-green-700 px-1.5 py-0.5 rounded shrink-0">Near you</span>}
         </div>
         <p className="text-xs text-slate-500 truncate">{route.from_name} → {route.to_name}</p>
