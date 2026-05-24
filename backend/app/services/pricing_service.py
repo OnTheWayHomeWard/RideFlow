@@ -28,7 +28,11 @@ async def find_matching_common_route(
     dropoff_lat: float,
     dropoff_lng: float,
 ) -> CommonRoute | None:
-    """Check if the pickup/dropoff coords match a pre-defined common route."""
+    """Find the pre-defined common route that best matches the pickup/dropoff
+    coords. When several routes are within the match threshold (e.g. two resorts
+    in the same complex, or routes sharing an airport endpoint), return the
+    CLOSEST one — matching by first-in-DB order would otherwise pick the wrong
+    route and charge the wrong price."""
     result = await db.execute(
         select(CommonRoute).where(CommonRoute.is_active == True)
     )
@@ -38,19 +42,30 @@ async def find_matching_common_route(
         return (abs(float(a_lat) - b_lat) < COORD_MATCH_THRESHOLD
                 and abs(float(a_lng) - b_lng) < COORD_MATCH_THRESHOLD)
 
+    def dist2(a_lat, a_lng, b_lat, b_lng):
+        return (float(a_lat) - b_lat) ** 2 + (float(a_lng) - b_lng) ** 2
+
+    best = None
+    best_score = None
     for route in routes:
         if route.from_lat is None or route.to_lat is None:
             continue
         # Forward: pickup≈from and dropoff≈to
         if near(route.from_lat, route.from_lng, pickup_lat, pickup_lng) and \
            near(route.to_lat, route.to_lng, dropoff_lat, dropoff_lng):
-            return route
+            score = (dist2(route.from_lat, route.from_lng, pickup_lat, pickup_lng)
+                     + dist2(route.to_lat, route.to_lng, dropoff_lat, dropoff_lng))
+            if best_score is None or score < best_score:
+                best, best_score = route, score
         # Reverse (B->A): pickup≈to and dropoff≈from — only if bidirectional
         if getattr(route, "bidirectional", True) and \
            near(route.to_lat, route.to_lng, pickup_lat, pickup_lng) and \
            near(route.from_lat, route.from_lng, dropoff_lat, dropoff_lng):
-            return route
-    return None
+            score = (dist2(route.to_lat, route.to_lng, pickup_lat, pickup_lng)
+                     + dist2(route.from_lat, route.from_lng, dropoff_lat, dropoff_lng))
+            if best_score is None or score < best_score:
+                best, best_score = route, score
+    return best
 
 
 async def get_vehicle_rate(db: AsyncSession, vehicle_type: str) -> VehicleRate | None:
