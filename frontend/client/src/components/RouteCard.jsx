@@ -118,13 +118,13 @@ export function collapseByRoute(options) {
   return out
 }
 
-// Arrow shown between the two endpoint names in a route title:
-// double-headed for two-way routes, single for one-way.
-function ArrowBetween({ bidir }) {
+// Vertical connector arrow between the stacked endpoint names:
+// double-headed (⇅) for two-way routes, single (↓) for one-way.
+function ArrowVertical({ bidir }) {
   return (
-    <svg className="w-4 h-4 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-        d={bidir ? 'M3 12h18M15 6l6 6-6 6M9 18l-6-6 6-6' : 'M3 12h18M15 6l6 6-6 6'} />
+        d={bidir ? 'M12 5v14M7 14l5 5 5-5M7 10l5-5 5 5' : 'M12 5v14M7 14l5 5 5-5'} />
     </svg>
   )
 }
@@ -158,11 +158,16 @@ export default function RouteCard({ route, floor, near, distanceKm, onBook, disa
         className="w-full p-4 flex items-start gap-3 text-left hover:bg-slate-50/70 transition-colors"
       >
         <div className="flex-1 min-w-0">
-          {/* Title built from the two endpoints, each with its own location icon */}
-          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-semibold text-slate-900 text-sm leading-snug">
-            <span className="inline-flex items-center gap-1"><span className="text-base leading-none">{getIcon(route.from_name)}</span>{fromShort}</span>
-            <ArrowBetween bidir={bidir} />
-            <span className="inline-flex items-center gap-1"><span className="text-base leading-none">{getIcon(route.to_name)}</span>{toShort}</span>
+          {/* Endpoints stacked vertically with a connector arrow in the middle,
+              so long names wrap cleanly instead of crowding an inline arrow. */}
+          <div className="flex items-center gap-2">
+            <span className="w-5 text-center text-base leading-none shrink-0">{getIcon(route.from_name)}</span>
+            <span className="font-semibold text-slate-900 text-sm break-words min-w-0">{fromShort}</span>
+          </div>
+          <div className="w-5 flex justify-center py-0.5"><ArrowVertical bidir={bidir} /></div>
+          <div className="flex items-center gap-2">
+            <span className="w-5 text-center text-base leading-none shrink-0">{getIcon(route.to_name)}</span>
+            <span className="font-semibold text-slate-900 text-sm break-words min-w-0">{toShort}</span>
           </div>
           {hasBadges && (
             <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
