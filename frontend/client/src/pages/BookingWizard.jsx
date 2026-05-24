@@ -125,6 +125,7 @@ export default function BookingWizard() {
             pickup={booking.pickup}
             dropoff={booking.dropoff}
             onSelect={handleVehicleSelect}
+            onPickRoute={handleRouteSelect}
           />
         )}
         {step === 3 && (
