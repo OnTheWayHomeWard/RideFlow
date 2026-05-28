@@ -35,7 +35,10 @@ class VehicleRateCreate(BaseModel):
     vehicle_type: str
     display_name: str
     base_fare: float
-    per_mile_rate: float
+    # Legacy flat per-mile rate is no longer surfaced in the admin UI —
+    # tiered pricing (per-vehicle or global default) is the source of truth.
+    # Kept on the model as a silent emergency fallback only.
+    per_mile_rate: float = 0
     rate_tiers: list[RateTier] = []
     max_passengers: int
     max_luggage: int = 2

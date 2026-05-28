@@ -224,9 +224,17 @@ async def calculate_price(
             from app.services.maps_service import driving_distance_miles
             distance_miles = await driving_distance_miles(pickup_lat, pickup_lng, dropoff_lat, dropoff_lng)
 
-        # Per-mile portion uses distance tiers when configured (e.g. cheaper
-        # rate beyond 10 miles); falls back to the flat per_mile_rate when not.
-        distance_cost = tiered_distance_cost(distance_miles, list(rate.rate_tiers or []), float(rate.per_mile_rate))
+        # Distance tiers: per-vehicle override OR the global default set in
+        # admin Settings. per_mile_rate is the silent emergency backstop only.
+        tiers_for_calc = list(rate.rate_tiers or [])
+        if not tiers_for_calc:
+            from app.models.setting import Setting
+            dt_row = await db.execute(select(Setting).where(Setting.key == "default_rate_tiers"))
+            dt_setting = dt_row.scalar_one_or_none()
+            if dt_setting and isinstance(dt_setting.value, list):
+                tiers_for_calc = dt_setting.value
+
+        distance_cost = tiered_distance_cost(distance_miles, tiers_for_calc, float(rate.per_mile_rate or 0))
         base_amount = float(rate.base_fare) + distance_cost
         route_distance = distance_miles
 

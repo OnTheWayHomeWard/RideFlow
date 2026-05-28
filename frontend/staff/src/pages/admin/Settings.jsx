@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../../api/adminClient'
 import { useSettings } from '../../hooks/useSettings'
+import TierEditor, { buildTiersPayload, tiersToForm } from '../../components/admin/TierEditor'
 
 export default function Settings() {
   const [settings, setSettings] = useState([])
@@ -59,6 +60,13 @@ export default function Settings() {
           onSave={handleSave}
         />
       )}
+
+      {/* Default distance pricing tiers — used for every vehicle that hasn't set its own. */}
+      <DefaultRateTiersEditor
+        setting={settings.find(s => s.key === 'default_rate_tiers') || { key: 'default_rate_tiers', value: [] }}
+        saving={saving === 'default_rate_tiers'}
+        onSave={handleSave}
+      />
 
       {/* Pickup Locations — restricts ONLY the pickup field. Destination uses the union of these + Service Areas. */}
       <ServiceAreasEditor
@@ -607,6 +615,54 @@ function CountriesSelector({ setting, crossCountrySetting, saving, onSave }) {
               </div>
             </div>
           </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Global default distance-pricing tiers. Used for every vehicle that hasn't
+// set its own custom tiers in Pricing → Vehicle Rates.
+function DefaultRateTiersEditor({ setting, saving, onSave }) {
+  const initial = Array.isArray(setting.value) ? setting.value : []
+  const [tiers, setTiers] = useState(() => tiersToForm(initial))
+  const [savedJson, setSavedJson] = useState(() => JSON.stringify(tiers))
+  const changed = JSON.stringify(tiers) !== savedJson
+
+  const handleSave = () => {
+    try {
+      const clean = buildTiersPayload(tiers)
+      onSave(setting.key, clean)
+      setSavedJson(JSON.stringify(tiers))
+    } catch (err) { alert(err.message) }
+  }
+
+  const isEmpty = tiers.length === 0
+  return (
+    <div className="mb-5">
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Default Pricing</h2>
+      <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <p className="text-sm font-medium text-slate-900 mb-1">Default distance pricing tiers</p>
+        <p className="text-xs text-slate-500 mb-3">
+          The per-mile cost is computed by which band each mile falls into. Every vehicle uses these tiers by default;
+          you can override per-vehicle in <b>Pricing → Vehicle Rates</b>.
+        </p>
+        {isEmpty && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3 text-xs text-amber-700">
+            ⚠ No default tiers set — vehicles without custom tiers will compute the per-mile cost as <b>$0</b>.
+          </div>
+        )}
+        <TierEditor
+          value={tiers}
+          onChange={setTiers}
+          emptyText="No default tiers configured."
+          addText="+ Add default tiers"
+        />
+        {changed && (
+          <button onClick={handleSave} disabled={saving}
+            className="mt-3 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-60">
+            {saving ? 'Saving...' : 'Save default tiers'}
+          </button>
         )}
       </div>
     </div>
