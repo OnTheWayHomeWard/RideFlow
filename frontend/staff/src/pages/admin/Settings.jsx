@@ -60,6 +60,20 @@ export default function Settings() {
         />
       )}
 
+      {/* Pickup Locations — restricts ONLY the pickup field. Destination uses the union of these + Service Areas. */}
+      <ServiceAreasEditor
+        setting={settings.find(s => s.key === 'pickup_locations') || { key: 'pickup_locations', value: [] }}
+        saving={saving === 'pickup_locations'}
+        onSave={handleSave}
+        labels={{
+          title: 'Pickup Locations',
+          lead: 'Where riders can be picked up',
+          helpText: 'Add cities where you offer pickup. The pickup field autocomplete will be limited to these. The destination field uses the union of these + Service Areas. Leave empty to allow pickup anywhere your service operates.',
+          emptyText: 'No pickup locations configured — pickup falls back to your Service Areas.',
+          saveLabel: 'Save pickup locations',
+        }}
+      />
+
       <SettingsGroup title="Stripe Connect" settings={otherSettings.filter(s => ['stripe_connect_enabled', 'payout_currency'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Notifications" settings={otherSettings.filter(s => s.key === 'sms_enabled')} saving={saving} onSave={handleSave} />
       <SmsTemplates settings={otherSettings.filter(s => s.key.startsWith('sms_') && s.key !== 'sms_enabled')} saving={saving} onSave={handleSave} />
@@ -599,7 +613,15 @@ function CountriesSelector({ setting, crossCountrySetting, saving, onSave }) {
   )
 }
 
-function ServiceAreasEditor({ setting, crossCountrySetting, saving, onSave }) {
+function ServiceAreasEditor({ setting, crossCountrySetting, saving, onSave, labels }) {
+  const L = {
+    title: 'Service Area',
+    lead: 'Where your service operates',
+    helpText: "Add a country to operate everywhere in that country, or a specific city to operate only within that city's bounds. Address autocomplete is restricted to these areas. Up to 5 distinct countries.",
+    emptyText: 'No service areas configured — bookings allowed worldwide.',
+    saveLabel: 'Save service areas',
+    ...(labels || {}),
+  }
   const settings = useSettings()
   const inputRef = useRef(null)
   const [areas, setAreas] = useState(() => {
@@ -699,13 +721,10 @@ function ServiceAreasEditor({ setting, crossCountrySetting, saving, onSave }) {
 
   return (
     <div className="mb-5">
-      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Service Area</h2>
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">{L.title}</h2>
       <div className="bg-white border border-slate-200 rounded-xl p-4">
-        <p className="text-sm font-medium text-slate-900 mb-1">Where your service operates</p>
-        <p className="text-xs text-slate-500 mb-3">
-          Add a country to operate everywhere in that country, or a specific city to operate only within that city's bounds.
-          Address autocomplete is restricted to these areas. Up to 5 distinct countries.
-        </p>
+        <p className="text-sm font-medium text-slate-900 mb-1">{L.lead}</p>
+        <p className="text-xs text-slate-500 mb-3">{L.helpText}</p>
 
         {!settings.google_maps_api_key && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
@@ -718,7 +737,7 @@ function ServiceAreasEditor({ setting, crossCountrySetting, saving, onSave }) {
           className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3 disabled:bg-slate-50" />
 
         {areas.length === 0 ? (
-          <p className="text-sm text-slate-400 italic mb-3">No service areas configured — bookings allowed worldwide.</p>
+          <p className="text-sm text-slate-400 italic mb-3">{L.emptyText}</p>
         ) : (
           <div className="flex flex-wrap gap-2 mb-3">
             {areas.map((a, idx) => (
@@ -734,7 +753,7 @@ function ServiceAreasEditor({ setting, crossCountrySetting, saving, onSave }) {
         {changed && (
           <button onClick={handleSave} disabled={saving}
             className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-60">
-            {saving ? 'Saving...' : 'Save service areas'}
+            {saving ? 'Saving...' : L.saveLabel}
           </button>
         )}
 

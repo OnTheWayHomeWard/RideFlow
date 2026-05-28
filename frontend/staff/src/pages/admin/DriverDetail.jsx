@@ -33,11 +33,22 @@ export default function DriverDetail() {
   const [editing, setEditing] = useState(false)
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
+  const [vehicleRates, setVehicleRates] = useState([])
 
   const load = () => {
     api.getDriverDetail(driverId).then(setData).catch(() => {}).finally(() => setLoading(false))
   }
   useEffect(() => { load() }, [driverId])
+  // Active vehicle types from Pricing -> Vehicle Rates, used for the dropdown
+  // and to look up human display names for the read-only fields.
+  useEffect(() => {
+    api.getVehicleRates().then(rs => setVehicleRates((rs || []).filter(r => r.is_active))).catch(() => {})
+  }, [])
+  const vehicleDisplayName = (key) => {
+    if (!key) return '—'
+    const r = vehicleRates.find(v => v.vehicle_type === key)
+    return r ? r.display_name : key.toUpperCase()
+  }
 
   const startEdit = () => {
     const d = data.driver
@@ -121,7 +132,7 @@ export default function DriverDetail() {
               <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${
                 d.status === 'active' ? 'bg-green-100 text-green-700' : d.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
               }`}>{d.status}</span>
-              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full uppercase">{d.vehicle_type}</span>
+              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{vehicleDisplayName(d.vehicle_type)}</span>
               {stats.avg_rating > 0 && (
                 <span className="flex items-center gap-1">
                   <Stars rating={Math.round(stats.avg_rating)} />
@@ -215,7 +226,7 @@ export default function DriverDetail() {
               {/* Vehicle */}
               <SectionLabel text="Vehicle" />
               <div className="grid grid-cols-2 gap-3 text-sm mb-5">
-                <Field label="Type" value={d.vehicle_type?.toUpperCase()} />
+                <Field label="Type" value={vehicleDisplayName(d.vehicle_type)} />
                 <Field label="Make & Model" value={d.vehicle_make || '—'} />
                 <Field label="Plate" value={d.vehicle_plate || '—'} mono />
                 <Field label="Color" value={d.vehicle_color || '—'} />
@@ -290,10 +301,15 @@ export default function DriverDetail() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-5">
                 <div>
                   <label className="text-xs text-slate-500">Type</label>
-                  <select value={editForm.vehicle_type} onChange={e => setEditForm(p => ({ ...p, vehicle_type: e.target.value }))}
+                  <select value={editForm.vehicle_type || ''} onChange={e => setEditForm(p => ({ ...p, vehicle_type: e.target.value }))}
                     className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="sedan">Sedan</option><option value="suv">SUV</option>
-                    <option value="van">Van</option><option value="large_van">Large Van</option>
+                    {vehicleRates.map(r => (
+                      <option key={r.vehicle_type} value={r.vehicle_type}>{r.display_name}</option>
+                    ))}
+                    {/* Keep the driver's existing type selectable even if it's been deactivated, so saving doesn't silently switch them */}
+                    {editForm.vehicle_type && !vehicleRates.some(r => r.vehicle_type === editForm.vehicle_type) && (
+                      <option value={editForm.vehicle_type}>{editForm.vehicle_type.toUpperCase()} (inactive)</option>
+                    )}
                   </select>
                 </div>
                 <EditField label="Make & Model" value={editForm.vehicle_make} onChange={v => setEditForm(p => ({ ...p, vehicle_make: v }))} />

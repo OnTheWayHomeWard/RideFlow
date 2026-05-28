@@ -17,8 +17,9 @@ export default function Drivers() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', phone: '', email: '', vehicle_type: 'sedan', vehicle_make: '', vehicle_plate: '', vehicle_color: '', license_number: '', has_insurance: false })
+  const [form, setForm] = useState({ name: '', phone: '', email: '', vehicle_type: '', vehicle_make: '', vehicle_plate: '', vehicle_color: '', license_number: '', has_insurance: false })
   const [creating, setCreating] = useState(false)
+  const [vehicleRates, setVehicleRates] = useState([])
 
   const load = (p, f) => {
     setLoading(true)
@@ -26,6 +27,15 @@ export default function Drivers() {
   }
   useEffect(() => { setPage(1); load(1, filter) }, [filter])
   useEffect(() => { load(page, filter) }, [page])
+  // Vehicle types come from the configured rates so the dropdown stays in sync
+  // with whatever's in Pricing -> Vehicle Rates (display_name shown).
+  useEffect(() => {
+    api.getVehicleRates().then(rs => {
+      const active = (rs || []).filter(r => r.is_active)
+      setVehicleRates(active)
+      setForm(p => p.vehicle_type ? p : { ...p, vehicle_type: active[0]?.vehicle_type || '' })
+    }).catch(() => {})
+  }, [])
 
   const drivers = data.items || []
 
@@ -67,7 +77,7 @@ export default function Drivers() {
           try {
             const res = await api.createDriver(form)
             alert(`Driver created!\nDefault password: ${res.default_password} (last 4 digits of phone)`)
-            setShowForm(false); setForm({ name: '', phone: '', email: '', vehicle_type: 'sedan', vehicle_make: '', vehicle_plate: '', vehicle_color: '', license_number: '', has_insurance: false })
+            setShowForm(false); setForm({ name: '', phone: '', email: '', vehicle_type: vehicleRates[0]?.vehicle_type || '', vehicle_make: '', vehicle_plate: '', vehicle_color: '', license_number: '', has_insurance: false })
             load(1, filter)
           } catch (err) { alert(err.message) }
           finally { setCreating(false) }
@@ -92,10 +102,12 @@ export default function Drivers() {
             </div>
             <div>
               <label className="text-xs text-slate-500">Vehicle Type</label>
-              <select value={form.vehicle_type} onChange={e => setForm(p => ({ ...p, vehicle_type: e.target.value }))}
+              <select value={form.vehicle_type} onChange={e => setForm(p => ({ ...p, vehicle_type: e.target.value }))} required
                 className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm">
-                <option value="sedan">Sedan</option><option value="suv">SUV</option>
-                <option value="van">Van</option><option value="large_van">Large Van</option>
+                {vehicleRates.length === 0 && <option value="">No vehicles configured</option>}
+                {vehicleRates.map(r => (
+                  <option key={r.vehicle_type} value={r.vehicle_type}>{r.display_name}</option>
+                ))}
               </select>
             </div>
             <div>

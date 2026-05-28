@@ -45,23 +45,70 @@ export default function Pricing() {
 }
 
 // ═══ VEHICLE RATES ═══
+const emptyRateForm = () => ({ display_name: '', vehicle_type: '', base_fare: '', per_mile_rate: '', rate_tiers: [], max_passengers: '', max_luggage: '2', sort_order: '0', image_url: '', description: '' })
+
 function VehicleRatesTab({ rates, reload }) {
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ display_name: '', vehicle_type: '', base_fare: '', per_mile_rate: '', max_passengers: '', max_luggage: '2', sort_order: '0', image_url: '', description: '' })
+  const [form, setForm] = useState(emptyRateForm())
   const [editId, setEditId] = useState(null)
+
+  // Convert the string-based form into the typed payload the backend expects.
+  // Tier rows with no rate are dropped; the open-ended "and up" tier keeps to=null.
+  const buildPayload = () => {
+    const cleanTiers = (form.rate_tiers || [])
+      .filter(t => t && t.rate !== '' && t.rate != null)
+      .map(t => ({
+        to: t.to === null || t.to === '' ? null : Number(t.to),
+        rate: Number(t.rate),
+      }))
+    // Validate: tiers must be ascending and at most one open-ended (null) at the end.
+    let prev = 0
+    for (let i = 0; i < cleanTiers.length; i++) {
+      const t = cleanTiers[i]
+      if (t.to === null) {
+        if (i !== cleanTiers.length - 1) throw new Error('Only the last tier can be "and up"')
+      } else {
+        if (t.to <= prev) throw new Error(`Tier ${i + 1}: "Up to ${t.to} mi" must be greater than the previous tier`)
+        prev = t.to
+      }
+    }
+    const payload = {
+      display_name: form.display_name,
+      base_fare: Number(form.base_fare),
+      per_mile_rate: Number(form.per_mile_rate),
+      rate_tiers: cleanTiers,
+      max_passengers: Number(form.max_passengers),
+      max_luggage: Number(form.max_luggage || 2),
+      sort_order: Number(form.sort_order || 0),
+      image_url: form.image_url || null,
+      description: form.description || null,
+    }
+    if (!editId) payload.vehicle_type = form.vehicle_type
+    return payload
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
-      if (editId) { await api.updateRate(editId, form); setEditId(null) }
-      else await api.createRate(form)
-      setShowForm(false); setForm({ display_name: '', vehicle_type: '', base_fare: '', per_mile_rate: '', max_passengers: '', max_luggage: '2', sort_order: '0', image_url: '', description: '' })
+      const payload = buildPayload()
+      if (editId) { await api.updateRate(editId, payload); setEditId(null) }
+      else await api.createRate(payload)
+      setShowForm(false); setForm(emptyRateForm())
       reload()
     } catch (err) { alert(err.message) }
   }
 
   const startEdit = (r) => {
-    setForm({ display_name: r.display_name, vehicle_type: r.vehicle_type, base_fare: r.base_fare, per_mile_rate: r.per_mile_rate, max_passengers: r.max_passengers, max_luggage: r.max_luggage, sort_order: r.sort_order, image_url: r.image_url || '', description: r.description || '' })
+    setForm({
+      display_name: r.display_name, vehicle_type: r.vehicle_type,
+      base_fare: r.base_fare, per_mile_rate: r.per_mile_rate,
+      rate_tiers: (r.rate_tiers || []).map(t => ({
+        to: t.to == null ? null : String(t.to),
+        rate: String(t.rate),
+      })),
+      max_passengers: r.max_passengers, max_luggage: r.max_luggage,
+      sort_order: r.sort_order, image_url: r.image_url || '', description: r.description || '',
+    })
     setEditId(r.id); setShowForm(true)
   }
 
@@ -69,10 +116,32 @@ function VehicleRatesTab({ rates, reload }) {
     try { await api.updateRate(r.id, { is_active: !r.is_active }); reload() } catch (e) { alert(e.message) }
   }
 
+  // Tier editor helpers
+  const updateTier = (i, field, value) => setForm(p => ({
+    ...p,
+    rate_tiers: p.rate_tiers.map((t, j) => j === i ? { ...t, [field]: value } : t),
+  }))
+  const removeTier = (i) => setForm(p => ({
+    ...p,
+    rate_tiers: p.rate_tiers.filter((_, j) => j !== i),
+  }))
+  const addTier = () => setForm(p => {
+    const tiers = [...(p.rate_tiers || [])]
+    const lastIdx = tiers.length - 1
+    if (lastIdx >= 0 && tiers[lastIdx].to === null) {
+      // insert a new bounded tier just before the "and up" row
+      tiers.splice(lastIdx, 0, { to: '', rate: '' })
+    } else {
+      // first time enabling tiers — start with one bounded + one "and up"
+      tiers.push({ to: '', rate: '' }, { to: null, rate: '' })
+    }
+    return { ...p, rate_tiers: tiers }
+  })
+
   return (
     <div>
       <div className="flex justify-end mb-3">
-        <button onClick={() => { setShowForm(!showForm); setEditId(null); setForm({ display_name: '', vehicle_type: '', base_fare: '', per_mile_rate: '', max_passengers: '', max_luggage: '2', sort_order: '0', image_url: '', description: '' }) }}
+        <button onClick={() => { setShowForm(!showForm); setEditId(null); setForm(emptyRateForm()) }}
           className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">{showForm ? 'Cancel' : '+ Add Vehicle'}</button>
       </div>
 
@@ -83,10 +152,68 @@ function VehicleRatesTab({ rates, reload }) {
             <Inp label="Display Name" value={form.display_name} onChange={v => setForm(p => ({ ...p, display_name: v }))} required placeholder="e.g. Sedan" />
             {!editId && <Inp label="Type Key" value={form.vehicle_type} onChange={v => setForm(p => ({ ...p, vehicle_type: v }))} required placeholder="e.g. sedan" />}
             <Inp label="Base Fare ($)" type="number" value={form.base_fare} onChange={v => setForm(p => ({ ...p, base_fare: v }))} required />
-            <Inp label="Per Mile ($)" type="number" value={form.per_mile_rate} onChange={v => setForm(p => ({ ...p, per_mile_rate: v }))} required />
+            <Inp label="Per Mile ($, fallback)" type="number" value={form.per_mile_rate} onChange={v => setForm(p => ({ ...p, per_mile_rate: v }))} required />
             <Inp label="Max Passengers" type="number" value={form.max_passengers} onChange={v => setForm(p => ({ ...p, max_passengers: v }))} required />
             <Inp label="Max Luggage" type="number" value={form.max_luggage} onChange={v => setForm(p => ({ ...p, max_luggage: v }))} />
             <Inp label="Sort Order" type="number" value={form.sort_order} onChange={v => setForm(p => ({ ...p, sort_order: v }))} />
+          </div>
+
+          {/* Distance pricing tiers — optional. When set, the per-mile portion is
+              priced by which band each mile falls into (e.g. miles 0-10 @ $6,
+              miles 10-20 @ $5, miles 20+ @ $4). When empty, the flat "Per Mile"
+              above is used for every mile. */}
+          <div className="mb-3 bg-slate-50 border border-slate-200 rounded-lg p-3">
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold text-slate-700">Distance pricing tiers (optional)</label>
+              {form.rate_tiers && form.rate_tiers.length > 0 && (
+                <button type="button" onClick={() => setForm(p => ({ ...p, rate_tiers: [] }))}
+                  className="text-xs text-slate-500 hover:text-red-600">Remove tiers</button>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 mb-2">
+              Charge different $/mile for short vs long trips. Leave empty to use the flat Per Mile rate above for every mile.
+            </p>
+
+            {(!form.rate_tiers || form.rate_tiers.length === 0) ? (
+              <button type="button" onClick={addTier}
+                className="text-xs font-medium text-blue-600 hover:text-blue-700">
+                + Add distance tiers
+              </button>
+            ) : (
+              <>
+                <div className="space-y-2 mb-2">
+                  {form.rate_tiers.map((t, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className="flex-1 flex items-center gap-2">
+                        <span className="text-xs text-slate-500 w-12 shrink-0">Up to</span>
+                        {t.to === null ? (
+                          <span className="flex-1 px-3 py-2 bg-slate-100 rounded-lg text-xs text-slate-600 italic">and beyond</span>
+                        ) : (
+                          <input type="number" step="any" min="0" value={t.to}
+                            onChange={e => updateTier(i, 'to', e.target.value)}
+                            placeholder="e.g. 10"
+                            className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        )}
+                        <span className="text-xs text-slate-500 shrink-0">mi @</span>
+                        <input type="number" step="any" min="0" value={t.rate}
+                          onChange={e => updateTier(i, 'rate', e.target.value)}
+                          placeholder="$/mile"
+                          className="w-24 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        <span className="text-xs text-slate-500 shrink-0">$/mi</span>
+                      </div>
+                      {form.rate_tiers.length > 1 && (
+                        <button type="button" onClick={() => removeTier(i)}
+                          className="px-2 py-1 text-slate-400 hover:text-red-600" title="Remove tier">✕</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button type="button" onClick={addTier}
+                  className="text-xs font-medium text-blue-600 hover:text-blue-700">
+                  + Add another tier
+                </button>
+              </>
+            )}
           </div>
           <div className="mb-3">
             <label className="text-xs text-slate-500">Image URL</label>
@@ -129,7 +256,21 @@ function VehicleRatesTab({ rates, reload }) {
                 </div>
                 <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
                   <span><b className="text-slate-700">${r.base_fare}</b> base</span>
-                  <span><b className="text-slate-700">${r.per_mile_rate}</b>/mi</span>
+                  {(r.rate_tiers && r.rate_tiers.length > 0) ? (
+                    <span className="text-blue-700">
+                      <b>{(() => {
+                        const ts = [...r.rate_tiers].sort((a, b) => (a.to == null ? 1 : b.to == null ? -1 : a.to - b.to))
+                        let prev = 0
+                        return ts.map(t => {
+                          const label = t.to == null ? `${prev}+` : `${prev}-${t.to}`
+                          prev = t.to == null ? prev : Number(t.to)
+                          return `${label} @$${t.rate}`
+                        }).join(', ')
+                      })()}</b>/mi (tiered)
+                    </span>
+                  ) : (
+                    <span><b className="text-slate-700">${r.per_mile_rate}</b>/mi</span>
+                  )}
                   <span><b className="text-slate-700">{r.max_passengers}</b> passengers</span>
                   <span><b className="text-slate-700">{r.max_luggage}</b> bags</span>
                 </div>

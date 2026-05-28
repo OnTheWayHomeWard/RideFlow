@@ -124,6 +124,55 @@ async def get_active_upsales(
     return [u for u in result.scalars().all() if upsale_applies(u, vehicle_type, pickup_dt)]
 
 
+def tiered_distance_cost(distance_miles: float, tiers: list, fallback_rate: float) -> float:
+    """Compute the per-mile portion of a fare using incremental distance tiers.
+
+    Tiers are an ascending list of {to: float|null, rate: float}. Each tier
+    prices the band [previous_to, to). The last tier's `to` is null ("and up").
+    Example: tiers=[{to:10, rate:6},{to:20, rate:5},{to:null, rate:4}]
+      15 miles ->  10*6 + 5*5  = 85
+      25 miles ->  10*6 + 10*5 + 5*4 = 130
+
+    If `tiers` is empty/missing or malformed, falls back to
+    `distance_miles * fallback_rate` (the legacy flat per_mile_rate).
+    """
+    if not tiers or distance_miles <= 0:
+        return float(distance_miles) * float(fallback_rate)
+    try:
+        clean = sorted(
+            [t for t in tiers if isinstance(t, dict) and "rate" in t],
+            # null `to` sorts last (interpreted as +infinity)
+            key=lambda t: (1 if t.get("to") is None else 0, float(t.get("to") or 0)),
+        )
+    except (TypeError, ValueError):
+        return float(distance_miles) * float(fallback_rate)
+    if not clean:
+        return float(distance_miles) * float(fallback_rate)
+
+    remaining = float(distance_miles)
+    prev = 0.0
+    total = 0.0
+    for t in clean:
+        rate = float(t["rate"])
+        upper = t.get("to")
+        if upper is None:
+            total += remaining * rate
+            remaining = 0.0
+            break
+        band = max(float(upper) - prev, 0.0)
+        take = min(remaining, band)
+        total += take * rate
+        remaining -= take
+        prev = float(upper)
+        if remaining <= 0:
+            break
+    # If tiers don't extend to cover the full distance (no open-ended last tier),
+    # apply the fallback rate to the overflow so we never undercount miles.
+    if remaining > 0:
+        total += remaining * float(fallback_rate)
+    return total
+
+
 def calculate_upsale_amount(base_amount: float, upsale: Upsale) -> float:
     if upsale.type == "flat":
         return float(upsale.amount)
@@ -175,7 +224,10 @@ async def calculate_price(
             from app.services.maps_service import driving_distance_miles
             distance_miles = await driving_distance_miles(pickup_lat, pickup_lng, dropoff_lat, dropoff_lng)
 
-        base_amount = float(rate.base_fare) + (distance_miles * float(rate.per_mile_rate))
+        # Per-mile portion uses distance tiers when configured (e.g. cheaper
+        # rate beyond 10 miles); falls back to the flat per_mile_rate when not.
+        distance_cost = tiered_distance_cost(distance_miles, list(rate.rate_tiers or []), float(rate.per_mile_rate))
+        base_amount = float(rate.base_fare) + distance_cost
         route_distance = distance_miles
 
     base_amount = round(base_amount, 2)

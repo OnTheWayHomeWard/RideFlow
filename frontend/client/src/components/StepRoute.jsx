@@ -24,6 +24,24 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
   const hasQR = !!cashierInfo
   const hasPickup = !!pickup && !editingPickup
 
+  // Pickup-only allowed cities (if configured); falls back to service_areas.
+  // Destination uses the union of both so riders can travel to/from a pickup
+  // city even if it isn't in the broader service area, and vice versa.
+  const serviceAreas = settings.service_areas || []
+  const pickupLocations = settings.pickup_locations || []
+  const pickupAreas = pickupLocations.length > 0 ? pickupLocations : serviceAreas
+  const destinationAreas = (() => {
+    if (pickupLocations.length === 0) return serviceAreas
+    const seen = new Set()
+    const out = []
+    for (const a of [...serviceAreas, ...pickupLocations]) {
+      const key = a.place_id || `${a.type}:${a.country}:${a.name}`
+      if (seen.has(key)) continue
+      seen.add(key); out.push(a)
+    }
+    return out
+  })()
+
   useEffect(() => {
     Promise.all([
       api.getCommonRoutes().catch(() => []),
@@ -247,14 +265,13 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
         </div>
       )}
 
-      {/* Service area warning */}
+      {/* Service-area warnings — pickup checked against pickupAreas (cities we
+          pick up in), destination against destinationAreas (union). */}
       {(() => {
-        const areas = settings.service_areas || []
-        if (areas.length === 0) return null
+        if (serviceAreas.length === 0 && pickupLocations.length === 0) return null
 
-        // Helpers
         const inBounds = (lat, lng, b) => b && b.south <= lat && lat <= b.north && b.west <= lng && lng <= b.east
-        const locInAreas = (loc) => {
+        const locInAreas = (loc, areas) => {
           if (!loc?.country) return true  // unknown country = don't warn
           const cc = loc.country.toUpperCase()
           return areas.some(a => {
@@ -263,20 +280,19 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
             return false
           })
         }
-        const allowedDisplay = areas.map(a => a.type === 'city' ? `${a.name} (${a.country})` : a.name)
+        const displayList = (areas) => areas.map(a => a.type === 'city' ? `${a.name} (${a.country})` : a.name).join(', ')
 
-        const userOutside = userCountry && !areas.some(a => (a.country || '').toUpperCase() === userCountry.toUpperCase())
-        const pickupOutside = pickup && !locInAreas(pickup)
-        const dropoffOutside = dropoff && !locInAreas(dropoff)
+        const pickupOutside = pickup && pickupAreas.length > 0 && !locInAreas(pickup, pickupAreas)
+        const dropoffOutside = dropoff && destinationAreas.length > 0 && !locInAreas(dropoff, destinationAreas)
+        const userOutside = userCountry && destinationAreas.length > 0 && !destinationAreas.some(a => (a.country || '').toUpperCase() === userCountry.toUpperCase())
 
         if (userOutside && !pickup?.country && !dropoff?.country) {
-          // User just arrived and their location is outside service area
           return (
             <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
               <svg className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>
-              <p className="text-xs text-amber-700">It looks like you're not in our service area. We currently operate in <strong>{allowedDisplay.join(', ')}</strong>. You can still browse, but pickup and destination must be within these countries.</p>
+              <p className="text-xs text-amber-700">It looks like you're not in our service area. We currently operate in <strong>{displayList(destinationAreas)}</strong>. You can still browse, but pickup and destination must be within these areas.</p>
             </div>
           )
         }
@@ -288,11 +304,12 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>
               <p className="text-xs text-red-700">
-                {pickupOutside && dropoffOutside
-                  ? 'Both your pickup and destination are outside our service area.'
-                  : pickupOutside ? 'Your pickup location is outside our service area.'
-                  : 'Your destination is outside our service area.'}
-                {' '}We only operate in <strong>{allowedDisplay.join(', ')}</strong>.
+                {pickupOutside && (
+                  <>We don't offer pickup at that location. We pick up in <strong>{displayList(pickupAreas)}</strong>.{dropoffOutside && <br />}</>
+                )}
+                {dropoffOutside && (
+                  <>We don't drive to that destination. We operate in <strong>{displayList(destinationAreas)}</strong>.</>
+                )}
               </p>
             </div>
           )
@@ -318,7 +335,7 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
             placeholder="Pickup location"
             googleApiKey={settings.google_maps_api_key}
             countries={settings.available_countries}
-            serviceAreas={settings.service_areas}
+            serviceAreas={pickupAreas}
             onUseCurrentLocation={() => { setEditingPickup(false); useCurrentLocation() }}
           />
           {locationStatus === 'requesting' && (
@@ -338,7 +355,7 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
           placeholder="Where to?"
           googleApiKey={settings.google_maps_api_key}
           countries={settings.available_countries}
-          serviceAreas={settings.service_areas}
+          serviceAreas={destinationAreas}
         />
       </div>
 

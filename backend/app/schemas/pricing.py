@@ -9,6 +9,7 @@ class VehicleRateOut(BaseModel):
     display_name: str
     base_fare: float
     per_mile_rate: float
+    rate_tiers: list[dict] = []  # [{to: number|null, rate: number}], ascending
     max_passengers: int
     max_luggage: int
     image_url: str | None = None
@@ -17,6 +18,43 @@ class VehicleRateOut(BaseModel):
     is_active: bool
 
     model_config = {"from_attributes": True}
+
+
+class RateTier(BaseModel):
+    """One distance band in a vehicle's tiered per-mile pricing.
+
+    `to` is the upper bound (in miles) for this band; the lower bound is
+    the previous tier's `to` (or 0 for the first). The final tier's `to`
+    must be null ("and beyond"). `rate` is $/mile within the band.
+    """
+    to: float | None = None
+    rate: float
+
+
+class VehicleRateCreate(BaseModel):
+    vehicle_type: str
+    display_name: str
+    base_fare: float
+    per_mile_rate: float
+    rate_tiers: list[RateTier] = []
+    max_passengers: int
+    max_luggage: int = 2
+    sort_order: int = 0
+    image_url: str | None = None
+    description: str | None = None
+
+
+class VehicleRateUpdate(BaseModel):
+    display_name: str | None = None
+    base_fare: float | None = None
+    per_mile_rate: float | None = None
+    rate_tiers: list[RateTier] | None = None
+    max_passengers: int | None = None
+    max_luggage: int | None = None
+    is_active: bool | None = None
+    sort_order: int | None = None
+    image_url: str | None = None
+    description: str | None = None
 
 
 class ExtraOut(BaseModel):

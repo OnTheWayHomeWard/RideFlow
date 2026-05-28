@@ -30,7 +30,7 @@ from app.schemas.admin import (
     SettingOut, SettingUpdateRequest,
     AdminBookingOut,
 )
-from app.schemas.pricing import VehicleRateOut, CommonRouteOut, ExtraOut
+from app.schemas.pricing import VehicleRateOut, CommonRouteOut, ExtraOut, VehicleRateCreate, VehicleRateUpdate
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -1894,19 +1894,21 @@ async def admin_list_rates(admin: Admin = Depends(get_current_admin), db: AsyncS
 
 @router.post("/vehicle-rates")
 async def create_rate(
+    payload: VehicleRateCreate,
     admin: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
-    vehicle_type: str = Query(...), display_name: str = Query(...),
-    base_fare: float = Query(...), per_mile_rate: float = Query(...),
-    max_passengers: int = Query(...), max_luggage: int = Query(2),
-    sort_order: int = Query(0), image_url: str | None = Query(None),
-    description: str | None = Query(None),
 ):
     rate = VehicleRate(
-        vehicle_type=vehicle_type.lower().replace(' ', '_'), display_name=display_name,
-        base_fare=base_fare, per_mile_rate=per_mile_rate,
-        max_passengers=max_passengers, max_luggage=max_luggage, sort_order=sort_order,
-        image_url=image_url, description=description,
+        vehicle_type=payload.vehicle_type.lower().replace(' ', '_'),
+        display_name=payload.display_name,
+        base_fare=payload.base_fare,
+        per_mile_rate=payload.per_mile_rate,
+        rate_tiers=[t.model_dump() for t in payload.rate_tiers],
+        max_passengers=payload.max_passengers,
+        max_luggage=payload.max_luggage,
+        sort_order=payload.sort_order,
+        image_url=payload.image_url,
+        description=payload.description,
     )
     db.add(rate)
     await db.commit()
@@ -1917,27 +1919,24 @@ async def create_rate(
 @router.put("/vehicle-rates/{rate_id}")
 async def update_rate(
     rate_id: str,
+    payload: VehicleRateUpdate,
     admin: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
-    display_name: str | None = None, base_fare: float | None = None,
-    per_mile_rate: float | None = None, max_passengers: int | None = None,
-    max_luggage: int | None = None, is_active: bool | None = None,
-    sort_order: int | None = None, image_url: str | None = None,
-    description: str | None = None,
 ):
     result = await db.execute(select(VehicleRate).where(VehicleRate.id == rate_id))
     rate = result.scalar_one_or_none()
     if not rate:
         raise HTTPException(status_code=404, detail="Rate not found")
-    if display_name is not None: rate.display_name = display_name
-    if base_fare is not None: rate.base_fare = base_fare
-    if per_mile_rate is not None: rate.per_mile_rate = per_mile_rate
-    if max_passengers is not None: rate.max_passengers = max_passengers
-    if max_luggage is not None: rate.max_luggage = max_luggage
-    if is_active is not None: rate.is_active = is_active
-    if sort_order is not None: rate.sort_order = sort_order
-    if image_url is not None: rate.image_url = image_url
-    if description is not None: rate.description = description
+    if payload.display_name is not None: rate.display_name = payload.display_name
+    if payload.base_fare is not None: rate.base_fare = payload.base_fare
+    if payload.per_mile_rate is not None: rate.per_mile_rate = payload.per_mile_rate
+    if payload.rate_tiers is not None: rate.rate_tiers = [t.model_dump() for t in payload.rate_tiers]
+    if payload.max_passengers is not None: rate.max_passengers = payload.max_passengers
+    if payload.max_luggage is not None: rate.max_luggage = payload.max_luggage
+    if payload.is_active is not None: rate.is_active = payload.is_active
+    if payload.sort_order is not None: rate.sort_order = payload.sort_order
+    if payload.image_url is not None: rate.image_url = payload.image_url
+    if payload.description is not None: rate.description = payload.description
     await db.commit()
     return {"message": f"{rate.display_name} updated"}
 

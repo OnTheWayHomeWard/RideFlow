@@ -240,6 +240,12 @@ async def get_public_settings(db: AsyncSession = Depends(get_db)):
     service_areas = await get_service_areas(db)
     available_countries = derive_country_codes(service_areas)
 
+    # Pickup-allowed cities (separate from service_areas — restricts only the
+    # pickup field). Stored as JSONB; tolerate missing/malformed.
+    pl_row = await db.execute(select(Setting).where(Setting.key == "pickup_locations"))
+    pl_setting = pl_row.scalar_one_or_none()
+    pickup_locations = pl_setting.value if pl_setting and isinstance(pl_setting.value, list) else []
+
     out_settings = {k: str(settings.get(k, "")) for k in keys if k.startswith("website_")}
     return {
         "company_name": str(settings.get("company_name", "RideFlow")),
@@ -250,6 +256,7 @@ async def get_public_settings(db: AsyncSession = Depends(get_db)):
         "website_base_url": str(settings.get("website_base_url", "")),
         **out_settings,
         "service_areas": service_areas,
+        "pickup_locations": pickup_locations,
         "available_countries": available_countries,  # legacy / derived
         "allow_cross_country_booking": cross_country,
         "min_advance_booking_hours": float(settings.get("min_advance_booking_hours", 0.5) or 0.5),

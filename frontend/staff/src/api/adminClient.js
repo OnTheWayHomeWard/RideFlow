@@ -129,8 +129,8 @@ export const api = {
 
   // Vehicle Rates
   getVehicleRates: () => request('/admin/vehicle-rates'),
-  createRate: (params) => request(`/admin/vehicle-rates?${new URLSearchParams(params)}`, { method: 'POST' }),
-  updateRate: (id, params) => request(`/admin/vehicle-rates/${id}?${new URLSearchParams(params)}`, { method: 'PUT' }),
+  createRate: (data) => request('/admin/vehicle-rates', { method: 'POST', body: JSON.stringify(data) }),
+  updateRate: (id, data) => request(`/admin/vehicle-rates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteRate: (id) => request(`/admin/vehicle-rates/${id}`, { method: 'DELETE' }),
 
   // Extras

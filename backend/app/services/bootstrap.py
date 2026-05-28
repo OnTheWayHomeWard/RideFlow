@@ -73,6 +73,7 @@ DEFAULT_SETTINGS = [
 
     # ── Service area & cross-country ──
     ("service_areas", [], "Service areas where bookings can be made. Each entry: {type:'country'|'city', country, name, [bounds, lat, lng, place_id]}. Configurable from admin Settings."),
+    ("pickup_locations", [], "Cities where riders can be picked up. Same shape as service_areas. The pickup address autocomplete is restricted to these; destination autocomplete uses the union of pickup_locations + service_areas. Empty list = fall back to service_areas."),
     ("allow_cross_country_booking", False, "Allow pickup and destination in different countries"),
 
     # ── Driver priority ──
