@@ -166,10 +166,13 @@ def tiered_distance_cost(distance_miles: float, tiers: list, fallback_rate: floa
         prev = float(upper)
         if remaining <= 0:
             break
-    # If tiers don't extend to cover the full distance (no open-ended last tier),
-    # apply the fallback rate to the overflow so we never undercount miles.
+    # If the tiers don't extend to cover the full distance (no open-ended last
+    # tier defined), extend the LAST tier's rate for the overflow — this matches
+    # the natural "and so on" reading of a tier list. Falling back to a legacy
+    # per_mile_rate of 0 would silently undercharge long trips.
     if remaining > 0:
-        total += remaining * float(fallback_rate)
+        extend_rate = float(clean[-1]["rate"]) if clean else float(fallback_rate)
+        total += remaining * extend_rate
     return total
 
 
