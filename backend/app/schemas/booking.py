@@ -23,9 +23,14 @@ class BookingCreateRequest(BaseModel):
     pickup_country: str | None = None
     dropoff_country: str | None = None
 
-    # Schedule
+    # Schedule — pickup_date/time are in the RIDER's local timezone.
+    # pickup_tz_offset_minutes is what Date.getTimezoneOffset() returns
+    # (minutes that local time lags UTC — e.g. EDT = +240, IST = -330).
+    # Server converts to UTC before storing & comparing. Default 0 keeps
+    # the legacy "assume UTC" behavior for any client that doesn't send it.
     pickup_date: date
     pickup_time: time
+    pickup_tz_offset_minutes: int = 0
 
     # Trip details
     passengers: int = 1

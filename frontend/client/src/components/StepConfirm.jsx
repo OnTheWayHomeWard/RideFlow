@@ -146,6 +146,9 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
         dropoff_country: booking.dropoff.country || null,
         pickup_date: booking.date,
         pickup_time: booking.time + ':00',
+        // Browser's offset for the SELECTED date (handles DST correctly).
+        // Server uses this to convert local pickup -> UTC before storing.
+        pickup_tz_offset_minutes: new Date(`${booking.date}T${booking.time}:00`).getTimezoneOffset(),
         passengers: 1,
         luggage: 'none',
         vehicle_type: vehicle.vehicle_type,

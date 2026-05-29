@@ -34,7 +34,16 @@ async def create_booking(req: BookingCreateRequest, db: AsyncSession = Depends(g
     min_r = await db.execute(select(SettingModel).where(SettingModel.key == "min_advance_booking_hours"))
     min_setting = min_r.scalar_one_or_none()
     min_hours = float(min_setting.value) if min_setting else 0.5
-    pickup_dt = datetime.combine(req.pickup_date, req.pickup_time, tzinfo=timezone.utc)
+
+    # pickup_date/pickup_time arrive in the rider's local timezone. Convert to
+    # UTC using the offset they sent (JS getTimezoneOffset semantics: minutes
+    # local lags UTC, e.g. EDT=+240). Then store the UTC date/time so the rest
+    # of the code (reminder scheduler, upsale time-of-day, etc.) — which all
+    # assume the stored values are UTC — keeps working.
+    local_naive = datetime.combine(req.pickup_date, req.pickup_time)
+    pickup_dt = (local_naive + timedelta(minutes=req.pickup_tz_offset_minutes)).replace(tzinfo=timezone.utc)
+    pickup_date_utc = pickup_dt.date()
+    pickup_time_utc = pickup_dt.time()
     earliest = datetime.now(timezone.utc) + timedelta(hours=min_hours)
     if pickup_dt < earliest:
         if min_hours < 1:
@@ -112,8 +121,8 @@ async def create_booking(req: BookingCreateRequest, db: AsyncSession = Depends(g
         dropoff_lat=req.dropoff_lat,
         dropoff_lng=req.dropoff_lng,
         distance_miles=price["distance_miles"],
-        pickup_date=req.pickup_date,
-        pickup_time=req.pickup_time,
+        pickup_date=pickup_date_utc,
+        pickup_time=pickup_time_utc,
         passengers=req.passengers,
         luggage=req.luggage,
         vehicle_type=req.vehicle_type,
