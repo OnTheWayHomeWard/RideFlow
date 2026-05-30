@@ -35,10 +35,10 @@ export default function SmsTerms({ site }) {
 
       <H2>2. Consent / Opt-In</H2>
       <P>
-        You opt in by providing your mobile number and agreeing to receive text messages — for example, when
-        creating an account, booking a ride, or checking a consent box on our forms. Consent to receive
-        marketing or promotional texts is <b>not a condition</b> of purchasing any goods or services. Message
-        and data rates may apply.
+        You opt in by checking the SMS consent box on our booking form. <b>Consent to receive any text messages
+        from {brand} — transactional, informational, or promotional — is not a condition of booking a ride,
+        creating an account, or purchasing any goods or services.</b> The booking form completes successfully
+        whether or not you check the SMS consent box. Message and data rates may apply.
       </P>
 
       <H2>3. Message Frequency</H2>

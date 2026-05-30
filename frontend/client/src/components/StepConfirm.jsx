@@ -122,10 +122,9 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
       setToast({ message: 'Please enter your room number for room pickup', type: 'warning' })
       return
     }
-    if (!smsConsent) {
-      setToast({ message: 'Please agree to receive booking text messages to continue', type: 'warning' })
-      return
-    }
+    // SMS consent is OPTIONAL (Twilio A2P 10DLC 30923 — consent cannot be a
+    // condition of service use). The rider can complete the booking with or
+    // without the SMS checkbox.
 
     setLoading(true)
 
@@ -316,22 +315,23 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
         </Section>
       )}
 
-      {/* SMS consent — required (Twilio A2P 10DLC) */}
+      {/* SMS consent — OPTIONAL (Twilio A2P 10DLC 30923 compliance) */}
       <div className="mb-5">
         <label className="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-xl cursor-pointer">
           <input type="checkbox" checked={smsConsent} onChange={e => setSmsConsent(e.target.checked)}
             className="mt-0.5 w-4 h-4 shrink-0 accent-blue-600" />
           <span className="text-xs text-slate-500 leading-relaxed">
-            I agree to receive booking confirmations, ride reminders, and status updates by text message from{' '}
-            {settings.company_name || 'us'} at the number provided. Message frequency varies. Message &amp; data
-            rates may apply. Reply STOP to opt out, HELP for help.
+            <b className="text-slate-700">(Optional)</b> Send me booking confirmations, ride reminders, and status updates
+            by text message from {settings.company_name || 'us'} at the number provided. Message frequency varies.
+            Message &amp; data rates may apply. Reply STOP to opt out, HELP for help.
+            <span className="block mt-1 text-slate-400">Booking does not require text-message consent — you can leave this unchecked.</span>
             {(() => {
               const w = (settings.website_base_url || '').replace(/\/$/, '')
               if (!w) return null
               return (
-                <> See our{' '}
+                <span className="block mt-1">See our{' '}
                   <a href={`${w}/sms-terms`} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">SMS Terms</a>{' '}and{' '}
-                  <a href={`${w}/privacy-policy`} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Privacy Policy</a>.</>
+                  <a href={`${w}/privacy-policy`} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Privacy Policy</a>.</span>
               )
             })()}
           </span>

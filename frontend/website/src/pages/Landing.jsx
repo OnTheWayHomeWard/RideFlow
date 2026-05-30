@@ -608,17 +608,19 @@ function SmsDisclosure({ settings, brandName }) {
           <h3 className="font-display text-xl text-[var(--emerald-deep)]">Text message updates</h3>
         </div>
         <p className="text-sm text-slate-600 leading-relaxed mb-3">
-          When you book a ride or create an account with {name}, you can opt in to receive SMS
-          notifications by entering your mobile number and checking the consent box on our booking form.
-          We send booking confirmations, ride reminders, driver status updates (on the way, arrived,
-          started, completed), and customer-support replies.
+          When you book a ride with {name}, you can <b>optionally</b> opt in to receive SMS notifications by
+          checking the consent box on our booking form. <b>Booking does not require SMS opt-in</b> — riders who
+          don't opt in can still see their booking status on the confirmation page. If you do opt in, we send
+          booking confirmations, ride reminders, driver status updates (on the way, arrived, started, completed),
+          and customer-support replies.
         </p>
         <div className="bg-[var(--cream-warm)] border border-[var(--gold)]/20 rounded-xl p-4 text-sm text-slate-700">
-          <p className="font-semibold text-[var(--emerald-deep)] mb-1">Consent statement shown at sign-up / booking:</p>
+          <p className="font-semibold text-[var(--emerald-deep)] mb-1">Optional consent checkbox shown on the booking form:</p>
           <p className="italic">
-            "I agree to receive booking confirmations, ride reminders, and status updates by text message
+            "<b>(Optional)</b> Send me booking confirmations, ride reminders, and status updates by text message
             from {name} at the number provided. Message frequency varies. Message &amp; data rates may apply.
-            Reply STOP to opt out, HELP for help."
+            Reply STOP to opt out, HELP for help. Booking does not require text-message consent — you can leave
+            this unchecked."
           </p>
         </div>
         <p className="text-xs text-slate-500 mt-4 leading-relaxed">
