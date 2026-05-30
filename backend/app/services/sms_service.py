@@ -162,31 +162,54 @@ async def notify_cashier_payout(db: AsyncSession, cashier_phone: str, variables:
     await send_sms(db, cashier_phone, message, "cashier_payout")
 
 
-async def notify_client_booking(db: AsyncSession, client_phone: str, variables: dict):
+async def should_send_to_rider(db: AsyncSession, booking) -> bool:
+    """Gate every client-facing SMS on the rider's OPTIONAL consent.
+
+    Returns True iff:
+      - the rider checked the consent box on the booking form
+        (booking.sms_consent), OR
+      - the admin has turned on the override setting (sms_override_consent).
+    Respect the rider's choice by default; the override lets the operator
+    force-send to non-consenting riders if needed.
+    """
+    if booking is not None and getattr(booking, "sms_consent", False):
+        return True
+    override_r = await db.execute(select(Setting).where(Setting.key == "sms_override_consent"))
+    override = override_r.scalar_one_or_none()
+    return bool(override and override.value)
+
+
+async def notify_client_booking(db: AsyncSession, booking, variables: dict):
     """Notify client after successful booking with confirmation link."""
+    if not await should_send_to_rider(db, booking):
+        return
     template = await get_template(db, "sms_client_booking")
     if not template:
         return
     message = render_template(template, variables)
-    await send_sms(db, client_phone, message, "client_booking")
+    await send_sms(db, booking.client_phone, message, "client_booking")
 
 
-async def notify_client_ride_completed(db: AsyncSession, client_phone: str, variables: dict):
+async def notify_client_ride_completed(db: AsyncSession, booking, variables: dict):
     """Notify client when their ride is completed — thanks + rating link."""
+    if not await should_send_to_rider(db, booking):
+        return
     template = await get_template(db, "sms_client_ride_completed")
     if not template:
         return
     message = render_template(template, variables)
-    await send_sms(db, client_phone, message, "client_ride_completed")
+    await send_sms(db, booking.client_phone, message, "client_ride_completed")
 
 
-async def notify_client_ride_started(db: AsyncSession, client_phone: str, variables: dict):
+async def notify_client_ride_started(db: AsyncSession, booking, variables: dict):
     """Notify client when ride starts with rating link."""
+    if not await should_send_to_rider(db, booking):
+        return
     template = await get_template(db, "sms_client_ride_started")
     if not template:
         return
     message = render_template(template, variables)
-    await send_sms(db, client_phone, message, "client_ride_started")
+    await send_sms(db, booking.client_phone, message, "client_ride_started")
 
 
 async def notify_guest_payment_link(db: AsyncSession, guest_phone: str, variables: dict):
@@ -251,20 +274,24 @@ async def notify_concierge_payout(db: AsyncSession, phone: str, variables: dict)
     await send_sms(db, phone, message, "concierge_payout")
 
 
-async def notify_client_reminder(db: AsyncSession, client_phone: str, variables: dict):
+async def notify_client_reminder(db: AsyncSession, booking, variables: dict):
     """Pre-ride reminder to client (X hours before)."""
+    if not await should_send_to_rider(db, booking):
+        return
     template = await get_template(db, "sms_client_reminder")
     if not template:
         return
-    await send_sms(db, client_phone, render_template(template, variables), "client_reminder")
+    await send_sms(db, booking.client_phone, render_template(template, variables), "client_reminder")
 
 
-async def notify_client_final_reminder(db: AsyncSession, client_phone: str, variables: dict):
+async def notify_client_final_reminder(db: AsyncSession, booking, variables: dict):
     """Final 'starting soon' reminder to client (X minutes before)."""
+    if not await should_send_to_rider(db, booking):
+        return
     template = await get_template(db, "sms_client_final_reminder")
     if not template:
         return
-    await send_sms(db, client_phone, render_template(template, variables), "client_final_reminder")
+    await send_sms(db, booking.client_phone, render_template(template, variables), "client_final_reminder")
 
 
 async def notify_driver_reminder(db: AsyncSession, driver_phone: str, variables: dict):
@@ -275,20 +302,24 @@ async def notify_driver_reminder(db: AsyncSession, driver_phone: str, variables:
     await send_sms(db, driver_phone, render_template(template, variables), "driver_reminder")
 
 
-async def notify_driver_on_way(db: AsyncSession, client_phone: str, variables: dict):
+async def notify_driver_on_way(db: AsyncSession, booking, variables: dict):
     """Driver tapped 'On my way' — notify client."""
+    if not await should_send_to_rider(db, booking):
+        return
     template = await get_template(db, "sms_driver_on_way")
     if not template:
         return
-    await send_sms(db, client_phone, render_template(template, variables), "driver_on_way")
+    await send_sms(db, booking.client_phone, render_template(template, variables), "driver_on_way")
 
 
-async def notify_driver_arrived(db: AsyncSession, client_phone: str, variables: dict):
+async def notify_driver_arrived(db: AsyncSession, booking, variables: dict):
     """Driver tapped 'I've arrived' — notify client."""
+    if not await should_send_to_rider(db, booking):
+        return
     template = await get_template(db, "sms_driver_arrived")
     if not template:
         return
-    await send_sms(db, client_phone, render_template(template, variables), "driver_arrived")
+    await send_sms(db, booking.client_phone, render_template(template, variables), "driver_arrived")
 
 
 async def notify_concierge_batch_link(db: AsyncSession, phone: str, variables: dict):
@@ -299,12 +330,14 @@ async def notify_concierge_batch_link(db: AsyncSession, phone: str, variables: d
     await send_sms(db, phone, message, "concierge_batch_link")
 
 
-async def notify_client_refund(db: AsyncSession, phone: str, variables: dict):
+async def notify_client_refund(db: AsyncSession, booking, variables: dict):
+    if not await should_send_to_rider(db, booking):
+        return
     template = await get_template(db, "sms_client_refund")
     if not template:
         return
     message = render_template(template, variables)
-    await send_sms(db, phone, message, "client_refund")
+    await send_sms(db, booking.client_phone, message, "client_refund")
 
 
 async def notify_cashier_paid_via_concierge(db: AsyncSession, phone: str, variables: dict):

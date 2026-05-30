@@ -103,7 +103,7 @@ async def confirm_payment(db: AsyncSession, booking: Booking, stripe_payment_id:
     from app.services.sms_service import notify_client_booking
     from app.utils.urls import get_client_base_url
     confirmation_url = f"{await get_client_base_url(db)}/confirmation/{booking.booking_number}"
-    await notify_client_booking(db, booking.client_phone, {
+    await notify_client_booking(db, booking, {
         "client_name": booking.client_name,
         "pickup_name": booking.pickup_name,
         "dropoff_name": booking.dropoff_name,

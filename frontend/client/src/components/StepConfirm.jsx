@@ -153,6 +153,7 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
         vehicle_type: vehicle.vehicle_type,
         extras: booking.extras,
         cashier_ref_code: cashierRef || null,
+        sms_consent: !!smsConsent,
       })
 
       const checkout = await api.createCheckout(result.booking_number)

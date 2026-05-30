@@ -43,6 +43,10 @@ class BookingCreateRequest(BaseModel):
     # Cashier (from QR scan)
     cashier_ref_code: str | None = None
 
+    # Rider's choice of the OPTIONAL SMS consent checkbox. Default False so
+    # legacy clients that don't send it are treated as not-opted-in.
+    sms_consent: bool = False
+
 
 class BookingOut(BaseModel):
     id: UUID

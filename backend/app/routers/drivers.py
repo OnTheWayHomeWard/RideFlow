@@ -282,7 +282,7 @@ async def driver_on_way(
 
     try:
         from app.services.sms_service import notify_driver_on_way
-        await notify_driver_on_way(db, booking.client_phone, {
+        await notify_driver_on_way(db, booking, {
             "client_name": booking.client_name,
             "driver_name": driver.name,
             "driver_phone": driver.phone,
@@ -323,7 +323,7 @@ async def driver_arrived(
 
     try:
         from app.services.sms_service import notify_driver_arrived
-        await notify_driver_arrived(db, booking.client_phone, {
+        await notify_driver_arrived(db, booking, {
             "client_name": booking.client_name,
             "driver_name": driver.name,
             "driver_phone": driver.phone,
@@ -382,7 +382,7 @@ async def start_ride(
         from app.services.sms_service import notify_client_ride_started
         from app.utils.urls import get_client_base_url
         confirmation_url = f"{await get_client_base_url(db)}/confirmation/{booking.booking_number}"
-        await notify_client_ride_started(db, booking.client_phone, {
+        await notify_client_ride_started(db, booking, {
             "client_name": booking.client_name,
             "driver_name": driver.name,
             "pickup_name": booking.pickup_name,
@@ -464,7 +464,7 @@ async def complete_ride(
         from app.services.sms_service import notify_client_ride_completed
         from app.utils.urls import get_client_base_url
         confirmation_url = f"{await get_client_base_url(db)}/confirmation/{booking.booking_number}"
-        await notify_client_ride_completed(db, booking.client_phone, {
+        await notify_client_ride_completed(db, booking, {
             "client_name": booking.client_name,
             "driver_name": driver.name,
             "pickup_name": booking.pickup_name,

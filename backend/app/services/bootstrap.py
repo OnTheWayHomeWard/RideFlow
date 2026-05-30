@@ -91,6 +91,7 @@ DEFAULT_SETTINGS = [
 
     # ── SMS toggle ──
     ("sms_enabled", True, "Enable SMS notifications"),
+    ("sms_override_consent", False, "Override the rider's SMS consent choice on the booking form — when ON, transactional SMS are sent to every booking regardless of whether the rider checked the consent box. Default OFF (respect the rider's choice)."),
 
     # ── SMS templates ──
     ("sms_cashier_referral", "Hi {cashier_name}, you earned ${amount} from a new booking by {client_name} ({route}). Total earnings: ${total_earnings}.", "SMS to cashier on referral. Vars: {cashier_name}, {amount}, {client_name}, {route}, {total_earnings}, {booking_number}"),

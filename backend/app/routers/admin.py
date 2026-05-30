@@ -2941,7 +2941,7 @@ async def refund_booking(booking_id: str, req: RefundRequest, admin: Admin = Dep
     # SMS to client
     try:
         from app.services.sms_service import notify_client_refund
-        await notify_client_refund(db, booking.client_phone, {
+        await notify_client_refund(db, booking, {
             "client_name": booking.client_name,
             "amount": f"{refund_amount:.2f}",
             "reason": req.reason,

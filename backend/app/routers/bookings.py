@@ -123,6 +123,7 @@ async def create_booking(req: BookingCreateRequest, db: AsyncSession = Depends(g
         distance_miles=price["distance_miles"],
         pickup_date=pickup_date_utc,
         pickup_time=pickup_time_utc,
+        sms_consent=req.sms_consent,
         passengers=req.passengers,
         luggage=req.luggage,
         vehicle_type=req.vehicle_type,

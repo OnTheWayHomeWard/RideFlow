@@ -96,7 +96,7 @@ async def _send_client_reminder(db: AsyncSession, b: Booking, hours: float):
             driver_name = d.name
     confirmation_url = f"{await get_client_base_url(db)}/confirmation/{b.booking_number}"
     hours_str = f"{int(hours)}" if hours == int(hours) else f"{hours:g}"
-    await notify_client_reminder(db, b.client_phone, {
+    await notify_client_reminder(db, b, {
         "client_name": b.client_name,
         "driver_name": driver_name,
         "pickup_name": b.pickup_name,
@@ -118,7 +118,7 @@ async def _send_client_final_reminder(db: AsyncSession, b: Booking, minutes: int
         if d:
             driver_name = d.name
     confirmation_url = f"{await get_client_base_url(db)}/confirmation/{b.booking_number}"
-    await notify_client_final_reminder(db, b.client_phone, {
+    await notify_client_final_reminder(db, b, {
         "client_name": b.client_name,
         "driver_name": driver_name,
         "pickup_name": b.pickup_name,

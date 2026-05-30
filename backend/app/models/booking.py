@@ -35,6 +35,12 @@ class Booking(Base):
     pickup_date: Mapped[date] = mapped_column(Date, nullable=False)
     pickup_time: Mapped[time] = mapped_column(Time, nullable=False)
 
+    # Whether the rider opted in to receive transactional SMS (the OPTIONAL
+    # checkbox on the booking form). Default False so missing/legacy bookings
+    # behave as not-opted-in. An admin-level setting (sms_override_consent)
+    # can force-send regardless of this flag.
+    sms_consent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+
     # Trip details
     passengers: Mapped[int] = mapped_column(Integer, default=1)
     luggage: Mapped[str] = mapped_column(String(20), default="none")
