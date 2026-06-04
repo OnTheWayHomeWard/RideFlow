@@ -208,27 +208,45 @@ async def calculate_price(
         db, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng
     )
 
+    # Try to read a fixed price for THIS vehicle from the matched route.
+    # A common route may now legitimately have no price for some vehicles (or
+    # no prices at all) — admin's "two options" UX. In that case we keep the
+    # route association (still common_route_id'd) but compute the fare from
+    # distance + per-mile tiers, preferring the route's admin-entered
+    # distance_miles when available.
+    fixed_price = None
     if common_route and common_route.prices:
-        # New format: _base key = single route amount + vehicle base fare
-        if "_base" in common_route.prices:
-            base_amount = float(common_route.prices["_base"]) + float(rate.base_fare)
-        # Legacy format: per-vehicle prices
-        elif vehicle_type in common_route.prices:
-            base_amount = float(common_route.prices[vehicle_type])
-        else:
-            common_route = None  # no price for this vehicle, fall through to distance calc
+        prices = common_route.prices
+        if "_base" in prices:
+            try:
+                fixed_price = float(prices["_base"]) + float(rate.base_fare)
+            except (TypeError, ValueError):
+                fixed_price = None
+        elif vehicle_type in prices:
+            try:
+                v = prices[vehicle_type]
+                if v not in ("", None):
+                    fixed_price = float(v)
+            except (TypeError, ValueError):
+                fixed_price = None
 
-        if common_route:
-            route_distance = float(common_route.distance_miles) if common_route.distance_miles else None
-
-    if not common_route:
-        # Calculate from real driving distance (Google Distance Matrix API)
+    if fixed_price is not None:
+        base_amount = fixed_price
+        route_distance = float(common_route.distance_miles) if (common_route and common_route.distance_miles) else None
+    else:
+        # No fixed price (no match, or matched route has no price for this
+        # vehicle). Compute from distance: prefer the route's distance_miles
+        # if the admin entered one (saves a Google API call), otherwise hit
+        # the Distance Matrix.
         if distance_miles is None:
-            from app.services.maps_service import driving_distance_miles
-            distance_miles = await driving_distance_miles(pickup_lat, pickup_lng, dropoff_lat, dropoff_lng)
+            if common_route and common_route.distance_miles:
+                distance_miles = float(common_route.distance_miles)
+            else:
+                from app.services.maps_service import driving_distance_miles
+                distance_miles = await driving_distance_miles(pickup_lat, pickup_lng, dropoff_lat, dropoff_lng)
 
-        # Distance tiers: per-vehicle override OR the global default set in
-        # admin Settings. per_mile_rate is the silent emergency backstop only.
+        # Tiers: per-vehicle override OR the global default set in admin
+        # Settings. per_mile_rate is the silent emergency backstop only.
         tiers_for_calc = list(rate.rate_tiers or [])
         if not tiers_for_calc:
             from app.models.setting import Setting

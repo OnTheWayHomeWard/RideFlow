@@ -40,13 +40,26 @@ async def _active_upsales_and_rates(db: AsyncSession):
     from app.models.upsale import Upsale
     ur = await db.execute(select(Upsale).where(Upsale.is_active == True))
     rr = await db.execute(select(VehicleRate).where(VehicleRate.is_active == True))
-    return list(ur.scalars().all()), list(rr.scalars().all())
+    dt_row = await db.execute(select(Setting).where(Setting.key == "default_rate_tiers"))
+    dt_setting = dt_row.scalar_one_or_none()
+    default_tiers = dt_setting.value if (dt_setting and isinstance(dt_setting.value, list)) else []
+    return list(ur.scalars().all()), list(rr.scalars().all()), default_tiers
 
 
-def _route_from_price(prices, upsales, rates, pickup_dt):
+def _route_from_price(prices, distance_miles, upsales, rates, default_tiers, pickup_dt):
     """Lowest price a customer would actually pay for this route across vehicles,
-    INCLUDING any active upsale — so the route list matches the vehicle screen."""
-    from app.services.pricing_service import upsale_applies, calculate_upsale_amount
+    INCLUDING any active upsale.
+
+    Three input shapes the admin can produce:
+      1) per-vehicle prices ({"sedan": 99, "suv": 129}) — use those directly.
+      2) legacy "_base" price ({"_base": 50}) — add each vehicle's base_fare.
+      3) NO prices at all (or no price for any active vehicle) but a
+         distance_miles is set on the route — compute a distance-based floor
+         from each vehicle's base_fare + tiered per-mile cost, matching what
+         calculate_price will do at booking time.
+    Returns None only when none of the above can produce a number (e.g., no
+    prices AND no distance set)."""
+    from app.services.pricing_service import upsale_applies, calculate_upsale_amount, tiered_distance_cost
     per_vehicle = {}
     if prices and "_base" in prices:
         try:
@@ -59,10 +72,28 @@ def _route_from_price(prices, upsales, rates, pickup_dt):
         for vt, p in prices.items():
             if vt == "_base":
                 continue
+            if p in ("", None):
+                continue
             try:
                 per_vehicle[vt] = float(p)
             except (TypeError, ValueError):
                 pass
+
+    # Fall back to distance-based pricing for any vehicle the route didn't
+    # set a price for (covers the new "distance-based common route" UX).
+    if distance_miles is not None:
+        try:
+            dist = float(distance_miles)
+        except (TypeError, ValueError):
+            dist = None
+        if dist is not None:
+            for r in rates:
+                if r.vehicle_type in per_vehicle:
+                    continue
+                tiers = list(r.rate_tiers or []) or (default_tiers or [])
+                cost = tiered_distance_cost(dist, tiers, float(r.per_mile_rate or 0))
+                per_vehicle[r.vehicle_type] = float(r.base_fare) + cost
+
     if not per_vehicle:
         return None
     best = None
@@ -80,10 +111,10 @@ async def get_common_routes(db: AsyncSession = Depends(get_db)):
         select(CommonRoute).where(CommonRoute.is_active == True).order_by(CommonRoute.sort_order)
     )
     routes = result.scalars().all()
-    upsales, rates = await _active_upsales_and_rates(db)
+    upsales, rates, default_tiers = await _active_upsales_and_rates(db)
     now = datetime.now(timezone.utc)
     for r in routes:
-        r.from_price = _route_from_price(r.prices, upsales, rates, now)
+        r.from_price = _route_from_price(r.prices, r.distance_miles, upsales, rates, default_tiers, now)
     return routes
 
 
@@ -121,14 +152,14 @@ async def get_nearby_common_routes(
 
     # Upsale-adjusted floor so the list matches the vehicle screen
     from datetime import datetime, timezone
-    upsales, rates = await _active_upsales_and_rates(db)
+    upsales, rates, default_tiers = await _active_upsales_and_rates(db)
     now = datetime.now(timezone.utc)
 
     options = []
     for r in routes:
         if r.from_lat is None or r.to_lat is None:
             continue
-        from_price = _route_from_price(r.prices, upsales, rates, now)
+        from_price = _route_from_price(r.prices, r.distance_miles, upsales, rates, default_tiers, now)
         fwd = _route_option(r, "forward", lat, lng); fwd["from_price"] = from_price
         options.append(fwd)
         if getattr(r, "bidirectional", True):

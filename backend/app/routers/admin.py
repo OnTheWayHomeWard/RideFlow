@@ -1872,13 +1872,23 @@ async def delete_route_permanent(
     admin: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Hard delete — permanently removes the route row."""
+    """Hard delete — permanently removes the route row. The FK on bookings is
+    ON DELETE SET NULL so referenced bookings stay in the DB, just unlinked.
+    Any remaining integrity error is surfaced as a 409 with a useful detail."""
+    from sqlalchemy.exc import IntegrityError
     result = await db.execute(select(CommonRoute).where(CommonRoute.id == route_id))
     route = result.scalar_one_or_none()
     if not route:
         raise HTTPException(status_code=404, detail="Route not found")
-    await db.delete(route)
-    await db.commit()
+    try:
+        await db.delete(route)
+        await db.commit()
+    except IntegrityError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot permanently delete this route — it's still referenced by other records. ({str(e.orig).splitlines()[0] if e.orig else 'database constraint'}) Try Deactivate instead.",
+        )
     return {"message": "Route deleted"}
 
 

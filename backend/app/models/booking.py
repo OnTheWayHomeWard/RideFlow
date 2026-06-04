@@ -51,7 +51,9 @@ class Booking(Base):
     extras_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     upsale_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     total_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
-    common_route_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("common_routes.id"), nullable=True)
+    # When a common route is permanently deleted, NULL out the FK on historical
+    # bookings so the delete succeeds without losing booking data.
+    common_route_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("common_routes.id", ondelete="SET NULL"), nullable=True)
     upsale_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("upsales.id"), nullable=True)
     extras_chosen: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 

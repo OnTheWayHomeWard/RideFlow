@@ -315,14 +315,18 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
-      // Build per-vehicle prices object — only include rows the admin actually filled
+      // Build per-vehicle prices object — only include vehicles the admin
+      // actually filled. Empty values mean "use distance-based calc for that
+      // vehicle", so they're omitted from the dict (no zeros).
       const prices = {}
       for (const [vt, val] of Object.entries(form.prices)) {
         const num = parseFloat(val)
         if (!isNaN(num) && num > 0) prices[vt] = num
       }
-      if (Object.keys(prices).length === 0) {
-        alert('Please enter a price for at least one vehicle.')
+      // Distance-based common routes (no fixed prices anywhere) need a
+      // distance_miles so the per-mile calc can produce a number.
+      if (Object.keys(prices).length === 0 && !form.distance_miles) {
+        alert('This route has no fixed prices, so it will use distance-based pricing — please enter the route distance in miles.')
         return
       }
       const data = {
@@ -403,21 +407,34 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
               />
             </div>
           </div>
-          {/* Per-vehicle prices */}
+          {/* Per-vehicle prices — optional. Leave any/all blank to use the
+              distance-based calculation (per-mile tiers) for that vehicle. */}
           <div className="mb-3">
-            <label className="text-xs text-slate-500 block mb-1">Price per vehicle ($)</label>
-            <p className="text-xs text-slate-400 mb-2">Flat price the client pays for each vehicle on this route. No additions, no per-mile.</p>
+            <label className="text-xs text-slate-500 block mb-1">Price per vehicle ($) <span className="text-slate-400 font-normal">— optional</span></label>
+            <p className="text-xs text-slate-400 mb-2">
+              Enter a flat price to lock the fare for that vehicle on this route. <b>Leave blank</b> to use the standard
+              distance-based calculation (base fare + per-mile tiers). You can mix: e.g. fix SUV at $99 and let Sprinter
+              fall back to tiers.
+            </p>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
-              {activeRates.map(r => (
-                <div key={r.vehicle_type}>
-                  <label className="text-xs text-slate-500">{r.display_name}</label>
-                  <input type="number" step="any" min="0"
-                    value={form.prices[r.vehicle_type] ?? ''}
-                    onChange={e => setForm(p => ({ ...p, prices: { ...p.prices, [r.vehicle_type]: e.target.value } }))}
-                    placeholder="0"
-                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              ))}
+              {activeRates.map(r => {
+                const hasPrice = form.prices[r.vehicle_type] !== '' && form.prices[r.vehicle_type] != null
+                return (
+                  <div key={r.vehicle_type}>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-slate-500">{r.display_name}</label>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${hasPrice ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
+                        {hasPrice ? 'Fixed' : 'Distance-based'}
+                      </span>
+                    </div>
+                    <input type="number" step="any" min="0"
+                      value={form.prices[r.vehicle_type] ?? ''}
+                      onChange={e => setForm(p => ({ ...p, prices: { ...p.prices, [r.vehicle_type]: e.target.value } }))}
+                      placeholder="blank = distance"
+                      className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                )
+              })}
             </div>
             {activeRates.length === 0 && (
               <p className="text-xs text-amber-600 mt-2">No active vehicles. Add vehicle types in the Vehicle Rates tab first.</p>
@@ -458,10 +475,14 @@ function RoutesTab({ routes, rates, reload, googleApiKey }) {
                     <div className="flex gap-2 flex-wrap">
                       {activeRates.map(rt => {
                         const v = perVehicle[rt.vehicle_type]
-                        if (!v || isNaN(Number(v))) return null
-                        return (
-                          <span key={rt.vehicle_type} className="text-xs bg-slate-100 px-2 py-1 rounded font-medium">
+                        const hasFixed = v != null && v !== '' && !isNaN(Number(v)) && Number(v) > 0
+                        return hasFixed ? (
+                          <span key={rt.vehicle_type} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded font-medium">
                             {rt.display_name}: <b>${Number(v).toFixed(0)}</b>
+                          </span>
+                        ) : (
+                          <span key={rt.vehicle_type} className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded font-medium italic">
+                            {rt.display_name}: distance-based
                           </span>
                         )
                       })}
