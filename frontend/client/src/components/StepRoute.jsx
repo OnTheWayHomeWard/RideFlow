@@ -24,23 +24,14 @@ export default function StepRoute({ booking, cashierInfo, isQREntry, onSelect, o
   const hasQR = !!cashierInfo
   const hasPickup = !!pickup && !editingPickup
 
-  // Pickup-only allowed cities (if configured); falls back to service_areas.
-  // Destination uses the union of both so riders can travel to/from a pickup
-  // city even if it isn't in the broader service area, and vice versa.
+  // Pickup field is restricted to the configured pickup_locations (or falls
+  // back to service_areas when pickup_locations isn't set). Destination is
+  // restricted to service_areas — the places we operate. No union: "we pick
+  // up from these cities, we drive within these areas."
   const serviceAreas = settings.service_areas || []
   const pickupLocations = settings.pickup_locations || []
   const pickupAreas = pickupLocations.length > 0 ? pickupLocations : serviceAreas
-  const destinationAreas = (() => {
-    if (pickupLocations.length === 0) return serviceAreas
-    const seen = new Set()
-    const out = []
-    for (const a of [...serviceAreas, ...pickupLocations]) {
-      const key = a.place_id || `${a.type}:${a.country}:${a.name}`
-      if (seen.has(key)) continue
-      seen.add(key); out.push(a)
-    }
-    return out
-  })()
+  const destinationAreas = serviceAreas
 
   useEffect(() => {
     Promise.all([

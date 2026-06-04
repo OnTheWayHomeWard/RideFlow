@@ -52,7 +52,7 @@ export default function AddressInput({ value, onChange, placeholder, googleApiKe
       if (allCountries.length) options.componentRestrictions = { country: allCountries }
 
       if (cities.length) {
-        // Union the city bounds for biasing
+        // Union the city bounds.
         const u = cities.reduce((acc, c) => ({
           north: Math.max(acc.north, c.bounds.north),
           south: Math.min(acc.south, c.bounds.south),
@@ -63,8 +63,12 @@ export default function AddressInput({ value, onChange, placeholder, googleApiKe
           { lat: u.south, lng: u.west },
           { lat: u.north, lng: u.east }
         )
-        // Strict only when single city + no country area
-        if (cities.length === 1 && countryAreas.length === 0) options.strictBounds = true
+        // Hard-filter to the configured city bounds. Without strictBounds the
+        // bounding box is just a soft preference and Google still surfaces
+        // out-of-area establishments (the user reported "hotel" suggestions
+        // outside Orlando). Country entries in serviceAreas still drive
+        // componentRestrictions above; they no longer disable strictBounds.
+        options.strictBounds = true
       }
     } else if (countries && countries.length > 0) {
       options.componentRestrictions = { country: countries.map(c => c.toLowerCase()) }
