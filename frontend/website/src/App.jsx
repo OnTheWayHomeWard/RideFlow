@@ -4,6 +4,7 @@ import Landing from './pages/Landing'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import Terms from './pages/Terms'
 import SmsTerms from './pages/SmsTerms'
+import SmsOptInScreenshot from './pages/SmsOptInScreenshot'
 import Contact from './pages/Contact'
 
 export default function App() {
@@ -14,6 +15,7 @@ export default function App() {
       <Route path="/privacy-policy" element={<PrivacyPolicy site={site} />} />
       <Route path="/terms-and-conditions" element={<Terms site={site} />} />
       <Route path="/sms-terms" element={<SmsTerms site={site} />} />
+      <Route path="/sms-optin-screenshot" element={<SmsOptInScreenshot site={site} />} />
       <Route path="/contact" element={<Contact site={site} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
