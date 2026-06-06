@@ -54,15 +54,35 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
   const total = (vehicle?.total_amount || 0) + extrasTotal
 
   const minAdvanceHours = settings.min_advance_booking_hours || 0.5
-  const earliestPickup = new Date(Date.now() + minAdvanceHours * 60 * 60 * 1000)
-  // Use LOCAL date (not UTC) — toISOString() shifts by timezone
-  const localDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-  const today = localDateStr(earliestPickup)
-  const maxDate = localDateStr(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
-  // For min time, only enforce if selected date == today's earliest date
-  const minTimeOnEarliestDate = booking.date === today
-    ? `${String(earliestPickup.getHours()).padStart(2,'0')}:${String(earliestPickup.getMinutes()).padStart(2,'0')}`
-    : '00:00'
+  const businessTz = settings.business_timezone || 'America/New_York'
+  // Compute wall-clock "earliest pickup" in the BUSINESS timezone (Eastern by
+  // default), not the rider's browser local. Matches the server's check, so an
+  // out-of-area browser doesn't show times the server will then reject.
+  const wallClockInBizTz = (ms) => {
+    try {
+      const fmt = new Intl.DateTimeFormat('en-CA', {
+        timeZone: businessTz,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+      })
+      const parts = Object.fromEntries(fmt.formatToParts(new Date(ms)).map(p => [p.type, p.value]))
+      // Some engines return "24" for midnight — normalize.
+      const hh = parts.hour === '24' ? '00' : parts.hour
+      return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${hh}:${parts.minute}` }
+    } catch {
+      // Fallback to browser local if Intl/timeZone is unavailable.
+      const d = new Date(ms)
+      return {
+        date: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,
+        time: `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,
+      }
+    }
+  }
+  const earliest = wallClockInBizTz(Date.now() + minAdvanceHours * 60 * 60 * 1000)
+  const today = earliest.date
+  const maxDate = wallClockInBizTz(Date.now() + 30 * 24 * 60 * 60 * 1000).date
+  // Only enforce a min time if the rider picked today's earliest date
+  const minTimeOnEarliestDate = booking.date === today ? earliest.time : '00:00'
 
   const formatAdvance = (h) => {
     if (h < 1) {
@@ -104,9 +124,12 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
       setToast({ message: 'The pickup date cannot be in the past', type: 'error' })
       return
     }
-    // Enforce minimum advance booking time
-    const pickupDateTime = new Date(`${booking.date}T${booking.time}`)
-    if (pickupDateTime < earliestPickup) {
+    // Enforce minimum advance booking time — compare wall-clock strings in the
+    // business timezone so an out-of-area browser can't beat the server's
+    // identical check.
+    const chosenStamp = `${booking.date}T${booking.time}`
+    const earliestStamp = `${earliest.date}T${earliest.time}`
+    if (chosenStamp < earliestStamp) {
       setToast({ message: `Pickup must be at least ${formatAdvance(minAdvanceHours)} from now`, type: 'error' })
       return
     }
