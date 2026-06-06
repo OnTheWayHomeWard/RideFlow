@@ -67,8 +67,11 @@ async def create_booking(req: BookingCreateRequest, db: AsyncSession = Depends(g
 
     # If pickup falls inside a pickup-group, merge in any forced extras the
     # group requires (defense-in-depth — even a bad client can't bypass).
-    from app.services.pickup_group_service import merge_forced_extras
-    final_extras, _matched_group_names = await merge_forced_extras(db, req.pickup_lat, req.pickup_lng, req.extras)
+    # Same for dropoff-groups against the dropoff coords.
+    from app.services.pickup_group_service import merge_forced_extras as _merge_pickup_extras
+    from app.services.dropoff_group_service import merge_forced_extras as _merge_dropoff_extras
+    extras_after_pickup, _pickup_group_names, _ = await _merge_pickup_extras(db, req.pickup_lat, req.pickup_lng, req.extras)
+    final_extras, _dropoff_group_names, _ = await _merge_dropoff_extras(db, req.dropoff_lat, req.dropoff_lng, extras_after_pickup)
 
     # Calculate price (pass pickup_dt so time-of-day upsales evaluate correctly)
     try:
@@ -130,6 +133,8 @@ async def create_booking(req: BookingCreateRequest, db: AsyncSession = Depends(g
         base_amount=price["base_amount"],
         extras_amount=price["extras_amount"],
         upsale_amount=price["upsale_amount"],
+        pickup_surcharge=price.get("pickup_surcharge", 0),
+        dropoff_surcharge=price.get("dropoff_surcharge", 0),
         total_amount=price["total_amount"],
         common_route_id=price["common_route_id"],
         upsale_id=price["upsale_id"],

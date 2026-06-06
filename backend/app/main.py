@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import pricing, bookings, cashiers, auth, payments, drivers, admin, pickup_groups, website
+from app.routers import pricing, bookings, cashiers, auth, payments, drivers, admin, pickup_groups, dropoff_groups, website
 from app.services.payment_service import is_dev_mode
 from app.services.bootstrap import ensure_default_admin, ensure_default_settings
 from app.services import reminder_scheduler
@@ -45,6 +45,7 @@ app.include_router(payments.router)
 app.include_router(drivers.router)
 app.include_router(admin.router)
 app.include_router(pickup_groups.router)
+app.include_router(dropoff_groups.router)
 app.include_router(website.router)
 
 

@@ -1,16 +1,14 @@
-"""
-Pickup-group matching: given a (lat, lng), find which active groups contain
-a location whose distance to the point is within its configured radius.
-"""
+"""Dropoff-group matching — mirrors pickup_group_service but evaluates against
+the booking's dropoff coordinates."""
 import math
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.pickup_group import PickupGroup, PickupGroupLocation
+from app.models.dropoff_group import DropoffGroup, DropoffGroupLocation
 
 
 def _haversine_meters(lat1, lng1, lat2, lng2) -> float:
-    R = 6_371_000  # Earth radius in meters
+    R = 6_371_000
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp = math.radians(lat2 - lat1)
     dl = math.radians(lng2 - lng1)
@@ -19,21 +17,21 @@ def _haversine_meters(lat1, lng1, lat2, lng2) -> float:
 
 
 async def match_groups(db: AsyncSession, lat: float, lng: float) -> list[dict]:
-    """Return a list of dicts {group_id, group_name, forced_extra_slugs}
-    for every active group that has at least one active location within
+    """Return a list of dicts {group_id, group_name, forced_extra_slugs, surcharge_amount}
+    for every active dropoff group that has at least one active location within
     its radius of the point. Empty list if no match (or coords are 0/0)."""
     if not lat and not lng:
         return []
 
-    rg = await db.execute(select(PickupGroup).where(PickupGroup.is_active == True))
+    rg = await db.execute(select(DropoffGroup).where(DropoffGroup.is_active == True))
     groups = {g.id: g for g in rg.scalars().all()}
     if not groups:
         return []
 
     rl = await db.execute(
-        select(PickupGroupLocation).where(
-            PickupGroupLocation.is_active == True,
-            PickupGroupLocation.group_id.in_(list(groups.keys())),
+        select(DropoffGroupLocation).where(
+            DropoffGroupLocation.is_active == True,
+            DropoffGroupLocation.group_id.in_(list(groups.keys())),
         )
     )
 
@@ -55,15 +53,13 @@ async def match_groups(db: AsyncSession, lat: float, lng: float) -> list[dict]:
 
 
 async def merge_forced_extras(db: AsyncSession, lat: float, lng: float, extra_slugs: list[str]) -> tuple[list[str], list[str], float]:
-    """Used at booking-creation time. Returns (final_extras, group_names, total_surcharge)
-    where final_extras is the user's extras + any forced extras from matching
-    groups (deduped, forced ones appended) and total_surcharge is the sum of
-    surcharge_amount across all matching groups."""
+    """Same shape as pickup_group_service.merge_forced_extras. Returns
+    (final_extras, group_names, total_surcharge)."""
     matches = await match_groups(db, lat, lng)
     if not matches:
         return list(extra_slugs or []), [], 0.0
 
-    have = list(dict.fromkeys(extra_slugs or []))  # dedupe, preserve order
+    have = list(dict.fromkeys(extra_slugs or []))
     group_names = []
     total_surcharge = 0.0
     for m in matches:

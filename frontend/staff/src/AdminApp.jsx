@@ -14,6 +14,7 @@ import Concierges from './pages/admin/Concierges'
 import ConciergeDetail from './pages/admin/ConciergeDetail'
 import Pricing from './pages/admin/Pricing'
 import PickupGroups from './pages/admin/PickupGroups'
+import DropoffGroups from './pages/admin/DropoffGroups'
 import Contacts from './pages/admin/Contacts'
 import Upsales from './pages/admin/Upsales'
 import RunDetail from './pages/admin/RunDetail'
@@ -41,6 +42,7 @@ export default function AdminApp() {
           <Route path="concierges/:id" element={<ConciergeDetail />} />
           <Route path="pricing" element={<Pricing />} />
           <Route path="pickup-groups" element={<PickupGroups />} />
+          <Route path="dropoff-groups" element={<DropoffGroups />} />
           <Route path="contacts" element={<Contacts />} />
           <Route path="upsales" element={<Upsales />} />
           <Route path="notifications" element={<Notifications />} />

@@ -50,6 +50,11 @@ class Booking(Base):
     base_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     extras_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     upsale_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    # Silent surcharges from matching pickup/dropoff groups. Not shown to the
+    # rider as line items; included in total_amount. Kept on the booking for
+    # audit/reporting.
+    pickup_surcharge: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0, server_default="0")
+    dropoff_surcharge: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0, server_default="0")
     total_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     # When a common route is permanently deleted, NULL out the FK on historical
     # bookings so the delete succeeds without losing booking data.

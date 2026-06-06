@@ -1,3 +1,6 @@
+"""Dropoff-group model — mirrors PickupGroup but matches against the
+booking's DROPOFF coordinates. Used to silently surcharge or auto-add extras
+based on where the rider is being dropped off (e.g. cruise port runs)."""
 import uuid
 from datetime import datetime
 
@@ -9,27 +12,22 @@ from sqlalchemy.sql import func
 from app.database import Base
 
 
-class PickupGroup(Base):
-    __tablename__ = "pickup_groups"
+class DropoffGroup(Base):
+    __tablename__ = "dropoff_groups"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    # List of extra slugs that auto-apply when a booking's pickup is inside any
-    # of this group's locations. Client UI shows them checked + disabled.
     forced_extra_slugs: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
-    # Silent surcharge added to the booking total when the pickup matches this
-    # group. The rider doesn't see a separate line item — the sum is just
-    # higher. Used for "going to/from the port" style adjustments.
     surcharge_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0, server_default="0")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class PickupGroupLocation(Base):
-    __tablename__ = "pickup_group_locations"
+class DropoffGroupLocation(Base):
+    __tablename__ = "dropoff_group_locations"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("pickup_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("dropoff_groups.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     lat: Mapped[float] = mapped_column(Numeric(10, 7), nullable=False)

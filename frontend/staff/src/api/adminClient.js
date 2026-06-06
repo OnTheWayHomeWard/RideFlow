@@ -52,6 +52,14 @@ export const api = {
   addPickupGroupLocation: (groupId, data) => request(`/admin/pickup-groups/${groupId}/locations`, { method: 'POST', body: JSON.stringify(data) }),
   deletePickupGroupLocation: (groupId, locId) => request(`/admin/pickup-groups/${groupId}/locations/${locId}`, { method: 'DELETE' }),
 
+  // Dropoff groups — mirror of pickup groups, matched against the rider's destination
+  listDropoffGroups: () => request('/admin/dropoff-groups'),
+  createDropoffGroup: (data) => request('/admin/dropoff-groups', { method: 'POST', body: JSON.stringify(data) }),
+  updateDropoffGroup: (id, data) => request(`/admin/dropoff-groups/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteDropoffGroup: (id) => request(`/admin/dropoff-groups/${id}`, { method: 'DELETE' }),
+  addDropoffGroupLocation: (groupId, data) => request(`/admin/dropoff-groups/${groupId}/locations`, { method: 'POST', body: JSON.stringify(data) }),
+  deleteDropoffGroupLocation: (groupId, locId) => request(`/admin/dropoff-groups/${groupId}/locations/${locId}`, { method: 'DELETE' }),
+
   // Dashboard
   getStats: () => request('/admin/dashboard/stats'),
   getNotifications: (page = 1, perPage = 10) => request(`/admin/notifications?page=${page}&per_page=${perPage}`),

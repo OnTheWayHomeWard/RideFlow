@@ -1,7 +1,8 @@
+"""Dropoff-group management (admin) + public match endpoint (clients).
+
+Mirror of pickup_groups.py — matches against the booking's DROPOFF coordinates.
+Used to silently surcharge / auto-add extras based on where the rider ends up.
 """
-Pickup-group management (admin) + public match endpoint (clients).
-"""
-from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -10,19 +11,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.middleware.auth import get_current_admin
 from app.models.admin import Admin
-from app.models.pickup_group import PickupGroup, PickupGroupLocation
-from app.services.pickup_group_service import match_groups
+from app.models.dropoff_group import DropoffGroup, DropoffGroupLocation
+from app.services.dropoff_group_service import match_groups
 
 
-router = APIRouter(prefix="/api", tags=["pickup-groups"])
+router = APIRouter(prefix="/api", tags=["dropoff-groups"])
 
 
 # ── Public ──
 
-@router.get("/pickup-groups/match")
+@router.get("/dropoff-groups/match")
 async def match(lat: float = Query(...), lng: float = Query(...), db: AsyncSession = Depends(get_db)):
-    """Public — returns the list of groups (and their forced extras) whose
-    location radius covers (lat, lng). Empty list if no match."""
+    """Public — returns groups whose location radius covers the dropoff point."""
     return await match_groups(db, lat, lng)
 
 
@@ -43,7 +43,7 @@ class LocationCreateRequest(BaseModel):
     radius_meters: int = 500
 
 
-def _serialize_loc(loc: PickupGroupLocation) -> dict:
+def _serialize_loc(loc: DropoffGroupLocation) -> dict:
     return {
         "id": str(loc.id),
         "name": loc.name,
@@ -55,11 +55,11 @@ def _serialize_loc(loc: PickupGroupLocation) -> dict:
     }
 
 
-async def _serialize_group(db: AsyncSession, g: PickupGroup) -> dict:
+async def _serialize_group(db: AsyncSession, g: DropoffGroup) -> dict:
     locs_r = await db.execute(
-        select(PickupGroupLocation)
-        .where(PickupGroupLocation.group_id == g.id)
-        .order_by(PickupGroupLocation.name)
+        select(DropoffGroupLocation)
+        .where(DropoffGroupLocation.group_id == g.id)
+        .order_by(DropoffGroupLocation.name)
     )
     return {
         "id": str(g.id),
@@ -71,15 +71,15 @@ async def _serialize_group(db: AsyncSession, g: PickupGroup) -> dict:
     }
 
 
-@router.get("/admin/pickup-groups")
+@router.get("/admin/dropoff-groups")
 async def list_groups(admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    r = await db.execute(select(PickupGroup).order_by(PickupGroup.name))
+    r = await db.execute(select(DropoffGroup).order_by(DropoffGroup.name))
     return [await _serialize_group(db, g) for g in r.scalars().all()]
 
 
-@router.post("/admin/pickup-groups")
+@router.post("/admin/dropoff-groups")
 async def create_group(req: GroupCreateRequest, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    g = PickupGroup(
+    g = DropoffGroup(
         name=req.name,
         forced_extra_slugs=req.forced_extra_slugs,
         surcharge_amount=req.surcharge_amount,
@@ -91,9 +91,9 @@ async def create_group(req: GroupCreateRequest, admin: Admin = Depends(get_curre
     return await _serialize_group(db, g)
 
 
-@router.put("/admin/pickup-groups/{group_id}")
+@router.put("/admin/dropoff-groups/{group_id}")
 async def update_group(group_id: str, req: GroupCreateRequest, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    r = await db.execute(select(PickupGroup).where(PickupGroup.id == group_id))
+    r = await db.execute(select(DropoffGroup).where(DropoffGroup.id == group_id))
     g = r.scalar_one_or_none()
     if not g:
         raise HTTPException(status_code=404, detail="Group not found")
@@ -105,9 +105,9 @@ async def update_group(group_id: str, req: GroupCreateRequest, admin: Admin = De
     return await _serialize_group(db, g)
 
 
-@router.delete("/admin/pickup-groups/{group_id}")
+@router.delete("/admin/dropoff-groups/{group_id}")
 async def delete_group(group_id: str, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    r = await db.execute(select(PickupGroup).where(PickupGroup.id == group_id))
+    r = await db.execute(select(DropoffGroup).where(DropoffGroup.id == group_id))
     g = r.scalar_one_or_none()
     if not g:
         raise HTTPException(status_code=404, detail="Group not found")
@@ -116,13 +116,13 @@ async def delete_group(group_id: str, admin: Admin = Depends(get_current_admin),
     return {"message": "Group deleted"}
 
 
-@router.post("/admin/pickup-groups/{group_id}/locations")
+@router.post("/admin/dropoff-groups/{group_id}/locations")
 async def add_location(group_id: str, req: LocationCreateRequest, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    r = await db.execute(select(PickupGroup).where(PickupGroup.id == group_id))
+    r = await db.execute(select(DropoffGroup).where(DropoffGroup.id == group_id))
     g = r.scalar_one_or_none()
     if not g:
         raise HTTPException(status_code=404, detail="Group not found")
-    loc = PickupGroupLocation(
+    loc = DropoffGroupLocation(
         group_id=g.id,
         name=req.name,
         address=req.address,
@@ -136,12 +136,12 @@ async def add_location(group_id: str, req: LocationCreateRequest, admin: Admin =
     return _serialize_loc(loc)
 
 
-@router.delete("/admin/pickup-groups/{group_id}/locations/{loc_id}")
+@router.delete("/admin/dropoff-groups/{group_id}/locations/{loc_id}")
 async def delete_location(group_id: str, loc_id: str, admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
     r = await db.execute(
-        select(PickupGroupLocation).where(
-            PickupGroupLocation.id == loc_id,
-            PickupGroupLocation.group_id == group_id,
+        select(DropoffGroupLocation).where(
+            DropoffGroupLocation.id == loc_id,
+            DropoffGroupLocation.group_id == group_id,
         )
     )
     loc = r.scalar_one_or_none()

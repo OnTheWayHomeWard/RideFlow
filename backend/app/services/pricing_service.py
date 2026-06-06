@@ -276,14 +276,27 @@ async def calculate_price(
         for u in upsales
     ]
 
-    # 4. Total
-    total_amount = round(base_amount + extras_amount + upsale_amount, 2)
+    # 4. Silent pickup/dropoff group surcharges. These add to the total without
+    # being broken out as line items on the rider-facing screen — same idea as
+    # upsales but driven by location rather than time.
+    from app.services import pickup_group_service, dropoff_group_service
+    pickup_matches = await pickup_group_service.match_groups(db, pickup_lat, pickup_lng)
+    dropoff_matches = await dropoff_group_service.match_groups(db, dropoff_lat, dropoff_lng)
+    pickup_surcharge = round(sum(float(m.get("surcharge_amount") or 0) for m in pickup_matches), 2)
+    dropoff_surcharge = round(sum(float(m.get("surcharge_amount") or 0) for m in dropoff_matches), 2)
+
+    # 5. Total
+    total_amount = round(
+        base_amount + extras_amount + upsale_amount + pickup_surcharge + dropoff_surcharge, 2
+    )
 
     return {
         "vehicle_type": vehicle_type,
         "base_amount": base_amount,
         "extras_amount": round(extras_amount, 2),
         "upsale_amount": round(upsale_amount, 2),
+        "pickup_surcharge": pickup_surcharge,
+        "dropoff_surcharge": dropoff_surcharge,
         "total_amount": total_amount,
         "distance_miles": round(route_distance, 1) if route_distance else None,
         "common_route_id": str(common_route.id) if common_route else None,
