@@ -112,7 +112,8 @@ async def get_common_routes(db: AsyncSession = Depends(get_db)):
     )
     routes = result.scalars().all()
     upsales, rates, default_tiers = await _active_upsales_and_rates(db)
-    now = datetime.now(timezone.utc)
+    from app.utils.timezone import get_business_tz
+    now = datetime.now(await get_business_tz(db))
     for r in routes:
         r.from_price = _route_from_price(r.prices, r.distance_miles, upsales, rates, default_tiers, now)
     return routes
@@ -153,7 +154,8 @@ async def get_nearby_common_routes(
     # Upsale-adjusted floor so the list matches the vehicle screen
     from datetime import datetime, timezone
     upsales, rates, default_tiers = await _active_upsales_and_rates(db)
-    now = datetime.now(timezone.utc)
+    from app.utils.timezone import get_business_tz
+    now = datetime.now(await get_business_tz(db))
 
     options = []
     for r in routes:
@@ -291,5 +293,6 @@ async def get_public_settings(db: AsyncSession = Depends(get_db)):
         "available_countries": available_countries,  # legacy / derived
         "allow_cross_country_booking": cross_country,
         "min_advance_booking_hours": float(settings.get("min_advance_booking_hours", 0.5) or 0.5),
+        "business_timezone": str(settings.get("business_timezone", "America/New_York") or "America/New_York"),
         "google_maps_api_key": _get_maps_key(),
     }

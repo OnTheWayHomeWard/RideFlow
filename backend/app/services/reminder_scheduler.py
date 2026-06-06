@@ -25,6 +25,7 @@ from app.models.booking import Booking
 from app.models.driver import Driver
 from app.models.setting import Setting
 from app.utils.urls import get_client_base_url
+from app.utils.timezone import get_business_tz
 
 
 # How often the scheduler ticks. The matching window below covers ±90s so a
@@ -47,15 +48,17 @@ async def _get_setting_float(db: AsyncSession, key: str, default: float) -> floa
         return default
 
 
-def _booking_pickup_dt(booking: Booking) -> datetime:
-    """pickup_date + pickup_time, treated as UTC (matches the rest of the codebase)."""
-    return datetime.combine(booking.pickup_date, booking.pickup_time, tzinfo=timezone.utc)
+def _booking_pickup_dt(booking: Booking, biz_tz) -> datetime:
+    """pickup_date + pickup_time are stored as the rider's wall-clock pickup in
+    the configured business timezone (Eastern by default). Tag accordingly."""
+    return datetime.combine(booking.pickup_date, booking.pickup_time, tzinfo=biz_tz)
 
 
 async def _candidates_in_window(db: AsyncSession, target_offset: timedelta, sent_column) -> list[Booking]:
     """Bookings whose pickup time is within ±WINDOW_SECONDS of (now + target_offset)
     and which haven't had this particular reminder sent yet."""
-    now = datetime.now(timezone.utc)
+    biz_tz = await get_business_tz(db)
+    now = datetime.now(biz_tz)
     target = now + target_offset
     win = timedelta(seconds=WINDOW_SECONDS)
     earliest = target - win
@@ -80,7 +83,7 @@ async def _candidates_in_window(db: AsyncSession, target_offset: timedelta, sent
     )
     bookings = []
     for b in r.scalars().all():
-        dt = _booking_pickup_dt(b)
+        dt = _booking_pickup_dt(b, biz_tz)
         if earliest <= dt <= latest:
             bookings.append(b)
     return bookings

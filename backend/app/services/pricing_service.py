@@ -268,7 +268,10 @@ async def calculate_price(
 
     # 3. Sum all active upsales whose filters match (silent — client never sees this)
     if pickup_dt is None:
-        pickup_dt = datetime.now(timezone.utc)
+        # Use the business timezone for the "now" default — upsale time-of-day
+        # windows are configured by admins in local (Eastern) wall-clock time.
+        from app.utils.timezone import get_business_tz
+        pickup_dt = datetime.now(await get_business_tz(db))
     upsales = await get_active_upsales(db, vehicle_type, pickup_dt)
     upsale_amount = round(sum(calculate_upsale_amount(base_amount, u) for u in upsales), 2)
     applied_upsales = [

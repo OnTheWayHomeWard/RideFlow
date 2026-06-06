@@ -30,21 +30,21 @@ async def create_booking(req: BookingCreateRequest, db: AsyncSession = Depends(g
 
     # Enforce minimum advance booking time
     from app.models.setting import Setting as SettingModel
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
+    from app.utils.timezone import get_business_tz
     min_r = await db.execute(select(SettingModel).where(SettingModel.key == "min_advance_booking_hours"))
     min_setting = min_r.scalar_one_or_none()
     min_hours = float(min_setting.value) if min_setting else 0.5
 
-    # pickup_date/pickup_time arrive in the rider's local timezone. Convert to
-    # UTC using the offset they sent (JS getTimezoneOffset semantics: minutes
-    # local lags UTC, e.g. EDT=+240). Then store the UTC date/time so the rest
-    # of the code (reminder scheduler, upsale time-of-day, etc.) — which all
-    # assume the stored values are UTC — keeps working.
-    local_naive = datetime.combine(req.pickup_date, req.pickup_time)
-    pickup_dt = (local_naive + timedelta(minutes=req.pickup_tz_offset_minutes)).replace(tzinfo=timezone.utc)
-    pickup_date_utc = pickup_dt.date()
-    pickup_time_utc = pickup_dt.time()
-    earliest = datetime.now(timezone.utc) + timedelta(hours=min_hours)
+    # We operate on a single business timezone (default America/New_York).
+    # The rider's pickup_date / pickup_time are stored AS-IS — exactly the
+    # wall-clock time they chose. For comparisons (min-advance, reminders,
+    # upsale time-of-day), tag the naive value with the business timezone.
+    biz_tz = await get_business_tz(db)
+    pickup_dt = datetime.combine(req.pickup_date, req.pickup_time, tzinfo=biz_tz)
+    pickup_date_stored = req.pickup_date
+    pickup_time_stored = req.pickup_time
+    earliest = datetime.now(biz_tz) + timedelta(hours=min_hours)
     if pickup_dt < earliest:
         if min_hours < 1:
             mins = int(min_hours * 60)
@@ -124,8 +124,8 @@ async def create_booking(req: BookingCreateRequest, db: AsyncSession = Depends(g
         dropoff_lat=req.dropoff_lat,
         dropoff_lng=req.dropoff_lng,
         distance_miles=price["distance_miles"],
-        pickup_date=pickup_date_utc,
-        pickup_time=pickup_time_utc,
+        pickup_date=pickup_date_stored,
+        pickup_time=pickup_time_stored,
         sms_consent=req.sms_consent,
         passengers=req.passengers,
         luggage=req.luggage,

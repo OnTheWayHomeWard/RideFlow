@@ -223,7 +223,7 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
             />
           </div>
         </div>
-        <p className="text-xs text-slate-400 mt-2">Pickup must be at least {formatAdvance(minAdvanceHours)} from now.</p>
+        <p className="text-xs text-slate-400 mt-2">Pickup must be at least {formatAdvance(minAdvanceHours)} from now. All times are in {tzShortLabel(settings.business_timezone)}.</p>
       </Section>
 
       {/* Your info — placed before add-ons so it's always visible */}
@@ -375,6 +375,23 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
       </div>
     </div>
   )
+}
+
+// Friendly label for the business timezone shown next to the time picker
+// and on the receipt. Defaults to ET — we operate in Eastern.
+function tzShortLabel(tzName) {
+  const map = {
+    'America/New_York': 'Eastern Time (ET)',
+    'America/Chicago': 'Central Time (CT)',
+    'America/Denver': 'Mountain Time (MT)',
+    'America/Phoenix': 'Mountain Time (MT, no DST)',
+    'America/Los_Angeles': 'Pacific Time (PT)',
+    'America/Anchorage': 'Alaska Time (AKT)',
+    'Pacific/Honolulu': 'Hawaii Time (HT)',
+  }
+  if (tzName && map[tzName]) return map[tzName]
+  if (tzName) return tzName.split('/').pop().replace(/_/g, ' ')
+  return 'Eastern Time (ET)'
 }
 
 function Section({ title, children }) {

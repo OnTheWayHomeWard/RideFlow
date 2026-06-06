@@ -143,12 +143,13 @@ export default function Confirmation() {
         </div>
 
         {/* Details grid */}
-        <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="grid grid-cols-2 gap-3 mb-1">
           <DetailCard label="Date" value={formatDate(booking.pickup_date)} icon="📅" />
           <DetailCard label="Time" value={formatTime(booking.pickup_time)} icon="🕐" />
           <DetailCard label="Vehicle" value={booking.vehicle_type?.toUpperCase()} icon="🚐" />
           <DetailCard label="Total Paid" value={`$${booking.total_amount}`} icon="💳" />
         </div>
+        <p className="text-[11px] text-slate-400 mb-5 text-center">All pickup times shown in {tzShortLabel(settings.business_timezone)}</p>
 
         {/* Driver section */}
         {hasDriver ? (
@@ -324,4 +325,21 @@ function formatTime(timeStr) {
   const ampm = hour >= 12 ? 'PM' : 'AM'
   const h12 = hour % 12 || 12
   return `${h12}:${m} ${ampm}`
+}
+
+// Friendly short label for the business timezone shown next to pickup times.
+// Falls back to "ET" since that's our default operating region.
+function tzShortLabel(tzName) {
+  const map = {
+    'America/New_York': 'Eastern Time (ET)',
+    'America/Chicago': 'Central Time (CT)',
+    'America/Denver': 'Mountain Time (MT)',
+    'America/Phoenix': 'Mountain Time (MT, no DST)',
+    'America/Los_Angeles': 'Pacific Time (PT)',
+    'America/Anchorage': 'Alaska Time (AKT)',
+    'Pacific/Honolulu': 'Hawaii Time (HT)',
+  }
+  if (tzName && map[tzName]) return map[tzName]
+  if (tzName) return tzName.split('/').pop().replace(/_/g, ' ')
+  return 'Eastern Time (ET)'
 }
