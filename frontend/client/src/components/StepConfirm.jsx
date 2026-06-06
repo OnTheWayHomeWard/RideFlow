@@ -235,18 +235,28 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
             value={booking.date}
             min={today}
             max={maxDate}
-            onChange={e => setBooking(prev => ({ ...prev, date: e.target.value }))}
+            onChange={e => setBooking(prev => {
+              // Switching the date can invalidate a previously-picked time
+              // (e.g. picking today after the "too soon" window has passed it).
+              // Drop the time so the rider has to pick a fresh one.
+              const newDate = e.target.value
+              const minOnNew = newDate === today ? earliest.time : '00:00'
+              const stillValid = prev.time && prev.time >= minOnNew
+              return { ...prev, date: newDate, time: stillValid ? prev.time : '' }
+            })}
             className="flex-1 px-3 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <div className="flex-1">
             <TimeSelect
               value={booking.time}
               minTime={minTimeOnEarliestDate}
+              disabled={!booking.date}
+              placeholder={booking.date ? 'Select time' : 'Pick date first'}
               onChange={t => setBooking(prev => ({ ...prev, time: t }))}
             />
           </div>
         </div>
-        <p className="text-xs text-slate-400 mt-2">Pickup must be at least {formatAdvance(minAdvanceHours)} from now. All times are in {tzShortLabel(settings.business_timezone)}.</p>
+        <p className="text-xs text-slate-400 mt-2">Pick a date first, then a time. Pickup must be at least {formatAdvance(minAdvanceHours)} from now. All times are in {tzShortLabel(settings.business_timezone)}.</p>
       </Section>
 
       {/* Your info — placed before add-ons so it's always visible */}

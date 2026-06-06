@@ -4,10 +4,13 @@ import { useState, useRef, useEffect } from 'react'
  * Time picker that lists times in 30-minute intervals.
  * Times before `minTime` (HH:MM) are shown but disabled — user sees them grayed out.
  */
-export default function TimeSelect({ value, onChange, minTime, intervalMinutes = 30 }) {
+export default function TimeSelect({ value, onChange, minTime, intervalMinutes = 30, disabled = false, placeholder = 'Select time' }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const listRef = useRef(null)
+
+  // Defensive: if disabled flips on while the dropdown is open, close it.
+  useEffect(() => { if (disabled && open) setOpen(false) }, [disabled])
 
   // Generate 24h of slots
   const slots = []
@@ -37,7 +40,7 @@ export default function TimeSelect({ value, onChange, minTime, intervalMinutes =
   }, [open])
 
   const formatDisplay = (t) => {
-    if (!t) return 'Select time'
+    if (!t) return placeholder
     const [h, m] = t.split(':')
     const hour = parseInt(h, 10)
     const ampm = hour >= 12 ? 'PM' : 'AM'
@@ -47,15 +50,21 @@ export default function TimeSelect({ value, onChange, minTime, intervalMinutes =
 
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen(!open)}
-        className="w-full px-3 py-3 bg-white border border-slate-200 rounded-xl text-sm text-left focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between">
-        <span className={value ? 'text-slate-900' : 'text-slate-400'}>{formatDisplay(value)}</span>
+      <button type="button"
+        disabled={disabled}
+        onClick={() => { if (!disabled) setOpen(!open) }}
+        className={`w-full px-3 py-3 border rounded-xl text-sm text-left flex items-center justify-between transition-colors ${
+          disabled
+            ? 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed'
+            : 'bg-white border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500'
+        }`}>
+        <span className={value && !disabled ? 'text-slate-900' : 'text-slate-400'}>{formatDisplay(value)}</span>
         <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       </button>
 
-      {open && (
+      {open && !disabled && (
         <div className="absolute z-30 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto" ref={listRef}>
           {slots.map(slot => {
             const disabled = isDisabled(slot)
