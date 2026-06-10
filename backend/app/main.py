@@ -24,6 +24,12 @@ app = FastAPI(
     description="Transport booking system — reservation-based ride service",
     version="0.1.0",
     lifespan=lifespan,
+    # Caddy routes /api/* to the backend container; the client SPA owns
+    # every other path. Move the docs under /api so they actually reach us
+    # instead of being swallowed by the React app at /docs.
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
 )
 
 app.add_middleware(
