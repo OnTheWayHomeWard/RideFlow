@@ -54,3 +54,4 @@ Thumbs.db
 
 # ── Claude Code working files ──
 .claude/
+firebase-service-account.json

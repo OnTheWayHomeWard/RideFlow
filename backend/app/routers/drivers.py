@@ -245,6 +245,21 @@ async def accept_run(
     except Exception as e:
         print(f"[SMS ERROR] Driver new run SMS failed: {e}")
 
+    # Notify admins (in-app + FCM)
+    try:
+        from app.services.notifications_service import notify_all_admins
+        await notify_all_admins(
+            db,
+            kind="driver_accepted",
+            title=f"{driver.name} accepted {booking.booking_number}",
+            body=f"{booking.pickup_name} → {booking.dropoff_name} ({booking.pickup_date} {str(booking.pickup_time)[:5]})",
+            link=f"/admin/runs/{booking.id}",
+            related_type="booking",
+            related_id=booking.id,
+        )
+    except Exception as e:
+        print(f"[notify] driver_accepted: {e}")
+
     return {
         "message": "Run accepted",
         "booking_number": booking.booking_number,
@@ -394,6 +409,21 @@ async def start_ride(
     except Exception as e:
         print(f"[SMS ERROR] Client ride started SMS failed: {e}")
 
+    # Notify admins
+    try:
+        from app.services.notifications_service import notify_all_admins
+        await notify_all_admins(
+            db,
+            kind="ride_started",
+            title=f"Ride started — {booking.booking_number}",
+            body=f"{driver.name} picked up {booking.client_name} ({booking.pickup_name} → {booking.dropoff_name})",
+            link=f"/admin/runs/{booking.id}",
+            related_type="booking",
+            related_id=booking.id,
+        )
+    except Exception as e:
+        print(f"[notify] ride_started: {e}")
+
     return {"message": "Ride started", "booking_number": booking.booking_number}
 
 
@@ -475,6 +505,21 @@ async def complete_ride(
         await db.commit()
     except Exception as e:
         print(f"[SMS ERROR] Client ride completed SMS failed: {e}")
+
+    # Notify admins
+    try:
+        from app.services.notifications_service import notify_all_admins
+        await notify_all_admins(
+            db,
+            kind="ride_completed",
+            title=f"Ride completed — {booking.booking_number}",
+            body=f"{driver.name} finished {booking.client_name}'s ride ({booking.pickup_name} → {booking.dropoff_name})",
+            link=f"/admin/runs/{booking.id}",
+            related_type="booking",
+            related_id=booking.id,
+        )
+    except Exception as e:
+        print(f"[notify] ride_completed: {e}")
 
     earnings = float(driver_split.amount) if driver_split else 0
 

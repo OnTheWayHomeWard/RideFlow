@@ -72,3 +72,43 @@ async def get_current_cashier(
     if not cashier or cashier.status != "active":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Cashier not found or inactive")
     return cashier
+
+
+# ─── Unified ───
+# Resolves the JWT to whichever staff role it represents (admin / driver /
+# cashier) and returns a small dict — used by endpoints that should work for
+# any logged-in staff user, e.g. /api/notifications/*.
+
+async def get_any_authenticated_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Return {role, id, name, raw} for any valid admin/driver/cashier JWT."""
+    try:
+        payload = jwt.decode(credentials.credentials, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        user_id = payload.get("sub")
+        role = payload.get("role")
+        if not user_id or role not in ("admin", "driver", "cashier"):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    uid = UUID(user_id)
+    if role == "admin":
+        r = await db.execute(select(Admin).where(Admin.id == uid))
+        u = r.scalar_one_or_none()
+        if not u or not u.is_active:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin not found or inactive")
+        return {"role": "admin", "id": u.id, "name": u.name, "raw": u}
+    if role == "driver":
+        r = await db.execute(select(Driver).where(Driver.id == uid))
+        u = r.scalar_one_or_none()
+        if not u or u.status != "active":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Driver not found or inactive")
+        return {"role": "driver", "id": u.id, "name": u.name, "raw": u}
+    # cashier
+    r = await db.execute(select(Cashier).where(Cashier.id == uid))
+    u = r.scalar_one_or_none()
+    if not u or u.status != "active":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Cashier not found or inactive")
+    return {"role": "cashier", "id": u.id, "name": u.name, "raw": u}

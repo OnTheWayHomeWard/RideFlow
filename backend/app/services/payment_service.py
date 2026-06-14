@@ -112,6 +112,22 @@ async def confirm_payment(db: AsyncSession, booking: Booking, stripe_payment_id:
         "confirmation_url": confirmation_url,
     })
 
+    # Notify every admin via in-app inbox + FCM
+    try:
+        from app.services.notifications_service import notify_all_admins
+        await notify_all_admins(
+            db,
+            kind="new_booking",
+            title=f"New booking {booking.booking_number}",
+            body=f"{booking.client_name} — {booking.pickup_name} → {booking.dropoff_name} ({booking.pickup_date} {str(booking.pickup_time)[:5]}). ${booking.total_amount}.",
+            link=f"/admin/runs/{booking.id}",
+            related_type="booking",
+            related_id=booking.id,
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger("notifications").exception(f"notify_all_admins for booking failed: {e}")
+
     await db.commit()
 
     return payment

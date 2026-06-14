@@ -146,6 +146,27 @@ async def submit_contact(req: ContactRequest, request: Request, db: AsyncSession
     )
     db.add(sub)
     await db.commit()
+    await db.refresh(sub)
+
+    # Notify every admin (in-app + FCM)
+    try:
+        from app.services.notifications_service import notify_all_admins
+        snippet = (message or "").strip().replace("\n", " ")
+        if len(snippet) > 120:
+            snippet = snippet[:117] + "…"
+        await notify_all_admins(
+            db,
+            kind="contact_form",
+            title=f"New contact message from {name[:60]}",
+            body=snippet or "(no message body)",
+            link="/admin/contacts",
+            related_type="contact_submission",
+            related_id=sub.id,
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger("notifications").exception(f"contact notify_all_admins failed: {e}")
+
     return {"ok": True}
 
 

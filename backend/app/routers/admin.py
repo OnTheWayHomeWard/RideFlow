@@ -2788,6 +2788,23 @@ async def assign_driver(booking_id: str, req: AssignDriverRequest, admin: Admin 
     except Exception as e:
         print(f"[SMS ERROR] Assign driver SMS: {e}")
 
+    # In-app inbox + FCM push to the assigned driver
+    try:
+        from app.services.notifications_service import notify
+        await notify(
+            db,
+            recipient_type="driver",
+            recipient_id=driver.id,
+            kind="driver_assigned",
+            title=f"New run assigned — {booking.booking_number}",
+            body=f"{booking.pickup_name} → {booking.dropoff_name} ({booking.pickup_date} {str(booking.pickup_time)[:5]})",
+            link=f"/driver/runs/{booking.id}",
+            related_type="booking",
+            related_id=booking.id,
+        )
+    except Exception as e:
+        print(f"[notify] driver_assigned: {e}")
+
     return {"message": "Driver assigned", "driver_name": driver.name, "booking_number": booking.booking_number}
 
 

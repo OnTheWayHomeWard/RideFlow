@@ -14,3 +14,4 @@ httpx==0.28.1
 stripe==8.0.0
 twilio==9.0.5
 qrcode[pil]==7.4.2
+firebase-admin==6.5.0
