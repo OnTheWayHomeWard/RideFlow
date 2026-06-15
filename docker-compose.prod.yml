@@ -47,7 +47,6 @@ services:
       # Firebase Cloud Messaging — the JSON file at the project root is
       # mounted at /app/firebase-service-account.json (read-only) below.
       FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH:-/app/firebase-service-account.json}
-      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
     volumes:
       # Bind-mount the host's firebase-service-account.json into the container.
       # ":ro" = read-only inside the container.
