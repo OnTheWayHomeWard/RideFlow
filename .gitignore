@@ -54,4 +54,8 @@ Thumbs.db
 
 # ── Claude Code working files ──
 .claude/
-firebase-service-account.json
+
+# firebase-service-account.json is intentionally NOT in .gitignore — this is
+# a private repo and the FCM service account is tracked so deploys are
+# self-contained. If repo visibility ever changes, restore this exclusion
+# AND rotate the key in Firebase Console -> Service accounts immediately.
