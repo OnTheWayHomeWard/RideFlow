@@ -309,6 +309,16 @@ async def cancel_booking(booking_number: str, db: AsyncSession = Depends(get_db)
             ),
         )
 
+    # Refund-percent setting — 100 by default, clamp to [0, 100] so a misconfigured
+    # value can't accidentally refund more than the rider paid (or send Stripe a negative amount).
+    pct_r = await db.execute(select(Setting).where(Setting.key == "cancellation_refund_percent"))
+    pct_s = pct_r.scalar_one_or_none()
+    try:
+        refund_percent = float(pct_s.value) if pct_s and pct_s.value not in (None, "") else 100.0
+    except (TypeError, ValueError):
+        refund_percent = 100.0
+    refund_percent = max(0.0, min(100.0, refund_percent))
+
     # Find the latest successful payment to refund
     p_r = await db.execute(
         select(Payment)
@@ -317,17 +327,26 @@ async def cancel_booking(booking_number: str, db: AsyncSession = Depends(get_db)
     )
     payment = p_r.scalars().first()
 
-    refund_amount = float(payment.amount) if payment else 0.0
+    paid_amount = float(payment.amount) if payment else 0.0
+    # Round to cents so we never send Stripe a fractional-cent amount.
+    refund_amount = round(paid_amount * refund_percent / 100.0, 2)
     refund_currency = (payment.currency if payment else "USD").lower()
     stripe_refund_id = None
 
-    if payment and payment.stripe_payment_id:
+    if payment and payment.stripe_payment_id and refund_amount > 0:
         try:
             import stripe, os
             stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
             if stripe.api_key and not stripe.api_key.startswith("placeholder"):
-                # Refund by payment_intent — covers Checkout sessions whose stripe_payment_id is the PI
-                refund = stripe.Refund.create(payment_intent=payment.stripe_payment_id)
+                # Refund by payment_intent. Omit `amount` for a full refund — Stripe handles
+                # rounding edge-cases better than we can; pass cents only for partials.
+                if refund_percent >= 100.0:
+                    refund = stripe.Refund.create(payment_intent=payment.stripe_payment_id)
+                else:
+                    refund = stripe.Refund.create(
+                        payment_intent=payment.stripe_payment_id,
+                        amount=int(round(refund_amount * 100)),
+                    )
                 stripe_refund_id = refund.id
             else:
                 # Dev mode — no real Stripe call; we still mark refunded so downstream UX is consistent.
@@ -337,10 +356,17 @@ async def cancel_booking(booking_number: str, db: AsyncSession = Depends(get_db)
             raise HTTPException(status_code=502, detail=f"Refund failed at the payment processor: {e}. Please try again or contact support.")
 
         payment.refund_amount = refund_amount
-        payment.refund_reason = "Rider self-cancelled within free-cancellation window"
+        payment.refund_reason = (
+            "Rider self-cancelled within free-cancellation window"
+            if refund_percent >= 100.0
+            else f"Rider self-cancelled — {refund_percent:g}% refund per settings"
+        )
         payment.stripe_refund_id = stripe_refund_id
         payment.refunded_at = datetime.now(timezone.utc)
-        payment.status = "refunded"
+        # Stripe treats a partial refund as `partially_refunded` once the PI status updates,
+        # but our internal Payment model only tracks the final state — mark fully when 100%,
+        # otherwise reflect the partial.
+        payment.status = "refunded" if refund_percent >= 100.0 else "partially_refunded"
 
     # Flip booking
     booking.status = "cancelled"
@@ -383,12 +409,70 @@ async def cancel_booking(booking_number: str, db: AsyncSession = Depends(get_db)
     except Exception as e:
         import logging; logging.getLogger("cancel").exception(f"admin notify failed: {e}")
 
+    # If a driver had already accepted this run, they need to know it's gone
+    # from their schedule — SMS to grab their attention + in-app inbox row.
+    # We also void any pending driver PaymentSplit so the cancelled ride
+    # doesn't keep showing up as a future payout for them.
+    if booking.driver_id:
+        from app.models.payment_split import PaymentSplit
+        driver_r = await db.execute(select(Driver).where(Driver.id == booking.driver_id))
+        driver = driver_r.scalar_one_or_none()
+
+        # Void the driver split — no earnings on a rider-cancelled ride.
+        try:
+            ps_r = await db.execute(
+                select(PaymentSplit).where(
+                    PaymentSplit.booking_id == booking.id,
+                    PaymentSplit.recipient_type == "driver",
+                    PaymentSplit.payout_status.in_(("pending", "pending_review")),
+                )
+            )
+            for split in ps_r.scalars().all():
+                split.payout_status = "cancelled"
+            await db.commit()
+        except Exception as e:
+            import logging; logging.getLogger("cancel").exception(f"voiding driver split failed: {e}")
+
+        if driver:
+            # SMS — different template from the admin-reassignment one so the
+            # wording is honest ("cancelled by the rider", not "reassigned").
+            try:
+                from app.services.sms_service import notify_driver_run_cancelled_by_rider
+                await notify_driver_run_cancelled_by_rider(db, driver.phone, {
+                    "driver_name": driver.name,
+                    "pickup_name": booking.pickup_name,
+                    "dropoff_name": booking.dropoff_name,
+                    "pickup_date": str(booking.pickup_date),
+                    "pickup_time": str(booking.pickup_time)[:5],
+                    "booking_number": booking.booking_number,
+                })
+            except Exception as e:
+                import logging; logging.getLogger("cancel").exception(f"driver SMS notify failed: {e}")
+
+            # In-app inbox + FCM push to the driver
+            try:
+                from app.services.notifications_service import notify
+                await notify(
+                    db,
+                    recipient_type="driver",
+                    recipient_id=driver.id,
+                    kind="run_cancelled_by_rider",
+                    title=f"Run cancelled — {booking.booking_number}",
+                    body=f"The rider cancelled {booking.pickup_name} → {booking.dropoff_name} ({booking.pickup_date} {str(booking.pickup_time)[:5]}). It's been removed from your schedule.",
+                    link=f"/driver/run-detail/{booking.id}",
+                    related_type="booking",
+                    related_id=booking.id,
+                )
+            except Exception as e:
+                import logging; logging.getLogger("cancel").exception(f"driver in-app notify failed: {e}")
+
     return {
         "ok": True,
         "booking_number": booking.booking_number,
         "status": "cancelled",
         "refund_amount": refund_amount,
         "refund_currency": refund_currency,
+        "refund_percent": refund_percent,
         "stripe_refund_id": stripe_refund_id,
     }
 
@@ -412,6 +496,14 @@ async def cancellation_eligibility(booking_number: str, db: AsyncSession = Depen
     except (TypeError, ValueError):
         window_hours = 24.0
 
+    pct_r = await db.execute(select(Setting).where(Setting.key == "cancellation_refund_percent"))
+    pct_s = pct_r.scalar_one_or_none()
+    try:
+        refund_percent = float(pct_s.value) if pct_s and pct_s.value not in (None, "") else 100.0
+    except (TypeError, ValueError):
+        refund_percent = 100.0
+    refund_percent = max(0.0, min(100.0, refund_percent))
+
     biz_tz = await get_business_tz(db)
     pickup_dt = datetime.combine(booking.pickup_date, booking.pickup_time, tzinfo=biz_tz)
     cutoff = datetime.now(biz_tz) + timedelta(hours=window_hours)
@@ -420,10 +512,16 @@ async def cancellation_eligibility(booking_number: str, db: AsyncSession = Depen
         booking.status in ("paid", "assigned")
         and pickup_dt >= cutoff
     )
+
+    # Estimated refund so the receipt page can show "You'll be refunded $X" before confirming.
+    estimated_refund = round(float(booking.total_amount) * refund_percent / 100.0, 2)
+
     return {
         "cancellable": cancellable,
         "status": booking.status,
         "window_hours": window_hours,
+        "refund_percent": refund_percent,
+        "estimated_refund": estimated_refund,
         "pickup_at": pickup_dt.isoformat(),
         "free_cancel_until": (pickup_dt - timedelta(hours=window_hours)).isoformat(),
     }

@@ -197,7 +197,9 @@ export default function Confirmation() {
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-5">
             <p className="text-sm font-semibold text-amber-900 mb-1">Need to cancel?</p>
             <p className="text-xs text-amber-700 mb-3">
-              Free cancellation up to {Math.round(cancelEligibility.window_hours)}h before pickup. Cancel now for a full refund.
+              {cancelEligibility.refund_percent >= 100
+                ? `Free cancellation up to ${Math.round(cancelEligibility.window_hours)}h before pickup. Cancel now for a full refund.`
+                : `Cancel up to ${Math.round(cancelEligibility.window_hours)}h before pickup and get ${(+cancelEligibility.refund_percent).toFixed(0)}% back ($${(+cancelEligibility.estimated_refund).toFixed(2)}).`}
             </p>
             <button onClick={() => setCancelOpen(true)} disabled={cancelling}
               className="w-full bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 disabled:opacity-60 rounded-xl py-2.5 text-sm font-semibold transition-colors">
@@ -213,7 +215,11 @@ export default function Confirmation() {
             <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-5" onClick={e => e.stopPropagation()}>
               <h2 className="text-lg font-bold text-slate-900 mb-1">Cancel this ride?</h2>
               <p className="text-sm text-slate-500 mb-4">
-                You'll receive a full refund of <b className="text-slate-900">${booking.total_amount}</b>.
+                {cancelEligibility?.refund_percent >= 100 ? (
+                  <>You'll receive a full refund of <b className="text-slate-900">${(+booking.total_amount).toFixed(2)}</b>.</>
+                ) : (
+                  <>You'll receive a <b className="text-slate-900">{(+cancelEligibility?.refund_percent || 0).toFixed(0)}%</b> refund of <b className="text-slate-900">${(+(cancelEligibility?.estimated_refund ?? 0)).toFixed(2)}</b>.</>
+                )}{' '}
                 It usually appears on your statement within 5–10 business days. This cannot be undone.
               </p>
               <div className="flex gap-2">

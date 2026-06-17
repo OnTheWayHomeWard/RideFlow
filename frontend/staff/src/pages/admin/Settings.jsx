@@ -48,7 +48,7 @@ export default function Settings() {
       <SettingsGroup title="Website — Hero Section" settings={otherSettings.filter(s => ['website_hero_badge', 'website_hero_title', 'website_hero_title_accent', 'website_hero_subtitle', 'website_hero_image_url', 'website_stat_rides', 'website_stat_rating', 'website_stat_uptime'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Website — Section Headings" settings={otherSettings.filter(s => ['website_how_title','website_how_subtitle','website_why_title','website_why_subtitle','website_fleet_title','website_fleet_subtitle','website_testimonials_title','website_testimonials_subtitle','website_service_title','website_service_subtitle','website_contact_title','website_contact_subtitle'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Payment & Commissions" settings={otherSettings.filter(s => ['default_driver_pay_pct','default_cashier_commission_pct','cashier_commission_enabled','driver_payout_schedule','late_cancel_refund_pct','max_active_runs_per_driver'].includes(s.key))} saving={saving} onSave={handleSave} />
-      <SettingsGroup title="Booking" settings={otherSettings.filter(s => ['booking_window_days','cancellation_window_hours','unassigned_alert_minutes','review_expiry_days','min_advance_booking_hours','common_route_nearby_radius_km'].includes(s.key))} saving={saving} onSave={handleSave} />
+      <SettingsGroup title="Booking" settings={otherSettings.filter(s => ['booking_window_days','cancellation_window_hours','cancellation_refund_percent','unassigned_alert_minutes','review_expiry_days','min_advance_booking_hours','common_route_nearby_radius_km'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Driver Priority" settings={otherSettings.filter(s => ['priority_delay_normal_minutes','priority_delay_low_minutes'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Pre-Ride Reminders" settings={otherSettings.filter(s => ['client_reminder_hours','client_final_reminder_minutes','driver_reminder_hours'].includes(s.key))} saving={saving} onSave={handleSave} />
       {/* Service Area — countries */}
@@ -357,6 +357,7 @@ const FRIENDLY_NAMES = {
   // Booking
   booking_window_days: 'Booking Window (days)',
   cancellation_window_hours: 'Free Cancellation (hours)',
+  cancellation_refund_percent: 'Cancellation Refund (%)',
   unassigned_alert_minutes: 'Unassigned Alert (min)',
   review_expiry_days: 'Review Expiry (days)',
   min_advance_booking_hours: 'Min Advance Booking (hours)',

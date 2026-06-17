@@ -357,8 +357,19 @@ async def notify_driver_batch_payout(db: AsyncSession, phone: str, variables: di
 
 
 async def notify_driver_run_cancelled(db: AsyncSession, phone: str, variables: dict):
+    """Driver SMS when an ADMIN reassigns the run (template wording: 'has been reassigned')."""
     template = await get_template(db, "sms_driver_run_cancelled")
     if not template:
         return
     message = render_template(template, variables)
     await send_sms(db, phone, message, "driver_run_cancelled")
+
+
+async def notify_driver_run_cancelled_by_rider(db: AsyncSession, phone: str, variables: dict):
+    """Driver SMS when the RIDER self-cancels from the receipt — distinct
+    wording so the driver knows the booking is fully gone (not reassigned)."""
+    template = await get_template(db, "sms_driver_run_cancelled_by_rider")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, phone, message, "driver_run_cancelled_by_rider")

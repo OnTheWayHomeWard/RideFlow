@@ -66,6 +66,7 @@ DEFAULT_SETTINGS = [
     # ── Booking ──
     ("booking_window_days", 30, "How many days ahead clients can book"),
     ("cancellation_window_hours", 24, "Hours before pickup that a rider can self-cancel from the receipt and get a full refund. Past this window the cancel button hides and admin must process any refund manually."),
+    ("cancellation_refund_percent", 100, "Percent of the paid amount returned when a rider self-cancels inside the window. 100 = full refund (default). Lower it to keep a cancellation fee — e.g. 80 refunds 80% and the business retains 20%."),
     ("min_advance_booking_hours", 0.5, "Minimum hours before pickup that a client can book. Decimals allowed (0.5 = 30 min)."),
     ("review_expiry_days", 3, "How many days after a ride a client can submit a review"),
     ("unassigned_alert_minutes", 15, "Alert admin if run unassigned after X minutes"),
@@ -110,7 +111,8 @@ DEFAULT_SETTINGS = [
     ("sms_guest_payment_link", "Hi {client_name}, a ride has been reserved for you by {hotel_name}: {pickup_name} -> {dropoff_name} on {pickup_date} at {pickup_time}. Total: ${total_amount}. Pay here: {payment_url}", "SMS to guest when cashier books for them. Vars: {client_name}, {hotel_name}, {pickup_name}, {dropoff_name}, {pickup_date}, {pickup_time}, {total_amount}, {payment_url}, {booking_number}"),
     ("sms_driver_new_run", "Hi {driver_name}, you have a new run! {pickup_name} -> {dropoff_name} on {pickup_date} at {pickup_time}. Client: {client_name}. Earnings: ${driver_earnings}.", "SMS to driver on run assignment."),
     ("sms_driver_ride_completed", "Hi {driver_name}, ride completed! {pickup_name} -> {dropoff_name}. You earned ${driver_earnings}. Great job!", "SMS to driver on ride completion."),
-    ("sms_driver_run_cancelled", "Hi {driver_name}, the run {pickup_name} -> {dropoff_name} on {pickup_date} at {pickup_time} has been reassigned. Reason: {reason}", "SMS to driver when run is reassigned."),
+    ("sms_driver_run_cancelled", "Hi {driver_name}, the run {pickup_name} -> {dropoff_name} on {pickup_date} at {pickup_time} has been reassigned. Reason: {reason}", "SMS to driver when run is reassigned by admin."),
+    ("sms_driver_run_cancelled_by_rider", "Hi {driver_name}, the rider cancelled their {pickup_name} -> {dropoff_name} run on {pickup_date} at {pickup_time}. The booking is no longer on your schedule.", "SMS to the assigned driver when the rider cancels from the receipt. Vars: {driver_name}, {pickup_name}, {dropoff_name}, {pickup_date}, {pickup_time}, {booking_number}"),
     ("sms_driver_payout_released", "Hi {driver_name}, your payout of ${amount} for {route} has been released! The funds are on their way.", "SMS to driver when payout released."),
     ("sms_driver_payout_flagged", "Hi {driver_name}, your payout of ${amount} for {route} has been flagged for review. Please contact support if you have questions.", "SMS to driver when payout flagged."),
     ("sms_driver_payout_rejected", "Hi {driver_name}, your payout of ${amount} for {route} has been rejected. Please contact support for details.", "SMS to driver when payout rejected."),
