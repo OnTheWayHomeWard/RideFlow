@@ -13,6 +13,10 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
   const [toast, setToast] = useState(null)
   const [extrasList, setExtrasList] = useState([])
   const [smsConsent, setSmsConsent] = useState(false)
+  // Contact-method tab — riders pick ONE channel (phone by default). Both values
+  // are kept in state so flipping the tab doesn't lose what they typed; we just
+  // hide the other input. Validation still requires at least one to be present.
+  const [contactMethod, setContactMethod] = useState('phone')
   // Forced extras from a matching pickup-group (e.g. airports auto-add Extra Luggage)
   const [forcedExtras, setForcedExtras] = useState([])  // list of slugs
   const [forcedGroupNames, setForcedGroupNames] = useState([])
@@ -140,7 +144,12 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
     const phone = (booking.clientPhone || '').trim()
     const email = (booking.clientEmail || '').trim()
     if (!phone && !email) {
-      setToast({ message: 'Please provide a phone number or email so we can send your receipt', type: 'warning' })
+      setToast({
+        message: contactMethod === 'phone'
+          ? 'Please enter a phone number so we can send your receipt'
+          : 'Please enter an email address so we can send your receipt',
+        type: 'warning',
+      })
       return
     }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -276,21 +285,59 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
             onChange={e => setBooking(prev => ({ ...prev, clientName: e.target.value }))}
             className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
           />
-          <PhoneInput
-            value={booking.clientPhone}
-            onChange={v => setBooking(prev => ({ ...prev, clientPhone: v }))}
-            placeholder="Phone number"
-          />
-          <input
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            placeholder="Email (optional)"
-            value={booking.clientEmail || ''}
-            onChange={e => setBooking(prev => ({ ...prev, clientEmail: e.target.value }))}
-            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
-          />
-          <p className="text-[11px] text-slate-400">Provide phone or email — we'll send the receipt and ride updates to whichever you give us.</p>
+          {/* Phone | Email segmented toggle — pick the channel you want updates on */}
+          <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setContactMethod('phone')}
+              className={`py-2 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${
+                contactMethod === 'phone'
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+              Phone
+            </button>
+            <button
+              type="button"
+              onClick={() => setContactMethod('email')}
+              className={`py-2 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${
+                contactMethod === 'email'
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              Email
+            </button>
+          </div>
+          {contactMethod === 'phone' ? (
+            <PhoneInput
+              value={booking.clientPhone}
+              onChange={v => setBooking(prev => ({ ...prev, clientPhone: v }))}
+              placeholder="Phone number"
+            />
+          ) : (
+            <input
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              placeholder="Email address"
+              value={booking.clientEmail || ''}
+              onChange={e => setBooking(prev => ({ ...prev, clientEmail: e.target.value }))}
+              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
+            />
+          )}
+          <p className="text-[11px] text-slate-400">
+            {contactMethod === 'phone'
+              ? "We'll text you your receipt and ride updates. Switch to Email if you'd rather get them by email."
+              : "We'll email you your receipt and ride updates. Switch to Phone for text messages instead."}
+          </p>
         </div>
       </Section>
 
@@ -366,7 +413,9 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
         </Section>
       )}
 
-      {/* SMS consent — OPTIONAL (Twilio A2P 10DLC 30923 compliance) */}
+      {/* SMS consent — OPTIONAL (Twilio A2P 10DLC 30923 compliance). Only shown
+          on the Phone tab; if the rider picked Email there's no SMS to consent to. */}
+      {contactMethod === 'phone' && (
       <div className="mb-5">
         <label className="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-xl cursor-pointer">
           <input type="checkbox" checked={smsConsent} onChange={e => setSmsConsent(e.target.checked)}
@@ -388,6 +437,7 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
           </span>
         </label>
       </div>
+      )}
 
       {/* Spacer so content isn't hidden behind the fixed pay bar */}
       <div className="h-4"></div>
