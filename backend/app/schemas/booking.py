@@ -63,7 +63,11 @@ class BookingOut(BaseModel):
     id: UUID
     booking_number: str
     client_name: str
-    client_phone: str
+    # Either phone or email must be set, but not necessarily both — schema-level
+    # validation runs at create time (see BookingCreateRequest). At read time
+    # both fields are nullable so a booking made with just email serializes fine.
+    client_phone: str | None = None
+    client_email: str | None = None
     client_room: str | None = None
 
     pickup_name: str
