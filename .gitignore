@@ -55,7 +55,8 @@ Thumbs.db
 # ── Claude Code working files ──
 .claude/
 
-# firebase-service-account.json is intentionally NOT in .gitignore — this is
-# a private repo and the FCM service account is tracked so deploys are
-# self-contained. If repo visibility ever changes, restore this exclusion
-# AND rotate the key in Firebase Console -> Service accounts immediately.
+# Firebase service account — created directly on the server, never committed.
+# (GitHub's secret scanner blocks the push anyway because it contains a
+# private key.) The docker-compose mount expects the file to be present at
+# the project root on the server before `docker compose up`.
+firebase-service-account.json
