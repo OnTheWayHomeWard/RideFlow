@@ -319,15 +319,24 @@ async def cancel_booking(booking_number: str, db: AsyncSession = Depends(get_db)
         refund_percent = 100.0
     refund_percent = max(0.0, min(100.0, refund_percent))
 
-    # Find the latest successful payment to refund
+    # Find the latest successful payment to refund. payment_service creates
+    # rows with status="captured"; older/legacy rows may say "succeeded". Cover
+    # both so the lookup actually matches and we don't end up refunding $0.
     p_r = await db.execute(
         select(Payment)
-        .where(Payment.booking_id == booking.id, Payment.status == "succeeded")
+        .where(
+            Payment.booking_id == booking.id,
+            Payment.status.in_(("captured", "succeeded")),
+        )
         .order_by(Payment.created_at.desc())
     )
     payment = p_r.scalars().first()
 
-    paid_amount = float(payment.amount) if payment else 0.0
+    # The booking status check above (`paid`/`assigned`) means the rider WAS
+    # charged. If we still can't find the Payment row for any reason (legacy
+    # data, dev seed without payments, race), fall back to booking.total_amount
+    # so the rider always sees the real number — not $0.00.
+    paid_amount = float(payment.amount) if payment else float(booking.total_amount or 0.0)
     # Round to cents so we never send Stripe a fractional-cent amount.
     refund_amount = round(paid_amount * refund_percent / 100.0, 2)
     refund_currency = (payment.currency if payment else "USD").lower()
@@ -378,13 +387,15 @@ async def cancel_booking(booking_number: str, db: AsyncSession = Depends(get_db)
     try:
         from app.utils.urls import get_client_base_url
         confirmation_url = f"{await get_client_base_url(db)}/confirmation/{booking.booking_number}"
-        # SMS — only fires if the rider consented; uses notify_client_refund helper (already gated)
+        # SMS — only fires if the rider consented; uses notify_client_refund helper (already gated).
+        # `reason` MUST be passed or the template renders literal "{reason}".
         from app.services.sms_service import notify_client_refund
         await notify_client_refund(db, booking, {
             "client_name": booking.client_name,
             "amount": f"{refund_amount:.2f}",
             "booking_number": booking.booking_number,
             "confirmation_url": confirmation_url,
+            "reason": "cancelled by you",
         })
     except Exception as e:
         import logging; logging.getLogger("cancel").exception(f"SMS notify failed: {e}")

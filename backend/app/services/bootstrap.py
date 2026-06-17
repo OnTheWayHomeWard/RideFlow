@@ -9,7 +9,7 @@ We do NOT seed operator data here (vehicle rates, extras, common routes, hotels,
 etc.) — those are domain-specific and belong to the operator to configure.
 """
 import os
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.database import async_session
 from app.models import Admin, Setting
@@ -107,7 +107,7 @@ DEFAULT_SETTINGS = [
     ("sms_client_booking", "Hi {client_name}, your ride is booked! {pickup_name} -> {dropoff_name} on {pickup_date}. View your receipt: {confirmation_url}", "SMS to client after booking. Vars: {client_name}, {pickup_name}, {dropoff_name}, {pickup_date}, {booking_number}, {confirmation_url}"),
     ("sms_client_ride_started", "Hi {client_name}, your ride has started! {driver_name} is taking you from {pickup_name} to {dropoff_name}. Rate your experience: {confirmation_url}", "SMS to client when ride starts. Vars: {client_name}, {driver_name}, {pickup_name}, {dropoff_name}, {confirmation_url}, {booking_number}"),
     ("sms_client_ride_completed", "Hi {client_name}, thanks for riding with us! We hope you enjoyed the trip with {driver_name}. We'd love your feedback — please rate your experience here: {confirmation_url}", "SMS to client when ride is completed (thank-you + feedback link). Vars: {client_name}, {driver_name}, {pickup_name}, {dropoff_name}, {confirmation_url}, {booking_number}"),
-    ("sms_client_refund", "Hi {client_name}, your booking {booking_number} has been refunded (${amount}). Reason: {reason}. The amount will appear in your account within 5-10 business days.", "SMS to client on refund. Vars: {client_name}, {booking_number}, {amount}, {reason}"),
+    ("sms_client_refund", "Hi {client_name}, your booking {booking_number} has been refunded (${amount}) — {reason}. The refund has been issued to your card right away.", "SMS to client on refund. Vars: {client_name}, {booking_number}, {amount}, {reason}"),
     ("sms_guest_payment_link", "Hi {client_name}, a ride has been reserved for you by {hotel_name}: {pickup_name} -> {dropoff_name} on {pickup_date} at {pickup_time}. Total: ${total_amount}. Pay here: {payment_url}", "SMS to guest when cashier books for them. Vars: {client_name}, {hotel_name}, {pickup_name}, {dropoff_name}, {pickup_date}, {pickup_time}, {total_amount}, {payment_url}, {booking_number}"),
     ("sms_driver_new_run", "Hi {driver_name}, you have a new run! {pickup_name} -> {dropoff_name} on {pickup_date} at {pickup_time}. Client: {client_name}. Earnings: ${driver_earnings}.", "SMS to driver on run assignment."),
     ("sms_driver_ride_completed", "Hi {driver_name}, ride completed! {pickup_name} -> {dropoff_name}. You earned ${driver_earnings}. Great job!", "SMS to driver on ride completion."),
@@ -158,19 +158,55 @@ async def ensure_default_admin():
         print(f"[bootstrap] Created super admin: {email}")
 
 
+# Templates whose previously-shipped default text has known bugs (literal
+# {placeholder} that was never wired, factually wrong wording, etc.). On boot
+# we replace the row ONLY if its current value still exactly matches the stale
+# string — meaning the admin never customized it via the UI. Any custom text
+# is left alone. Add (key, old_default) pairs here when you ship a fix that
+# needs to land on already-deployed installs without a manual UI edit.
+STALE_DEFAULT_UPGRADES = {
+    "sms_client_refund": (
+        # Old default — had literal "{reason}" because the cancel endpoint
+        # never passed it, and the 5-10-days line was misleading for Stripe.
+        "Hi {client_name}, your booking {booking_number} has been refunded (${amount}). Reason: {reason}. The amount will appear in your account within 5-10 business days.",
+    ),
+}
+
+
 async def ensure_default_settings():
-    """Insert any setting key that's missing. Never overwrites existing values."""
+    """Insert any setting key that's missing. Never overwrites custom values —
+    but does replace rows whose value still exactly matches a known-stale
+    default (see STALE_DEFAULT_UPGRADES) so bugfixes ship without a manual edit."""
     async with async_session() as db:
-        existing_r = await db.execute(select(Setting.key))
-        existing_keys = {row[0] for row in existing_r.all()}
+        existing_r = await db.execute(select(Setting.key, Setting.value))
+        existing = {row[0]: row[1] for row in existing_r.all()}
+        defaults_by_key = {k: (v, d) for k, v, d in DEFAULT_SETTINGS}
 
         added = 0
         for key, value, description in DEFAULT_SETTINGS:
-            if key in existing_keys:
+            if key in existing:
                 continue
             db.add(Setting(key=key, value=value, description=description))
             added += 1
 
-        if added:
+        upgraded = 0
+        for key, stale_values in STALE_DEFAULT_UPGRADES.items():
+            if key not in existing or key not in defaults_by_key:
+                continue
+            current = existing[key]
+            current_str = current if isinstance(current, str) else str(current)
+            if current_str in stale_values:
+                new_value, new_desc = defaults_by_key[key]
+                await db.execute(
+                    update(Setting)
+                    .where(Setting.key == key)
+                    .values(value=new_value, description=new_desc)
+                )
+                upgraded += 1
+
+        if added or upgraded:
             await db.commit()
-            print(f"[bootstrap] Inserted {added} missing default setting(s)")
+            if added:
+                print(f"[bootstrap] Inserted {added} missing default setting(s)")
+            if upgraded:
+                print(f"[bootstrap] Upgraded {upgraded} stale default template(s)")
