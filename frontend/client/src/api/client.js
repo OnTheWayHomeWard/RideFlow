@@ -30,6 +30,8 @@ export const api = {
   // Bookings
   createBooking: (data) => request('/bookings', { method: 'POST', body: JSON.stringify(data) }),
   getBookingStatus: (bookingNumber) => request(`/bookings/${bookingNumber}/status`),
+  getCancellationEligibility: (bookingNumber) => request(`/bookings/${bookingNumber}/cancellation-eligibility`),
+  cancelBooking: (bookingNumber) => request(`/bookings/${bookingNumber}/cancel`, { method: 'POST' }),
 
   // Payments
   createCheckout: (bookingNumber) => request(`/payments/create-checkout?booking_number=${bookingNumber}`, { method: 'POST' }),

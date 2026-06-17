@@ -65,7 +65,7 @@ DEFAULT_SETTINGS = [
 
     # ── Booking ──
     ("booking_window_days", 30, "How many days ahead clients can book"),
-    ("cancellation_window_hours", 2, "Hours before ride for full refund"),
+    ("cancellation_window_hours", 24, "Hours before pickup that a rider can self-cancel from the receipt and get a full refund. Past this window the cancel button hides and admin must process any refund manually."),
     ("min_advance_booking_hours", 0.5, "Minimum hours before pickup that a client can book. Decimals allowed (0.5 = 30 min)."),
     ("review_expiry_days", 3, "How many days after a ride a client can submit a review"),
     ("unassigned_alert_minutes", 15, "Alert admin if run unassigned after X minutes"),
@@ -92,6 +92,12 @@ DEFAULT_SETTINGS = [
 
     # ── SMS toggle ──
     ("sms_enabled", True, "Enable SMS notifications"),
+
+    # ── Email (Resend) ──
+    ("email_enabled", False, "Enable transactional email via Resend. Requires resend_api_key + resend_from_email below."),
+    ("resend_api_key", "", "Resend API key (Resend Dashboard -> API Keys). Treated as a secret — stored in DB but not displayed in plaintext after save."),
+    ("resend_from_email", "no-reply@gobellme.com", "From address for transactional emails. The domain MUST be verified in Resend before sending will work."),
+    ("resend_from_name", "GoBellMe", "Friendly name shown next to the from address (e.g. 'GoBellMe <no-reply@gobellme.com>')."),
     ("sms_override_consent", False, "Override the rider's SMS consent choice on the booking form — when ON, transactional SMS are sent to every booking regardless of whether the rider checked the consent box. Default OFF (respect the rider's choice)."),
 
     # ── SMS templates ──

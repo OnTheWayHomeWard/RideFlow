@@ -24,6 +24,11 @@ export default function Confirmation() {
     finally { setSubmittingRating(false) }
   }
 
+  const [cancelEligibility, setCancelEligibility] = useState(null)
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+  const [cancelResult, setCancelResult] = useState(null)
+
   useEffect(() => {
     const fetchStatus = () => {
       api.getBookingStatus(bookingNumber)
@@ -38,6 +43,32 @@ export default function Confirmation() {
     const interval = setInterval(fetchStatus, 15000)
     return () => clearInterval(interval)
   }, [bookingNumber])
+
+  // Fetch cancellation eligibility once we have the booking (low-frequency,
+  // just to decide whether to show the Cancel button).
+  useEffect(() => {
+    if (!booking || booking.status === 'cancelled') return
+    api.getCancellationEligibility(bookingNumber)
+      .then(setCancelEligibility)
+      .catch(() => setCancelEligibility(null))
+  }, [booking, bookingNumber])
+
+  const handleCancel = async () => {
+    if (cancelling) return
+    setCancelling(true)
+    try {
+      const res = await api.cancelBooking(bookingNumber)
+      setCancelResult(res)
+      // Refresh booking state so the page redraws as cancelled
+      const fresh = await api.getBookingStatus(bookingNumber).catch(() => null)
+      if (fresh) setBooking(fresh)
+      setCancelOpen(false)
+    } catch (e) {
+      alert(e.message || 'Could not cancel the booking. Please try again or contact support.')
+    } finally {
+      setCancelling(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -150,6 +181,54 @@ export default function Confirmation() {
           <DetailCard label="Total Paid" value={`$${booking.total_amount}`} icon="💳" />
         </div>
         <p className="text-[11px] text-slate-400 mb-5 text-center">All pickup times shown in {tzShortLabel(settings.business_timezone)}</p>
+
+        {/* Cancelled state — replaces driver block + any cancel UI */}
+        {booking.status === 'cancelled' && (
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5 text-center">
+            <p className="text-sm font-semibold text-slate-700 mb-1">This booking was cancelled</p>
+            {cancelResult?.refund_amount > 0 && (
+              <p className="text-xs text-slate-500">A refund of <b>${cancelResult.refund_amount.toFixed(2)}</b> has been issued. It typically appears on your statement within 5–10 business days.</p>
+            )}
+          </div>
+        )}
+
+        {/* Cancel button — only when the eligibility check says yes */}
+        {booking.status !== 'cancelled' && cancelEligibility?.cancellable && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-5">
+            <p className="text-sm font-semibold text-amber-900 mb-1">Need to cancel?</p>
+            <p className="text-xs text-amber-700 mb-3">
+              Free cancellation up to {Math.round(cancelEligibility.window_hours)}h before pickup. Cancel now for a full refund.
+            </p>
+            <button onClick={() => setCancelOpen(true)} disabled={cancelling}
+              className="w-full bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 disabled:opacity-60 rounded-xl py-2.5 text-sm font-semibold transition-colors">
+              {cancelling ? 'Cancelling…' : 'Cancel ride'}
+            </button>
+          </div>
+        )}
+
+        {/* Cancel confirmation modal */}
+        {cancelOpen && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4"
+            onClick={() => !cancelling && setCancelOpen(false)}>
+            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-5" onClick={e => e.stopPropagation()}>
+              <h2 className="text-lg font-bold text-slate-900 mb-1">Cancel this ride?</h2>
+              <p className="text-sm text-slate-500 mb-4">
+                You'll receive a full refund of <b className="text-slate-900">${booking.total_amount}</b>.
+                It usually appears on your statement within 5–10 business days. This cannot be undone.
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => setCancelOpen(false)} disabled={cancelling}
+                  className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold">
+                  Keep ride
+                </button>
+                <button onClick={handleCancel} disabled={cancelling}
+                  className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold disabled:opacity-60">
+                  {cancelling ? 'Cancelling…' : 'Yes, cancel'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Driver section */}
         {hasDriver ? (

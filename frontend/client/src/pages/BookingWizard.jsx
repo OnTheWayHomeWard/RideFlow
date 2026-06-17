@@ -23,6 +23,7 @@ export default function BookingWizard() {
     extras: [],
     clientName: '',
     clientPhone: '',
+    clientEmail: '',
     clientRoom: '',
   })
 

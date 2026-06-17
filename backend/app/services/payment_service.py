@@ -99,7 +99,7 @@ async def confirm_payment(db: AsyncSession, booking: Booking, stripe_payment_id:
     booking.status = "paid"
     booking.paid_at = datetime.now(timezone.utc)
 
-    # Send confirmation SMS to client
+    # Send confirmation SMS to client (gated by their sms_consent choice)
     from app.services.sms_service import notify_client_booking
     from app.utils.urls import get_client_base_url
     confirmation_url = f"{await get_client_base_url(db)}/confirmation/{booking.booking_number}"
@@ -111,6 +111,15 @@ async def confirm_payment(db: AsyncSession, booking: Booking, stripe_payment_id:
         "booking_number": booking.booking_number,
         "confirmation_url": confirmation_url,
     })
+
+    # Send confirmation email if the rider provided an email address.
+    # No-op when email is disabled or unconfigured.
+    if booking.client_email:
+        try:
+            from app.services.email_service import notify_client_booking_email
+            await notify_client_booking_email(db, booking, confirmation_url)
+        except Exception as e:
+            import logging; logging.getLogger("email").exception(f"booking email send failed: {e}")
 
     # Notify every admin via in-app inbox + FCM
     try:

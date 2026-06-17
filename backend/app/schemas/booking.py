@@ -1,13 +1,24 @@
 from uuid import UUID
 from datetime import date, time, datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, model_validator
 
 
 class BookingCreateRequest(BaseModel):
-    # Client info
+    # Client info — phone OR email is required. Both are accepted and used:
+    # confirmation, reminders, and status updates are sent over whichever
+    # channels the rider provided.
     client_name: str
-    client_phone: str
+    client_phone: str | None = None
+    client_email: EmailStr | None = None
     client_room: str | None = None
+
+    @model_validator(mode="after")
+    def _phone_or_email_required(self):
+        phone = (self.client_phone or "").strip()
+        email = (self.client_email or "").strip() if self.client_email else ""
+        if not phone and not email:
+            raise ValueError("Either a phone number or an email is required to book a ride.")
+        return self
 
     # Route
     pickup_name: str
@@ -92,6 +103,7 @@ class BookingStatusOut(BaseModel):
     pickup_date: date
     pickup_time: time
     total_amount: float
+    cancelled_at: datetime | None = None
     driver_name: str | None = None
     driver_vehicle: str | None = None
     driver_plate: str | None = None

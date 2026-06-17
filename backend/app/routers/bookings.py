@@ -1,3 +1,4 @@
+from datetime import timezone
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
@@ -8,6 +9,7 @@ from app.models.booking import Booking
 from app.models.cashier import Cashier
 from app.models.driver import Driver
 from app.models.rating import Rating
+from app.models.setting import Setting
 from app.schemas.booking import BookingCreateRequest, BookingOut, BookingStatusOut
 from app.services.pricing_service import calculate_price
 from app.services.geofence_service import validate_location
@@ -113,7 +115,8 @@ async def create_booking(req: BookingCreateRequest, db: AsyncSession = Depends(g
     booking = Booking(
         booking_number=booking_number,
         client_name=req.client_name,
-        client_phone=req.client_phone,
+        client_phone=(req.client_phone or None),
+        client_email=(req.client_email or None),
         client_room=req.client_room,
         pickup_name=req.pickup_name,
         pickup_address=req.pickup_address,
@@ -255,3 +258,172 @@ async def rate_booking(booking_number: str, req: RatingRequest, db: AsyncSession
 
     await db.commit()
     return {"message": "Thank you for your rating!"}
+
+
+# ─── Rider self-cancel from the receipt page ────────────────────────────
+
+@router.post("/bookings/{booking_number}/cancel")
+async def cancel_booking(booking_number: str, db: AsyncSession = Depends(get_db)):
+    """Rider cancels their own booking from the confirmation page.
+
+    Allowed only when the pickup is at least `cancellation_window_hours`
+    away (default 24h). When allowed, issues a FULL Stripe refund of the
+    most recent successful payment, flips the booking to `cancelled`,
+    notifies the rider (SMS + email), and pings every admin via the in-app
+    inbox. Outside the window, returns 400 — admin must handle manually.
+    """
+    from datetime import datetime, timedelta
+    from app.utils.timezone import get_business_tz
+    from app.models.payment import Payment
+
+    r = await db.execute(select(Booking).where(Booking.booking_number == booking_number))
+    booking = r.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.status in ("cancelled", "refunded"):
+        raise HTTPException(status_code=400, detail="This booking is already cancelled.")
+    if booking.status not in ("paid", "assigned"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"This booking cannot be cancelled (status: {booking.status}). Contact support if you need help.",
+        )
+
+    biz_tz = await get_business_tz(db)
+    pickup_dt = datetime.combine(booking.pickup_date, booking.pickup_time, tzinfo=biz_tz)
+
+    win_r = await db.execute(select(Setting).where(Setting.key == "cancellation_window_hours"))
+    win_s = win_r.scalar_one_or_none()
+    try:
+        window_hours = float(win_s.value) if win_s and win_s.value not in (None, "") else 24.0
+    except (TypeError, ValueError):
+        window_hours = 24.0
+
+    cutoff = datetime.now(biz_tz) + timedelta(hours=window_hours)
+    if pickup_dt < cutoff:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Free cancellation closes {int(window_hours)}h before pickup. "
+                f"Please contact support — an admin can still help."
+            ),
+        )
+
+    # Find the latest successful payment to refund
+    p_r = await db.execute(
+        select(Payment)
+        .where(Payment.booking_id == booking.id, Payment.status == "succeeded")
+        .order_by(Payment.created_at.desc())
+    )
+    payment = p_r.scalars().first()
+
+    refund_amount = float(payment.amount) if payment else 0.0
+    refund_currency = (payment.currency if payment else "USD").lower()
+    stripe_refund_id = None
+
+    if payment and payment.stripe_payment_id:
+        try:
+            import stripe, os
+            stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+            if stripe.api_key and not stripe.api_key.startswith("placeholder"):
+                # Refund by payment_intent — covers Checkout sessions whose stripe_payment_id is the PI
+                refund = stripe.Refund.create(payment_intent=payment.stripe_payment_id)
+                stripe_refund_id = refund.id
+            else:
+                # Dev mode — no real Stripe call; we still mark refunded so downstream UX is consistent.
+                stripe_refund_id = f"dev_refund_{booking.booking_number}"
+        except Exception as e:
+            # Surface stripe failures to the rider so they retry rather than silently failing.
+            raise HTTPException(status_code=502, detail=f"Refund failed at the payment processor: {e}. Please try again or contact support.")
+
+        payment.refund_amount = refund_amount
+        payment.refund_reason = "Rider self-cancelled within free-cancellation window"
+        payment.stripe_refund_id = stripe_refund_id
+        payment.refunded_at = datetime.now(timezone.utc)
+        payment.status = "refunded"
+
+    # Flip booking
+    booking.status = "cancelled"
+    booking.cancelled_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(booking)
+
+    # Best-effort notifications — never block the cancel
+    try:
+        from app.utils.urls import get_client_base_url
+        confirmation_url = f"{await get_client_base_url(db)}/confirmation/{booking.booking_number}"
+        # SMS — only fires if the rider consented; uses notify_client_refund helper (already gated)
+        from app.services.sms_service import notify_client_refund
+        await notify_client_refund(db, booking, {
+            "client_name": booking.client_name,
+            "amount": f"{refund_amount:.2f}",
+            "booking_number": booking.booking_number,
+            "confirmation_url": confirmation_url,
+        })
+    except Exception as e:
+        import logging; logging.getLogger("cancel").exception(f"SMS notify failed: {e}")
+
+    try:
+        from app.services.email_service import notify_client_cancellation_email
+        await notify_client_cancellation_email(db, booking, refund_amount, refund_currency)
+    except Exception as e:
+        import logging; logging.getLogger("cancel").exception(f"email notify failed: {e}")
+
+    try:
+        from app.services.notifications_service import notify_all_admins
+        await notify_all_admins(
+            db,
+            kind="booking_cancelled",
+            title=f"Booking {booking.booking_number} cancelled by rider",
+            body=f"{booking.client_name} cancelled — refund ${refund_amount:.2f} {refund_currency.upper()} issued.",
+            link=f"/admin/runs/{booking.id}",
+            related_type="booking",
+            related_id=booking.id,
+        )
+    except Exception as e:
+        import logging; logging.getLogger("cancel").exception(f"admin notify failed: {e}")
+
+    return {
+        "ok": True,
+        "booking_number": booking.booking_number,
+        "status": "cancelled",
+        "refund_amount": refund_amount,
+        "refund_currency": refund_currency,
+        "stripe_refund_id": stripe_refund_id,
+    }
+
+
+@router.get("/bookings/{booking_number}/cancellation-eligibility")
+async def cancellation_eligibility(booking_number: str, db: AsyncSession = Depends(get_db)):
+    """Lightweight check used by the receipt page to decide whether to show
+    the Cancel button. No mutations, no auth."""
+    from datetime import datetime, timedelta
+    from app.utils.timezone import get_business_tz
+
+    r = await db.execute(select(Booking).where(Booking.booking_number == booking_number))
+    booking = r.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    win_r = await db.execute(select(Setting).where(Setting.key == "cancellation_window_hours"))
+    win_s = win_r.scalar_one_or_none()
+    try:
+        window_hours = float(win_s.value) if win_s and win_s.value not in (None, "") else 24.0
+    except (TypeError, ValueError):
+        window_hours = 24.0
+
+    biz_tz = await get_business_tz(db)
+    pickup_dt = datetime.combine(booking.pickup_date, booking.pickup_time, tzinfo=biz_tz)
+    cutoff = datetime.now(biz_tz) + timedelta(hours=window_hours)
+
+    cancellable = (
+        booking.status in ("paid", "assigned")
+        and pickup_dt >= cutoff
+    )
+    return {
+        "cancellable": cancellable,
+        "status": booking.status,
+        "window_hours": window_hours,
+        "pickup_at": pickup_dt.isoformat(),
+        "free_cancel_until": (pickup_dt - timedelta(hours=window_hours)).isoformat(),
+    }

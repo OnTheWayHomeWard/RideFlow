@@ -137,8 +137,14 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
       setToast({ message: 'Please tell us what to call you', type: 'warning' })
       return
     }
-    if (!booking.clientPhone.trim()) {
-      setToast({ message: 'We need your phone number to send you the confirmation', type: 'warning' })
+    const phone = (booking.clientPhone || '').trim()
+    const email = (booking.clientEmail || '').trim()
+    if (!phone && !email) {
+      setToast({ message: 'Please provide a phone number or email so we can send your receipt', type: 'warning' })
+      return
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setToast({ message: 'That email address doesn\'t look quite right', type: 'warning' })
       return
     }
     if (hasRoomPickup && !booking.clientRoom.trim()) {
@@ -154,7 +160,8 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
     try {
       const result = await api.createBooking({
         client_name: booking.clientName,
-        client_phone: booking.clientPhone,
+        client_phone: phone || null,
+        client_email: email || null,
         client_room: booking.clientRoom || null,
         pickup_name: booking.pickup.name,
         pickup_address: booking.pickup.address,
@@ -274,6 +281,16 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
             onChange={v => setBooking(prev => ({ ...prev, clientPhone: v }))}
             placeholder="Phone number"
           />
+          <input
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder="Email (optional)"
+            value={booking.clientEmail || ''}
+            onChange={e => setBooking(prev => ({ ...prev, clientEmail: e.target.value }))}
+            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
+          />
+          <p className="text-[11px] text-slate-400">Provide phone or email — we'll send the receipt and ride updates to whichever you give us.</p>
         </div>
       </Section>
 

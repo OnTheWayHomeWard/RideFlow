@@ -13,6 +13,7 @@ export default function BookForGuest() {
   // Form state
   const [clientName, setClientName] = useState('')
   const [clientPhone, setClientPhone] = useState('')
+  const [clientEmail, setClientEmail] = useState('')
   const [clientRoom, setClientRoom] = useState('')
   const [editingPickup, setEditingPickup] = useState(false)
   const [customPickup, setCustomPickup] = useState(null)
@@ -62,7 +63,16 @@ export default function BookForGuest() {
     const dropoff = getDropoff()
     if (!dropoff || !dropoff.name) { showError('Please select a destination'); return }
     if (!clientName) { showError('Please enter guest name'); return }
-    if (!clientPhone || clientPhone.length < 5) { showError('Please enter guest phone number'); return }
+    const phone = (clientPhone || '').trim()
+    const email = (clientEmail || '').trim()
+    if ((!phone || phone.length < 5) && !email) {
+      showError('Please enter guest phone OR email (at least one)')
+      return
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showError('That email address looks invalid')
+      return
+    }
     if (!vehicleType) { showError('Please select a vehicle'); return }
     if (!pickupDate) { showError('Please select a date'); return }
     if (!pickupTime) { showError('Please select a time'); return }
@@ -71,7 +81,8 @@ export default function BookForGuest() {
     try {
       const payload = {
         client_name: clientName,
-        client_phone: clientPhone,
+        client_phone: phone || null,
+        client_email: email || null,
         client_room: clientRoom || null,
         dropoff_name: dropoff.name,
         dropoff_address: dropoff.address || dropoff.name,
@@ -242,6 +253,9 @@ export default function BookForGuest() {
           <input type="text" placeholder="Guest name" value={clientName} onChange={e => setClientName(e.target.value)} required
             className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
           <PhoneInput value={clientPhone} onChange={setClientPhone} placeholder="Guest phone number" />
+          <input type="email" inputMode="email" placeholder="Guest email (optional if phone given)" value={clientEmail} onChange={e => setClientEmail(e.target.value)}
+            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+          <p className="text-[11px] text-slate-400 -mt-1">At least one contact method is required. If you provide both, we'll send the receipt to both.</p>
           <input type="text" placeholder="Room number (optional)" value={clientRoom} onChange={e => setClientRoom(e.target.value)}
             className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
         </div>

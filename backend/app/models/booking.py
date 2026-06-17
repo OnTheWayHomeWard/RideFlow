@@ -17,7 +17,11 @@ class Booking(Base):
 
     # Client info
     client_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    client_phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Phone OR email is required at booking creation (enforced at the schema
+    # layer). Both become nullable on the row so either one can be the sole
+    # contact channel.
+    client_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    client_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     client_room: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # Route

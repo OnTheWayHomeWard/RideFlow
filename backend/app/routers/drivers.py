@@ -111,6 +111,16 @@ async def get_available_runs(
     )
     bookings = result.scalars().all()
 
+    # Hide runs whose pickup wall-clock is already in the past — drivers
+    # cannot accept those. Admin still sees them in /admin/runs.
+    from app.utils.timezone import get_business_tz
+    biz_tz = await get_business_tz(db)
+    now_local = datetime.now(biz_tz)
+    bookings = [
+        b for b in bookings
+        if datetime.combine(b.pickup_date, b.pickup_time, tzinfo=biz_tz) >= now_local
+    ]
+
     # Get driver's pay percentage to calculate earnings
     driver_pct = float(driver.pay_percentage) / 100
 
@@ -183,6 +193,19 @@ async def accept_run(
         raise HTTPException(
             status_code=400,
             detail="Run not available — already taken or doesn't match your vehicle",
+        )
+
+    # Past-pickup gate — drivers cannot accept rides whose pickup time has
+    # already passed. Only admins handle stale runs (reassign / cancel /
+    # refund manually). Compares the booking's wall-clock pickup against
+    # "now" in the business timezone.
+    from app.utils.timezone import get_business_tz
+    biz_tz = await get_business_tz(db)
+    pickup_dt = datetime.combine(booking.pickup_date, booking.pickup_time, tzinfo=biz_tz)
+    if pickup_dt < datetime.now(biz_tz):
+        raise HTTPException(
+            status_code=400,
+            detail="Pickup time for this run has already passed. Only an admin can handle it now.",
         )
 
     # Assign to this driver

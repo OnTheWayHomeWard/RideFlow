@@ -84,6 +84,7 @@ export default function Settings() {
 
       <SettingsGroup title="Stripe Connect" settings={otherSettings.filter(s => ['stripe_connect_enabled', 'payout_currency'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Notifications" settings={otherSettings.filter(s => ['sms_enabled', 'sms_override_consent'].includes(s.key))} saving={saving} onSave={handleSave} />
+      <SettingsGroup title="Email (Resend)" settings={otherSettings.filter(s => ['email_enabled', 'resend_api_key', 'resend_from_email', 'resend_from_name'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SmsTemplates settings={otherSettings.filter(s => s.key.startsWith('sms_') && s.key !== 'sms_enabled')} saving={saving} onSave={handleSave} />
       <AdminUsersCard />
       <ChangePasswordCard />
