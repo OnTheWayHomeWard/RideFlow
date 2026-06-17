@@ -8,6 +8,8 @@ import Earnings from './pages/driver/Earnings'
 import Profile from './pages/driver/Profile'
 import RunDetail from './pages/driver/RunDetail'
 import ChangePassword from './pages/driver/ChangePassword'
+import Notifications from './pages/driver/Notifications'
+import NotificationBell from './components/NotificationBell'
 
 const NAV = [
   { to: '/driver', end: true, label: 'Runs', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
@@ -55,7 +57,10 @@ export default function DriverApp() {
           )}
           <span className="font-bold text-sm text-slate-800">{settings.company_name || 'RideFlow'}</span>
         </div>
-        <button onClick={logout} className="text-xs text-red-500 hover:text-red-700 font-medium">Sign out</button>
+        <div className="flex items-center gap-1">
+          <NotificationBell api={api} to="/driver/notifications" />
+          <button onClick={logout} className="text-xs text-red-500 hover:text-red-700 font-medium ml-2">Sign out</button>
+        </div>
       </header>
 
       {!pwChanged && (
@@ -76,6 +81,7 @@ export default function DriverApp() {
           <Route path="earnings" element={<Earnings />} />
           <Route path="profile" element={<Profile />} />
           <Route path="change-password" element={<ChangePassword onChanged={() => { setPwChanged(true); localStorage.setItem('driver_pw_changed', 'true') }} />} />
+          <Route path="notifications" element={<Notifications />} />
           <Route path="*" element={<Navigate to="/driver" replace />} />
         </Routes>
       </main>

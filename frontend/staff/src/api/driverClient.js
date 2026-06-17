@@ -36,4 +36,15 @@ export const api = {
   stripeConnect: () => request('/drivers/stripe/connect', { method: 'POST' }),
   stripeStatus: () => request('/drivers/stripe/status'),
   stripeOnboardingLink: () => request('/drivers/stripe/onboarding-link', { method: 'POST' }),
+
+  // Persisted in-app inbox + FCM token registration (shared /api/notifications/*)
+  getInbox: (page = 1, perPage = 20, unreadOnly = false) =>
+    request(`/notifications?page=${page}&per_page=${perPage}${unreadOnly ? '&unread_only=true' : ''}`),
+  getUnreadCount: () => request('/notifications/unread-count'),
+  markRead: (id) => request(`/notifications/${id}/read`, { method: 'PUT' }),
+  markAllRead: () => request('/notifications/read-all', { method: 'PUT' }),
+  registerFcm: (token, userAgent) =>
+    request('/notifications/register-fcm', { method: 'POST', body: JSON.stringify({ token, user_agent: userAgent || null }) }),
+  deleteFcm: (token) =>
+    request('/notifications/fcm', { method: 'DELETE', body: JSON.stringify({ token }) }),
 }

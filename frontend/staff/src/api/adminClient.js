@@ -165,4 +165,18 @@ export const api = {
   // Settings
   getSettings: () => request('/admin/settings'),
   updateSetting: (key, value) => request('/admin/settings', { method: 'PUT', body: JSON.stringify({ key, value }) }),
+
+  // Persisted in-app inbox + FCM token registration (shared /api/notifications/*)
+  // NOTE: the existing getNotifications() above hits the legacy dynamic-feed
+  // /admin/notifications endpoint and is kept for backwards compat. The new
+  // bell + Notifications page use the methods below.
+  getInbox: (page = 1, perPage = 20, unreadOnly = false) =>
+    request(`/notifications?page=${page}&per_page=${perPage}${unreadOnly ? '&unread_only=true' : ''}`),
+  getUnreadCount: () => request('/notifications/unread-count'),
+  markRead: (id) => request(`/notifications/${id}/read`, { method: 'PUT' }),
+  markAllRead: () => request('/notifications/read-all', { method: 'PUT' }),
+  registerFcm: (token, userAgent) =>
+    request('/notifications/register-fcm', { method: 'POST', body: JSON.stringify({ token, user_agent: userAgent || null }) }),
+  deleteFcm: (token) =>
+    request('/notifications/fcm', { method: 'DELETE', body: JSON.stringify({ token }) }),
 }

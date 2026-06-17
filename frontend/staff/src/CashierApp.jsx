@@ -9,6 +9,8 @@ import Reservations from './pages/cashier/Reservations'
 import Referrals from './pages/cashier/Referrals'
 import Profile from './pages/cashier/Profile'
 import ChangePassword from './pages/cashier/ChangePassword'
+import Notifications from './pages/cashier/Notifications'
+import NotificationBell from './components/NotificationBell'
 
 export default function CashierApp() {
   const [passwordChanged, setPasswordChanged] = useState(localStorage.getItem('cashier_pw_changed') === 'true')
@@ -41,7 +43,10 @@ export default function CashierApp() {
           <Logo url={settings.company_logo_url} size="sm" />
           <span className="font-bold text-sm text-slate-800">{settings.company_name || 'RideFlow'}</span>
         </div>
-        <button onClick={logout} className="text-xs text-red-500 hover:text-red-700 font-medium">Sign out</button>
+        <div className="flex items-center gap-1">
+          <NotificationBell api={api} to="/cashier/notifications" />
+          <button onClick={logout} className="text-xs text-red-500 hover:text-red-700 font-medium ml-2">Sign out</button>
+        </div>
       </header>
 
       {!passwordChanged && (
@@ -65,6 +70,7 @@ export default function CashierApp() {
           <Route path="referrals" element={<Referrals />} />
           <Route path="profile" element={<Profile />} />
           <Route path="change-password" element={<ChangePassword onChanged={() => { setPasswordChanged(true); localStorage.setItem('cashier_pw_changed', 'true') }} />} />
+          <Route path="notifications" element={<Notifications />} />
           <Route path="*" element={<Navigate to="/cashier" replace />} />
         </Routes>
       </main>
