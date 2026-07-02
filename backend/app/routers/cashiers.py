@@ -1,6 +1,6 @@
 from datetime import date, time, timedelta, datetime, timezone
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, model_validator
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,12 +55,23 @@ async def get_my_profile(cashier: Cashier = Depends(get_current_cashier), db: As
     """Cashier views their own profile — read only."""
     hotel_name = ""
     hotel_commission = None
+    hotel_info = None
     if cashier.hotel_id:
         hotel_r = await db.execute(select(Hotel).where(Hotel.id == cashier.hotel_id))
         hotel = hotel_r.scalar_one_or_none()
         if hotel:
             hotel_name = hotel.name
             hotel_commission = float(hotel.default_commission_pct)
+            # Full hotel snapshot lets the Book-for-Guest screen sort popular
+            # routes by proximity to the actual pickup (this hotel) without a
+            # second round-trip.
+            hotel_info = {
+                "id": str(hotel.id),
+                "name": hotel.name,
+                "address": hotel.address,
+                "lat": float(hotel.lat) if hotel.lat else None,
+                "lng": float(hotel.lng) if hotel.lng else None,
+            }
 
     # Calculate effective commission: cashier override > hotel default > global default
     from app.models.setting import Setting as SettingModel
@@ -77,6 +88,7 @@ async def get_my_profile(cashier: Cashier = Depends(get_current_cashier), db: As
         "email": cashier.email,
         "ref_code": cashier.ref_code,
         "hotel_name": hotel_name,
+        "hotel": hotel_info,
         "commission_pct": effective_commission,
         "total_referrals": cashier.total_referrals,
         "total_earnings": float(cashier.total_earnings),
@@ -182,8 +194,21 @@ async def get_my_earnings(cashier: Cashier = Depends(get_current_cashier), db: A
 
 class GuestBookingRequest(BaseModel):
     client_name: str
-    client_phone: str
+    # Phone OR email — same rule as the client-side BookingCreateRequest. The
+    # cashier can now book an email-only guest (previously the endpoint crashed
+    # on notify_guest_payment_link when phone was None).
+    client_phone: Optional[str] = None
+    client_email: Optional[EmailStr] = None
     client_room: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _phone_or_email_required(self):
+        phone = (self.client_phone or "").strip()
+        email = (self.client_email or "").strip() if self.client_email else ""
+        if not phone and not email:
+            raise ValueError("Either a phone number or an email is required to book for a guest.")
+        return self
+
     pickup_name: Optional[str] = None
     pickup_address: Optional[str] = None
     pickup_lat: Optional[float] = None
@@ -253,7 +278,8 @@ async def book_for_guest(
     booking = Booking(
         booking_number=booking_number,
         client_name=req.client_name,
-        client_phone=req.client_phone,
+        client_phone=(req.client_phone or None),
+        client_email=(req.client_email or None),
         client_room=req.client_room,
         pickup_name=p_name,
         pickup_address=p_address,
@@ -287,10 +313,12 @@ async def book_for_guest(
     from app.services.payment_service import create_checkout_session
     checkout = await create_checkout_session(db, booking)
 
-    # Send SMS with payment link to guest
-    from app.services.sms_service import notify_guest_payment_link
+    # Send the payment link to whichever channels the cashier provided. Both
+    # helpers are best-effort — a Twilio/Resend outage shouldn't lose the
+    # booking. `channels_sent` tells the cashier UI what actually went out so
+    # the success screen doesn't lie ("Sent to phone" when the phone was blank).
     payment_url = checkout.get("checkout_url") or checkout.get("dev_confirm_url", "")
-    await notify_guest_payment_link(db, req.client_phone, {
+    vars = {
         "client_name": req.client_name,
         "hotel_name": hotel.name,
         "pickup_name": p_name,
@@ -300,7 +328,23 @@ async def book_for_guest(
         "total_amount": f"{float(price['total_amount']):.2f}",
         "payment_url": payment_url,
         "booking_number": booking_number,
-    })
+    }
+    channels_sent = []
+    if req.client_phone:
+        try:
+            from app.services.sms_service import notify_guest_payment_link
+            await notify_guest_payment_link(db, req.client_phone, vars)
+            channels_sent.append("sms")
+        except Exception as e:
+            import logging; logging.getLogger("cashier").exception(f"guest SMS failed: {e}")
+    if req.client_email:
+        try:
+            from app.services.email_service import notify_guest_payment_link_email
+            res = await notify_guest_payment_link_email(db, req.client_email, vars, booking)
+            if res.get("sent"):
+                channels_sent.append("email")
+        except Exception as e:
+            import logging; logging.getLogger("cashier").exception(f"guest email failed: {e}")
 
     await db.commit()
 
@@ -309,6 +353,8 @@ async def book_for_guest(
         "total_amount": float(price["total_amount"]),
         "payment_url": payment_url,
         "client_phone": req.client_phone,
+        "client_email": req.client_email,
+        "channels_sent": channels_sent,
     }
 
 

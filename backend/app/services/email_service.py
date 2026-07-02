@@ -167,6 +167,82 @@ async def notify_client_booking_email(
     )
 
 
+async def notify_guest_payment_link_email(
+    db: AsyncSession, to_email: str, variables: dict, booking,
+) -> dict:
+    """Send the payment-link email when a cashier books for a guest.
+
+    Subject line is settings-driven (`email_guest_payment_link_subject`) so
+    admins can tweak it without a redeploy — same template vars as the SMS
+    counterpart. The body renders a big Pay-Now CTA plus a plaintext fallback
+    for clients that don't render HTML."""
+    if not to_email:
+        return {"sent": False, "disabled": False, "error": "no email", "resend_id": None}
+
+    # Brand + subject template — read together in one query.
+    r = await db.execute(
+        select(Setting).where(
+            Setting.key.in_([
+                "company_name", "company_logo_url",
+                "email_guest_payment_link_subject",
+            ])
+        )
+    )
+    s = {row.key: row.value for row in r.scalars().all()}
+    brand = (s.get("company_name") or "GoBellMe")
+    logo = (s.get("company_logo_url") or None)
+    subject_tpl = (
+        s.get("email_guest_payment_link_subject")
+        or "Complete your ride reservation — {booking_number}"
+    )
+    try:
+        subject = subject_tpl.format(**variables)
+    except Exception:
+        # Broken template shouldn't kill the send — fall back to a safe default.
+        subject = f"Complete your ride reservation — {variables.get('booking_number', '')}"
+
+    name = variables.get("client_name") or "there"
+    text = (
+        f"Hi {name},\n\n"
+        f"A ride has been reserved for you by {variables.get('hotel_name', '')}.\n\n"
+        f"Pickup:  {variables.get('pickup_name', '')}\n"
+        f"Drop-off: {variables.get('dropoff_name', '')}\n"
+        f"When:    {variables.get('pickup_date', '')} {variables.get('pickup_time', '')}\n"
+        f"Total:   ${variables.get('total_amount', '')}\n\n"
+        f"Complete your payment here: {variables.get('payment_url', '')}\n\n"
+        f"— {brand}\n"
+    )
+    html = f"""\
+<!doctype html><html><body style="font-family:-apple-system,system-ui,Segoe UI,Roboto,Inter,sans-serif;background:#f8fafc;padding:20px;margin:0;">
+  <table align="center" width="560" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:24px;">
+    <tr><td style="padding-bottom:16px;border-bottom:1px solid #e2e8f0;">{_brand_block(brand, logo)}</td></tr>
+    <tr><td style="padding-top:20px;">
+      <h1 style="font-size:20px;color:#0f172a;margin:0 0 8px 0;">Complete your ride reservation</h1>
+      <p style="color:#475569;margin:0 0 20px 0;">
+        Hi {name}, {variables.get('hotel_name', '')} reserved a ride for you. Review the details and complete the payment to confirm.
+      </p>
+      <table cellpadding="6" cellspacing="0" style="width:100%;border-collapse:collapse;color:#0f172a;font-size:14px;">
+        <tr><td style="color:#64748b;width:32%;">Booking #</td><td><b>{variables.get('booking_number', '')}</b></td></tr>
+        <tr><td style="color:#64748b;">Pickup</td><td>{variables.get('pickup_name', '')}</td></tr>
+        <tr><td style="color:#64748b;">Drop-off</td><td>{variables.get('dropoff_name', '')}</td></tr>
+        <tr><td style="color:#64748b;">When</td><td>{variables.get('pickup_date', '')} {variables.get('pickup_time', '')}</td></tr>
+        <tr><td style="color:#64748b;">Total</td><td><b>${variables.get('total_amount', '')}</b></td></tr>
+      </table>
+      <p style="margin-top:24px;">
+        <a href="{variables.get('payment_url', '')}" style="display:inline-block;background:#7c3aed;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;">Pay ${variables.get('total_amount', '')}</a>
+      </p>
+      <p style="color:#94a3b8;font-size:12px;margin-top:24px;">
+        This link is unique to your reservation. If you didn't request this ride, you can ignore this email.
+      </p>
+    </td></tr>
+  </table>
+</body></html>"""
+    return await send_email(
+        db, to_email, subject, html, text=text,
+        related_type="booking", related_id=str(booking.id),
+    )
+
+
 async def notify_client_cancellation_email(
     db: AsyncSession, booking, refund_amount: float, currency: str = "usd",
 ) -> dict:

@@ -99,6 +99,7 @@ DEFAULT_SETTINGS = [
     ("resend_api_key", "", "Resend API key (Resend Dashboard -> API Keys). Treated as a secret — stored in DB but not displayed in plaintext after save."),
     ("resend_from_email", "no-reply@gobellme.com", "From address for transactional emails. The domain MUST be verified in Resend before sending will work."),
     ("resend_from_name", "GoBellMe", "Friendly name shown next to the from address (e.g. 'GoBellMe <no-reply@gobellme.com>')."),
+    ("email_guest_payment_link_subject", "Complete your ride reservation — {booking_number}", "Subject line for the payment-link email a cashier sends to a guest. Same template variables as sms_guest_payment_link."),
     ("sms_override_consent", False, "Override the rider's SMS consent choice on the booking form — when ON, transactional SMS are sent to every booking regardless of whether the rider checked the consent box. Default OFF (respect the rider's choice)."),
 
     # ── SMS templates ──

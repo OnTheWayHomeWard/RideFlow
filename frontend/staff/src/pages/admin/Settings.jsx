@@ -84,7 +84,7 @@ export default function Settings() {
 
       <SettingsGroup title="Stripe Connect" settings={otherSettings.filter(s => ['stripe_connect_enabled', 'payout_currency'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Notifications" settings={otherSettings.filter(s => ['sms_enabled', 'sms_override_consent'].includes(s.key))} saving={saving} onSave={handleSave} />
-      <SettingsGroup title="Email (Resend)" settings={otherSettings.filter(s => ['email_enabled', 'resend_api_key', 'resend_from_email', 'resend_from_name'].includes(s.key))} saving={saving} onSave={handleSave} />
+      <SettingsGroup title="Email (Resend)" settings={otherSettings.filter(s => ['email_enabled', 'resend_api_key', 'resend_from_email', 'resend_from_name', 'email_guest_payment_link_subject'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SmsTemplates settings={otherSettings.filter(s => s.key.startsWith('sms_') && s.key !== 'sms_enabled')} saving={saving} onSave={handleSave} />
       <AdminUsersCard />
       <ChangePasswordCard />
@@ -358,6 +358,12 @@ const FRIENDLY_NAMES = {
   booking_window_days: 'Booking Window (days)',
   cancellation_window_hours: 'Free Cancellation (hours)',
   cancellation_refund_percent: 'Cancellation Refund (%)',
+  // Email
+  email_enabled: 'Email Enabled (Resend)',
+  resend_api_key: 'Resend API Key',
+  resend_from_email: 'Resend From Address',
+  resend_from_name: 'Resend From Name',
+  email_guest_payment_link_subject: 'Guest Payment Link — Email Subject',
   unassigned_alert_minutes: 'Unassigned Alert (min)',
   review_expiry_days: 'Review Expiry (days)',
   min_advance_booking_hours: 'Min Advance Booking (hours)',

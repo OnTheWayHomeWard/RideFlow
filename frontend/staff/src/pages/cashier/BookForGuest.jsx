@@ -1,12 +1,16 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { api } from '../../api/cashierClient'
 import PhoneInput from '../../components/cashier/PhoneInput'
 import AddressInput from '../../components/cashier/AddressInput'
+import RouteCard, { collapseByRoute } from '../../components/cashier/RouteCard'
 
 export default function BookForGuest() {
   const [profile, setProfile] = useState(null)
+  const [hotel, setHotel] = useState(null)
   const [vehicles, setVehicles] = useState([])
-  const [routes, setRoutes] = useState([])
+  const [routes, setRoutes] = useState([])          // all common routes (fallback)
+  const [nearbyRoutes, setNearbyRoutes] = useState(null)  // direction-aware nearby list
+  const [vehicleRates, setVehicleRates] = useState([])
   const [extras, setExtras] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -17,8 +21,14 @@ export default function BookForGuest() {
   const [clientRoom, setClientRoom] = useState('')
   const [editingPickup, setEditingPickup] = useState(false)
   const [customPickup, setCustomPickup] = useState(null)
-  const [selectedRoute, setSelectedRoute] = useState('')
+
+  // Destination selection — one of:
+  //   { kind: 'route', pickup, dropoff } — chosen from RouteCard (populates BOTH pickup + dropoff)
+  //   { kind: 'custom', dropoff }        — cashier typed a custom destination
+  const [pickedRoute, setPickedRoute] = useState(null)
   const [customDest, setCustomDest] = useState(null)
+  const [customMode, setCustomMode] = useState(false)   // show custom-destination input
+
   const [googleApiKey, setGoogleApiKey] = useState('')
   const [serviceCountries, setServiceCountries] = useState([])
   const [serviceAreas, setServiceAreas] = useState([])
@@ -32,13 +42,22 @@ export default function BookForGuest() {
   const [result, setResult] = useState(null)
 
   useEffect(() => {
-    Promise.all([api.getMe(), api.getVehicleRates(), api.getCommonRoutes(), api.getExtras(), api.getPublicSettings()])
+    Promise.all([
+      api.getMe(),
+      api.getVehicleRates(),
+      api.getCommonRoutes(),
+      api.getExtras(),
+      api.getPublicSettings(),
+    ])
       .then(([p, v, r, e, s]) => {
         setProfile(p)
-        setVehicles(v.filter(x => x.is_active))
+        setHotel(p?.hotel || null)
+        const activeVehicles = v.filter(x => x.is_active)
+        setVehicles(activeVehicles)
+        setVehicleRates(activeVehicles)
         setRoutes(r)
         setExtras(e.filter(x => x.is_active))
-        if (v.length > 0) setVehicleType(v.filter(x => x.is_active)[0]?.vehicle_type || '')
+        if (activeVehicles.length > 0) setVehicleType(activeVehicles[0]?.vehicle_type || '')
         if (s.google_maps_api_key) setGoogleApiKey(s.google_maps_api_key)
         if (s.available_countries) setServiceCountries(s.available_countries)
         if (s.service_areas) setServiceAreas(s.service_areas)
@@ -46,27 +65,79 @@ export default function BookForGuest() {
       .catch(() => {}).finally(() => setLoading(false))
   }, [])
 
+  // Effective pickup coords — used to sort popular routes nearest-first.
+  // Order of preference: custom pickup (if the cashier is overriding) → hotel default.
+  const pickupCoords = useMemo(() => {
+    if (editingPickup && customPickup?.lat && customPickup?.lng) {
+      return { lat: parseFloat(customPickup.lat), lng: parseFloat(customPickup.lng) }
+    }
+    if (profile?.hotel?.lat && profile?.hotel?.lng) {
+      return { lat: parseFloat(profile.hotel.lat), lng: parseFloat(profile.hotel.lng) }
+    }
+    return null
+  }, [editingPickup, customPickup, profile])
+
+  // Fetch nearby routes whenever the effective pickup moves.
+  useEffect(() => {
+    if (!pickupCoords) { setNearbyRoutes(null); return }
+    api.getNearbyRoutes(pickupCoords.lat, pickupCoords.lng)
+      .then(res => setNearbyRoutes(res?.routes || []))
+      .catch(() => setNearbyRoutes(null))
+  }, [pickupCoords?.lat, pickupCoords?.lng])
+
+  // Cheapest "from $X" for a popular route — same logic as the client screen so
+  // the numbers match. Prefer backend-computed floor when present.
+  const floorPriceFor = (route) => {
+    if (route.from_price != null && !isNaN(Number(route.from_price))) return Math.round(Number(route.from_price))
+    const prices = route.prices || {}
+    if ('_base' in prices) {
+      const base = Number(prices._base) || 0
+      const cheapestVehicleBase = vehicleRates.length
+        ? Math.min(...vehicleRates.map(v => Number(v.base_fare) || 0))
+        : 0
+      return Math.round(base + cheapestVehicleBase)
+    }
+    const vals = Object.values(prices).filter(v => typeof v === 'number' && v > 0)
+    if (!vals.length) return null
+    return Math.round(Math.min(...vals))
+  }
+
   const getDropoff = () => {
-    if (selectedRoute === '_custom') return customDest
-    const route = routes.find(r => r.id === selectedRoute)
-    if (!route) return null
-    return { name: route.to_name, address: route.to_address, lat: route.to_lat, lng: route.to_lng }
+    if (pickedRoute?.kind === 'route') return pickedRoute.dropoff
+    if (pickedRoute?.kind === 'custom' && customDest) return customDest
+    return null
   }
 
   const getPickup = () => {
+    // A chosen popular route always sets its own pickup — overrides everything.
+    if (pickedRoute?.kind === 'route') return pickedRoute.pickup
+    // Otherwise, custom pickup if the cashier is overriding; else fall back to
+    // hotel (backend handles the hotel fallback if no pickup is sent).
     if (editingPickup && customPickup) return customPickup
-    return null // use hotel default
+    return null
+  }
+
+  const handleRouteSelect = (from, to) => {
+    setPickedRoute({ kind: 'route', pickup: from, dropoff: to })
+    setCustomMode(false)
+    setCustomDest(null)
+  }
+
+  const handleClearDestination = () => {
+    setPickedRoute(null)
+    setCustomDest(null)
+    setCustomMode(false)
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     const dropoff = getDropoff()
-    if (!dropoff || !dropoff.name) { showError('Please select a destination'); return }
+    if (!dropoff || !dropoff.name) { showError('Please pick a destination — a popular route or a custom address'); return }
     if (!clientName) { showError('Please enter guest name'); return }
     const phone = (clientPhone || '').trim()
     const email = (clientEmail || '').trim()
     if ((!phone || phone.length < 5) && !email) {
-      showError('Please enter guest phone OR email (at least one)')
+      showError('Enter a phone OR email for the guest — at least one is required')
       return
     }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -112,26 +183,56 @@ export default function BookForGuest() {
 
   if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 border-3 border-purple-600 border-t-transparent rounded-full animate-spin"></div></div>
 
-  // Success screen
+  // Success screen — mentions which channels actually delivered.
   if (result) {
+    const sent = result.channels_sent || []
+    const sentBoth = sent.includes('sms') && sent.includes('email')
+    const sentSms = sent.includes('sms')
+    const sentEmail = sent.includes('email')
+    const sentNone = sent.length === 0
     return (
       <div className="p-4 pb-20">
-        <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
-          <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-            <svg className="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+        <div className={`${sentNone ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'} border rounded-2xl p-6 text-center`}>
+          <div className={`w-14 h-14 ${sentNone ? 'bg-amber-100' : 'bg-green-100'} rounded-full flex items-center justify-center mx-auto mb-3`}>
+            {sentNone ? (
+              <svg className="w-7 h-7 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01M4.93 19h14.14a1 1 0 00.87-1.5L12.87 5a1 1 0 00-1.74 0L4.06 17.5a1 1 0 00.87 1.5z" /></svg>
+            ) : (
+              <svg className="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+            )}
           </div>
-          <h2 className="text-lg font-bold text-green-900 mb-1">Payment Link Sent!</h2>
-          <p className="text-sm text-green-700">A payment link has been sent to</p>
-          <p className="font-mono font-bold text-green-800 mt-1">{result.client_phone}</p>
-          <div className="mt-4 bg-white border border-green-200 rounded-xl p-3">
+          <h2 className={`text-lg font-bold ${sentNone ? 'text-amber-900' : 'text-green-900'} mb-1`}>
+            {sentNone ? 'Booking created — link not sent' : 'Payment Link Sent!'}
+          </h2>
+          <p className={`text-sm ${sentNone ? 'text-amber-700' : 'text-green-700'}`}>
+            {sentBoth && <>Sent to <b>{result.client_phone}</b> and <b>{result.client_email}</b>.</>}
+            {!sentBoth && sentSms && <>Sent by SMS to <b>{result.client_phone}</b>.</>}
+            {!sentBoth && sentEmail && <>Emailed to <b>{result.client_email}</b>.</>}
+            {sentNone && <>Neither SMS nor email went through. Share the link below with the guest manually.</>}
+          </p>
+          <div className={`mt-4 bg-white border ${sentNone ? 'border-amber-200' : 'border-green-200'} rounded-xl p-3`}>
             <p className="text-xs text-slate-400">Booking</p>
             <p className="font-mono font-bold text-sm">{result.booking_number}</p>
             <p className="text-xs text-slate-400 mt-2">Amount</p>
-            <p className="font-bold text-lg text-green-700">${result.total_amount.toFixed(2)}</p>
+            <p className={`font-bold text-lg ${sentNone ? 'text-amber-700' : 'text-green-700'}`}>${result.total_amount.toFixed(2)}</p>
+            {sentNone && result.payment_url && (
+              <>
+                <p className="text-xs text-slate-400 mt-2">Payment link</p>
+                <a href={result.payment_url} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-purple-700 underline break-all">{result.payment_url}</a>
+              </>
+            )}
           </div>
-          <p className="text-xs text-slate-500 mt-4">The guest will receive an SMS with the payment link. Once they pay, the booking will be confirmed and you'll earn your commission.</p>
+          <p className="text-xs text-slate-500 mt-4">
+            {sentNone
+              ? 'Check admin Settings for Twilio / Resend configuration if this keeps happening.'
+              : 'Once the guest pays, the booking is confirmed and your commission is recorded.'}
+          </p>
           <div className="flex gap-2 mt-4">
-            <button onClick={() => { setResult(null); setClientName(''); setClientPhone(''); setClientRoom(''); setSelectedRoute(''); setSelectedExtras([]) }}
+            <button onClick={() => {
+              setResult(null); setClientName(''); setClientPhone(''); setClientEmail(''); setClientRoom('')
+              setPickedRoute(null); setCustomDest(null); setCustomMode(false); setSelectedExtras([])
+              setEditingPickup(false); setCustomPickup(null)
+            }}
               className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700">
               Book Another
             </button>
@@ -143,6 +244,12 @@ export default function BookForGuest() {
       </div>
     )
   }
+
+  const dropoffChosen = getDropoff()
+  // Prefer nearby list (nearest-first); collapse forward/reverse to one card per route.
+  const displayRoutes = (nearbyRoutes && nearbyRoutes.length)
+    ? collapseByRoute(nearbyRoutes)
+    : routes.map(r => ({ ...r, route_id: r.id }))
 
   return (
     <div className="p-4 pb-20">
@@ -164,12 +271,24 @@ export default function BookForGuest() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
 
-        {/* Pickup */}
-        {!editingPickup ? (
+        {/* Pickup — hotel default with edit option. Hidden when a popular
+            route is selected, since routes carry their own pickup. */}
+        {pickedRoute?.kind === 'route' ? (
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-purple-600 font-medium">Pickup (from route)</p>
+              <p className="font-semibold text-sm text-purple-900 truncate">{pickedRoute.pickup?.name}</p>
+            </div>
+            <button type="button" onClick={handleClearDestination}
+              className="text-xs text-purple-600 font-medium px-2 py-1 bg-purple-100 rounded-lg hover:bg-purple-200">
+              Change route
+            </button>
+          </div>
+        ) : !editingPickup ? (
           <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 flex items-center justify-between">
             <div>
               <p className="text-xs text-purple-600 font-medium">Pickup</p>
-              <p className="font-semibold text-sm text-purple-900">{profile?.hotel_name || 'Your Hotel'}</p>
+              <p className="font-semibold text-sm text-purple-900">{profile?.hotel_name || hotel?.name || 'Your Hotel'}</p>
             </div>
             <button type="button" onClick={() => setEditingPickup(true)} className="text-xs text-purple-600 font-medium px-2 py-1 bg-purple-100 rounded-lg hover:bg-purple-200">
               Edit
@@ -195,28 +314,72 @@ export default function BookForGuest() {
           </div>
         )}
 
-        {/* Destination */}
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Destination</label>
-          <select value={selectedRoute} onChange={e => setSelectedRoute(e.target.value)}
-            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
-            <option value="">Select destination...</option>
-            {routes.map(r => (
-              <option key={r.id} value={r.id}>{r.to_name}</option>
-            ))}
-            <option value="_custom">Custom destination</option>
-          </select>
-        </div>
-
-        {selectedRoute === '_custom' && (
-          <AddressInput
-            value={customDest?.name || ''}
-            onChange={setCustomDest}
-            placeholder="Search destination address..."
-            googleApiKey={googleApiKey}
-            countries={serviceCountries}
-            serviceAreas={serviceAreas}
-          />
+        {/* Destination — three modes: pick a popular route, use custom, or the
+            "you picked X" summary once a choice is locked in. */}
+        {dropoffChosen ? (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center justify-between">
+            <div className="min-w-0">
+              <p className="text-xs text-green-700 font-medium">
+                {pickedRoute?.kind === 'route' ? 'Destination (from route)' : 'Custom destination'}
+              </p>
+              <p className="font-semibold text-sm text-green-900 truncate">{dropoffChosen.name}</p>
+            </div>
+            <button type="button" onClick={handleClearDestination}
+              className="text-xs text-green-700 font-medium px-2 py-1 bg-green-100 rounded-lg hover:bg-green-200 shrink-0 ml-2">
+              Change
+            </button>
+          </div>
+        ) : customMode ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-slate-700">Custom destination</label>
+              <button type="button" onClick={() => setCustomMode(false)}
+                className="text-xs text-slate-500 font-medium px-2 py-1 bg-slate-100 rounded-lg hover:bg-slate-200">
+                Back to popular routes
+              </button>
+            </div>
+            <AddressInput
+              value={customDest?.name || ''}
+              onChange={(loc) => { setCustomDest(loc); setPickedRoute({ kind: 'custom' }) }}
+              placeholder="Search destination address..."
+              googleApiKey={googleApiKey}
+              countries={serviceCountries}
+              serviceAreas={serviceAreas}
+            />
+          </div>
+        ) : (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-slate-700">
+                {nearbyRoutes && nearbyRoutes.length ? 'Popular routes near you' : 'Popular destinations'}
+              </label>
+              <button type="button" onClick={() => { setCustomMode(true); setPickedRoute(null) }}
+                className="text-xs text-purple-600 font-medium px-2 py-1 bg-purple-50 rounded-lg hover:bg-purple-100">
+                Custom destination
+              </button>
+            </div>
+            {displayRoutes.length === 0 ? (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
+                <p className="text-xs text-slate-500 mb-2">No popular routes configured.</p>
+                <button type="button" onClick={() => { setCustomMode(true); setPickedRoute(null) }}
+                  className="text-xs font-semibold text-purple-700">Enter a custom destination →</button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {displayRoutes.slice(0, 10).map(r => (
+                  <RouteCard
+                    key={r.route_id || r.id}
+                    route={r}
+                    floor={floorPriceFor(r)}
+                    near={r.near}
+                    distanceKm={r.origin_distance_km}
+                    onSelect={handleRouteSelect}
+                    disabled={submitting}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Vehicle type */}
@@ -255,7 +418,7 @@ export default function BookForGuest() {
           <PhoneInput value={clientPhone} onChange={setClientPhone} placeholder="Guest phone number" />
           <input type="email" inputMode="email" placeholder="Guest email (optional if phone given)" value={clientEmail} onChange={e => setClientEmail(e.target.value)}
             className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
-          <p className="text-[11px] text-slate-400 -mt-1">At least one contact method is required. If you provide both, we'll send the receipt to both.</p>
+          <p className="text-[11px] text-slate-400 -mt-1">At least one contact method is required. If you provide both, we'll send the payment link to both.</p>
           <input type="text" placeholder="Room number (optional)" value={clientRoom} onChange={e => setClientRoom(e.target.value)}
             className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
         </div>
