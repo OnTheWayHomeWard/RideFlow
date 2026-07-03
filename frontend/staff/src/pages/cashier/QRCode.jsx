@@ -15,7 +15,13 @@ export default function QRCode() {
   if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 border-3 border-purple-600 border-t-transparent rounded-full animate-spin"></div></div>
   if (!profile) return <p className="text-center text-slate-400 py-16">Failed to load</p>
 
-  const bookingUrl = `${window.location.origin.replace(/:\d+$/, ':5173')}/book?ref=${profile.ref_code}`
+  // Booking link points at the CLIENT app (e.g. https://ride.gobellme.com),
+  // never at the staff origin — guests scan and land on the rider flow.
+  // client_base_url is set in admin Settings → Public URLs. The
+  // window.location fallback is only for dev where the setting may be blank;
+  // strip any :5173 dev-server port and trailing slash so the concat is clean.
+  const clientBase = (settings.client_base_url || window.location.origin.replace(/:\d+$/, '')).replace(/\/$/, '')
+  const bookingUrl = `${clientBase}/book?ref=${profile.ref_code}`
   const companyName = settings.company_name || 'RideFlow'
   const companyPhone = settings.company_phone || ''
 
