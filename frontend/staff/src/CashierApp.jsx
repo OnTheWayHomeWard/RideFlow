@@ -29,13 +29,6 @@ export default function CashierApp() {
     }).catch(() => {})
   }, [])
 
-  const logout = () => {
-    localStorage.removeItem('cashier_token')
-    localStorage.removeItem('cashier_name')
-    localStorage.removeItem('cashier_pw_changed')
-    window.location.href = '/cashier/login'
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <header className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
@@ -45,7 +38,6 @@ export default function CashierApp() {
         </div>
         <div className="flex items-center gap-1">
           <NotificationBell api={api} to="/cashier/notifications" />
-          <button onClick={logout} className="text-xs text-red-500 hover:text-red-700 font-medium ml-2">Sign out</button>
         </div>
       </header>
 

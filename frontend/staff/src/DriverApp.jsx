@@ -35,13 +35,6 @@ export default function DriverApp() {
     }).catch(() => {})
   }, [])
 
-  const logout = () => {
-    localStorage.removeItem('driver_token')
-    localStorage.removeItem('driver_name')
-    localStorage.removeItem('driver_pw_changed')
-    window.location.href = '/driver/login'
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <header className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
@@ -59,7 +52,6 @@ export default function DriverApp() {
         </div>
         <div className="flex items-center gap-1">
           <NotificationBell api={api} to="/driver/notifications" />
-          <button onClick={logout} className="text-xs text-red-500 hover:text-red-700 font-medium ml-2">Sign out</button>
         </div>
       </header>
 
