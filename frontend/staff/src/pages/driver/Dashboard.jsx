@@ -68,15 +68,17 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* My schedule preview */}
-      {schedule.filter(s => s.status === 'assigned').length > 0 && (
+      {/* My schedule preview — includes recent cancellations too so the driver
+          sees a ride was pulled from under them without having to dig into
+          Schedule. Cancelled rows are visually flagged inside the card. */}
+      {schedule.filter(s => s.status !== 'in_progress').length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-semibold text-slate-900">My Upcoming</h2>
             <Link to="/driver/schedule" className="text-xs text-blue-600 font-medium">View all</Link>
           </div>
           <div className="space-y-2">
-            {schedule.filter(s => s.status === 'assigned').slice(0, 3).map(r => (
+            {schedule.filter(s => s.status !== 'in_progress').slice(0, 3).map(r => (
               <RunCard key={r.id} r={r} linkTo={`/driver/ride/${r.id}`} compact />
             ))}
           </div>
@@ -97,16 +99,28 @@ function fmtDate(d) {
 // Two-row itinerary card, matches the client confirm summary + admin trip
 // visual. Earnings sit under the date on their own line so they don't collide
 // with long place names on narrow screens; the amount stays visually
-// prominent thanks to the green colour + bold weight.
+// prominent thanks to the green colour + bold weight. Cancelled/refunded rides
+// flip the whole card to red and strike through the earnings so a driver can
+// scan the list and instantly see which rides are voided.
 function RunCard({ r, linkTo, compact }) {
-  const to = linkTo || `/driver/run-detail/${r.id}`
+  const isCancelled = r.status === 'cancelled' || r.status === 'refunded'
+  const to = linkTo || (isCancelled ? `/driver/ride/${r.id}` : `/driver/run-detail/${r.id}`)
   const hasExtras = !compact && r.extras_chosen && r.extras_chosen.length > 0
+  const frame = isCancelled
+    ? 'bg-red-50 border-red-200 hover:border-red-300'
+    : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-sm'
   return (
     <Link
       to={to}
       state={r}
-      className={`block bg-white border border-slate-200 rounded-xl ${compact ? 'p-3' : 'p-4'} hover:border-blue-300 hover:shadow-sm active:scale-[0.99] transition-all`}
+      className={`block border rounded-xl ${compact ? 'p-3' : 'p-4'} active:scale-[0.99] transition-all ${frame}`}
     >
+      {isCancelled && (
+        <div className="flex items-center gap-1.5 mb-2">
+          <span className="text-[10px] font-bold uppercase tracking-wide bg-red-600 text-white px-1.5 py-0.5 rounded">Cancelled</span>
+          <span className="text-[10px] text-red-700">Rider cancelled — no earnings</span>
+        </div>
+      )}
       <div className="flex items-start gap-3">
         {/* Track: blue dot → dotted line → green dot */}
         <div className="flex flex-col items-center pt-[5px] shrink-0">
@@ -136,8 +150,12 @@ function RunCard({ r, linkTo, compact }) {
           <span className="truncate">{fmtDate(r.pickup_date)} · {r.pickup_time?.slice(0, 5)}</span>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide leading-none">Earn</p>
-          <p className={`${compact ? 'text-base' : 'text-lg'} font-bold text-green-700 leading-tight`}>${r.driver_earnings?.toFixed(2)}</p>
+          <p className={`text-[10px] font-semibold uppercase tracking-wide leading-none ${isCancelled ? 'text-red-500' : 'text-slate-400'}`}>Earn</p>
+          {isCancelled ? (
+            <p className={`${compact ? 'text-base' : 'text-lg'} font-bold text-red-500 leading-tight line-through decoration-2`}>${r.driver_earnings?.toFixed(2)}</p>
+          ) : (
+            <p className={`${compact ? 'text-base' : 'text-lg'} font-bold text-green-700 leading-tight`}>${r.driver_earnings?.toFixed(2)}</p>
+          )}
         </div>
       </div>
 

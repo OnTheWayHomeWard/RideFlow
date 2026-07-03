@@ -470,7 +470,11 @@ async def cancel_booking(booking_number: str, db: AsyncSession = Depends(get_db)
                     kind="run_cancelled_by_rider",
                     title=f"Run cancelled — {booking.booking_number}",
                     body=f"The rider cancelled {booking.pickup_name} → {booking.dropoff_name} ({booking.pickup_date} {str(booking.pickup_time)[:5]}). It's been removed from your schedule.",
-                    link=f"/driver/run-detail/{booking.id}",
+                    # Driver had ALREADY accepted this booking (we're inside the
+                    # `if booking.driver_id:` block), so the correct destination is
+                    # /driver/ride/<id> — the ActiveRide view. /driver/run-detail is
+                    # for still-available runs and 404s once a booking is assigned.
+                    link=f"/driver/ride/{booking.id}",
                     related_type="booking",
                     related_id=booking.id,
                 )

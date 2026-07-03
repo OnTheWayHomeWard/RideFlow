@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta, date
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pydantic import BaseModel as PydanticBaseModel
@@ -615,11 +615,26 @@ async def get_schedule(
     driver: Driver = Depends(get_current_driver),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get upcoming runs (assigned, not yet completed)."""
+    """Get upcoming runs plus recent cancellations.
+
+    Drivers want to see the runs they still need to do (assigned/in_progress)
+    AND any ride that was cancelled from under them recently, so a phantom
+    booking doesn't just silently disappear from their list. Cancellations
+    older than 7 days drop off — long enough for a driver to notice and
+    reconcile with earnings, short enough to keep the list scannable.
+    """
+    from datetime import date, timedelta
+    cancelled_cutoff = date.today() - timedelta(days=7)
     result = await db.execute(
         select(Booking).where(
             Booking.driver_id == driver.id,
-            Booking.status.in_(["assigned", "in_progress"]),
+            or_(
+                Booking.status.in_(["assigned", "in_progress"]),
+                and_(
+                    Booking.status.in_(["cancelled", "refunded"]),
+                    Booking.pickup_date >= cancelled_cutoff,
+                ),
+            ),
         ).order_by(Booking.pickup_date, Booking.pickup_time)
     )
     bookings = result.scalars().all()

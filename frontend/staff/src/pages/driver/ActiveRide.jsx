@@ -67,6 +67,7 @@ export default function ActiveRide({ settings }) {
 
   const isAssigned = ride.status === 'assigned'
   const isInProgress = ride.status === 'in_progress'
+  const isCancelled = ride.status === 'cancelled' || ride.status === 'refunded'
 
   return (
     <div className="p-4 pb-32">
@@ -78,10 +79,36 @@ export default function ActiveRide({ settings }) {
 
       {/* Status */}
       <div className={`text-center py-2 px-4 rounded-xl mb-4 text-sm font-medium ${
-        isInProgress ? 'bg-amber-100 text-amber-800' : isAssigned ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+        isCancelled ? 'bg-red-100 text-red-800' :
+        isInProgress ? 'bg-amber-100 text-amber-800' :
+        isAssigned ? 'bg-blue-100 text-blue-800' :
+        'bg-green-100 text-green-800'
       }`}>
-        {isInProgress ? 'Ride in Progress' : isAssigned ? 'Upcoming Ride' : ride.status === 'completed' ? 'Ride Completed' : ride.status}
+        {isCancelled ? 'Ride Cancelled by Rider' :
+         isInProgress ? 'Ride in Progress' :
+         isAssigned ? 'Upcoming Ride' :
+         ride.status === 'completed' ? 'Ride Completed' :
+         ride.status}
       </div>
+
+      {/* Cancelled explainer — red card confirms the ride is off their schedule
+          and no earnings will accrue, so a driver landing here from the FCM
+          push isn't left guessing what happened. */}
+      {isCancelled && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center shrink-0">
+              <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </div>
+            <div>
+              <p className="font-bold text-sm text-red-900 mb-0.5">This ride was cancelled by the rider</p>
+              <p className="text-xs text-red-700">It's been removed from your schedule and no earnings will accrue for this booking.</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Route */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 mb-4">

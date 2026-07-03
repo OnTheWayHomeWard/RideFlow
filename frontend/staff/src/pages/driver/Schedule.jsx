@@ -21,7 +21,11 @@ export default function Schedule() {
   return (
     <div className="p-4 pb-20">
       <h1 className="text-xl font-bold text-slate-900 mb-1">My Schedule</h1>
-      <p className="text-sm text-slate-500 mb-4">{runs.length} upcoming rides</p>
+      <p className="text-sm text-slate-500 mb-4">
+        {runs.filter(r => r.status === 'assigned' || r.status === 'in_progress').length} upcoming
+        {runs.filter(r => r.status === 'cancelled' || r.status === 'refunded').length > 0 &&
+          ` · ${runs.filter(r => r.status === 'cancelled' || r.status === 'refunded').length} cancelled`}
+      </p>
 
       {runs.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-xl p-8 text-center">
@@ -37,21 +41,7 @@ export default function Schedule() {
                 <div className="flex-1 h-px bg-slate-200"></div>
               </div>
               <div className="space-y-2">
-                {g.items.map(r => (
-                  <Link key={r.id} to={`/driver/ride/${r.id}`} className="block bg-white border border-slate-200 rounded-xl p-4 hover:border-blue-300 transition-all">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-sm font-bold text-slate-900">{r.pickup_time?.slice(0, 5)}</p>
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${r.status === 'in_progress' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                        {r.status === 'in_progress' ? 'In Progress' : 'Upcoming'}
-                      </span>
-                    </div>
-                    <p className="text-sm text-slate-700">{r.pickup_name} → {r.dropoff_name}</p>
-                    <div className="flex items-center justify-between mt-2 text-xs text-slate-500">
-                      <span>{r.client_name}</span>
-                      <span className="font-bold text-green-700 text-sm">${r.driver_earnings.toFixed(0)}</span>
-                    </div>
-                  </Link>
-                ))}
+                {g.items.map(r => <ScheduleRunCard key={r.id} r={r} />)}
               </div>
             </div>
           ))}
@@ -67,4 +57,55 @@ function fmtGroupDate(d) {
   if (d === today) return 'Today'
   if (d === tmrw) return 'Tomorrow'
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+// Same itinerary layout as the dashboard's RunCard so the driver reads one
+// consistent visual across screens. Time is the primary label at the top;
+// status badge sits next to it. Cancelled cards get the red-frame + struck-
+// through earnings treatment.
+function ScheduleRunCard({ r }) {
+  const isCancelled = r.status === 'cancelled' || r.status === 'refunded'
+  const isInProgress = r.status === 'in_progress'
+  const frame = isCancelled
+    ? 'bg-red-50 border-red-200 hover:border-red-300'
+    : 'bg-white border-slate-200 hover:border-blue-300'
+  const badge = isCancelled ? { label: 'Cancelled', style: 'bg-red-600 text-white' }
+    : isInProgress ? { label: 'In Progress', style: 'bg-amber-100 text-amber-700' }
+    : { label: 'Upcoming', style: 'bg-blue-100 text-blue-700' }
+  return (
+    <Link to={`/driver/ride/${r.id}`} className={`block border rounded-xl p-4 transition-all ${frame}`}>
+      <div className="flex items-center justify-between mb-2.5">
+        <p className="text-sm font-bold text-slate-900">{r.pickup_time?.slice(0, 5)}</p>
+        <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${badge.style}`}>{badge.label}</span>
+      </div>
+      <div className="flex items-start gap-3">
+        <div className="flex flex-col items-center pt-[5px] shrink-0">
+          <span className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-blue-100" />
+          <span className="flex-1 my-1 border-l-2 border-dotted border-slate-300 min-h-[16px]" />
+          <span className="w-2 h-2 rounded-full bg-green-500 ring-2 ring-green-100" />
+        </div>
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <div className="truncate">
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mr-1">From</span>
+            <span className="text-sm text-slate-900">{r.pickup_name}</span>
+          </div>
+          <div className="truncate">
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mr-1">To</span>
+            <span className="text-sm text-slate-900">{r.dropoff_name}</span>
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
+        <span className="text-xs text-slate-500 truncate">{r.client_name}</span>
+        <div className="text-right shrink-0">
+          <p className={`text-[10px] font-semibold uppercase tracking-wide leading-none ${isCancelled ? 'text-red-500' : 'text-slate-400'}`}>Earn</p>
+          {isCancelled ? (
+            <p className="text-base font-bold text-red-500 leading-tight line-through decoration-2">${r.driver_earnings?.toFixed(2)}</p>
+          ) : (
+            <p className="text-base font-bold text-green-700 leading-tight">${r.driver_earnings?.toFixed(2)}</p>
+          )}
+        </div>
+      </div>
+    </Link>
+  )
 }
