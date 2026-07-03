@@ -156,6 +156,14 @@ async def get_my_earnings(cashier: Cashier = Depends(get_current_cashier), db: A
     week_start = today - timedelta(days=today.weekday())
     month_start = today.replace(day=1)
 
+    # Splits stay in the table after cancel — we flip payout_status to
+    # 'cancelled' rather than deleting them so the audit trail survives.
+    # Every dashboard sum here MUST exclude them; otherwise a rider-cancelled
+    # booking keeps showing up in the cashier's "today / week / month / total"
+    # tallies. The floating "Today's Earnings" bar in the referrals page was
+    # doing exactly that.
+    ACTIVE_STATUSES = ("pending", "pending_review", "released", "transfer_failed", "flagged")
+
     async def sum_for_period(start_date):
         start_dt = datetime(start_date.year, start_date.month, start_date.day, tzinfo=timezone.utc)
         r = await db.execute(
@@ -164,6 +172,7 @@ async def get_my_earnings(cashier: Cashier = Depends(get_current_cashier), db: A
             .where(
                 PaymentSplit.recipient_id == cashier.id,
                 PaymentSplit.recipient_type == "cashier",
+                PaymentSplit.payout_status.in_(ACTIVE_STATUSES),
                 Booking.paid_at >= start_dt,  # use paid_at, not pickup_date
             )
         )
@@ -176,7 +185,11 @@ async def get_my_earnings(cashier: Cashier = Depends(get_current_cashier), db: A
     # Total — calculated live from all splits, not from cached field
     total_r = await db.execute(
         select(func.coalesce(func.sum(PaymentSplit.amount), 0), func.count(PaymentSplit.id))
-        .where(PaymentSplit.recipient_id == cashier.id, PaymentSplit.recipient_type == "cashier")
+        .where(
+            PaymentSplit.recipient_id == cashier.id,
+            PaymentSplit.recipient_type == "cashier",
+            PaymentSplit.payout_status.in_(ACTIVE_STATUSES),
+        )
     )
     total_amt, total_cnt = total_r.one()
 
