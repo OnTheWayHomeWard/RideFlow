@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../../api/cashierClient'
 import PhoneInput from '../../components/cashier/PhoneInput'
 import AddressInput from '../../components/cashier/AddressInput'
@@ -19,6 +20,9 @@ export default function BookForGuest() {
   const [clientPhone, setClientPhone] = useState('')
   const [clientEmail, setClientEmail] = useState('')
   const [clientRoom, setClientRoom] = useState('')
+  // Same segmented Phone|Email UX as the rider flow — both values persist
+  // when the tab flips so a mistaken tap doesn't wipe what the cashier typed.
+  const [contactMethod, setContactMethod] = useState('phone')
   const [editingPickup, setEditingPickup] = useState(false)
   const [customPickup, setCustomPickup] = useState(null)
 
@@ -173,7 +177,9 @@ export default function BookForGuest() {
     const phone = (clientPhone || '').trim()
     const email = (clientEmail || '').trim()
     if ((!phone || phone.length < 5) && !email) {
-      showError('Enter a phone OR email for the guest — at least one is required')
+      showError(contactMethod === 'phone'
+        ? 'Enter a phone number for the guest'
+        : 'Enter an email address for the guest')
       return
     }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -272,9 +278,9 @@ export default function BookForGuest() {
               className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700">
               Book Another
             </button>
-            <a href="/reservations" className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-sm font-semibold text-center hover:bg-slate-200">
+            <Link to="/cashier/reservations" className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-sm font-semibold text-center hover:bg-slate-200">
               View Reservations
-            </a>
+            </Link>
           </div>
         </div>
       </div>
@@ -472,10 +478,55 @@ export default function BookForGuest() {
           <p className="text-xs text-slate-400 uppercase tracking-wide font-medium">Guest Information</p>
           <input type="text" placeholder="Guest name" value={clientName} onChange={e => setClientName(e.target.value)} required
             className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
-          <PhoneInput value={clientPhone} onChange={setClientPhone} placeholder="Guest phone number" />
-          <input type="email" inputMode="email" placeholder="Guest email" value={clientEmail} onChange={e => setClientEmail(e.target.value)}
-            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
-          <p className="text-[11px] text-slate-400 -mt-1">Provide phone or email — we'll send the payment link to whichever you give us. Both is fine.</p>
+          {/* Phone | Email segmented toggle — pick the channel the guest
+              wants the payment link on. Both values stay in state. */}
+          <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setContactMethod('phone')}
+              className={`py-2 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${
+                contactMethod === 'phone'
+                  ? 'bg-white text-purple-700 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+              Phone
+            </button>
+            <button
+              type="button"
+              onClick={() => setContactMethod('email')}
+              className={`py-2 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${
+                contactMethod === 'email'
+                  ? 'bg-white text-purple-700 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              Email
+            </button>
+          </div>
+          {contactMethod === 'phone' ? (
+            <PhoneInput value={clientPhone} onChange={setClientPhone} placeholder="Guest phone number" />
+          ) : (
+            <input
+              type="email"
+              inputMode="email"
+              placeholder="Guest email address"
+              value={clientEmail}
+              onChange={e => setClientEmail(e.target.value)}
+              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          )}
+          <p className="text-[11px] text-slate-400 -mt-1">
+            {contactMethod === 'phone'
+              ? "We'll text the payment link. Switch to Email if the guest prefers."
+              : "We'll email the payment link. Switch to Phone for SMS instead."}
+          </p>
           <input type="text" placeholder="Room number (optional)" value={clientRoom} onChange={e => setClientRoom(e.target.value)}
             className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
         </div>
