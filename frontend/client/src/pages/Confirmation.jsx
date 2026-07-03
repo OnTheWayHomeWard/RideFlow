@@ -114,29 +114,39 @@ export default function Confirmation() {
         <span className="ml-auto text-xs bg-white/20 px-2.5 py-1 rounded-full">Confirmation</span>
       </header>
 
-      {/* Dynamic status banner */}
+      {/* Dynamic status banner — cancelled/refunded switch the whole strip to
+          red so the state is obvious the moment the rider lands. Previously
+          cancelled fell through to the green "Ride Booked" fallback. */}
       <div className={`border-b px-4 py-3 flex items-center gap-3 ${
+        booking.status === 'cancelled' || booking.status === 'refunded' ? 'bg-red-50 border-red-100' :
         booking.status === 'in_progress' ? 'bg-amber-50 border-amber-100' :
         booking.status === 'completed' ? 'bg-green-50 border-green-100' :
         booking.status === 'assigned' ? 'bg-blue-50 border-blue-100' :
         'bg-green-50 border-green-100'
       }`}>
         <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+          booking.status === 'cancelled' || booking.status === 'refunded' ? 'bg-red-100' :
           booking.status === 'in_progress' ? 'bg-amber-100' :
           booking.status === 'completed' ? 'bg-green-100' :
           booking.status === 'assigned' ? 'bg-blue-100' :
           'bg-green-100'
         }`}>
-          {booking.status === 'in_progress' ? '🚗' : booking.status === 'completed' ? '✓' : booking.status === 'assigned' ? '👤' : '✓'}
+          {booking.status === 'cancelled' || booking.status === 'refunded' ? '✕' :
+           booking.status === 'in_progress' ? '🚗' :
+           booking.status === 'completed' ? '✓' :
+           booking.status === 'assigned' ? '👤' : '✓'}
         </div>
         <div>
           <p className={`font-bold text-sm ${
+            booking.status === 'cancelled' || booking.status === 'refunded' ? 'text-red-900' :
             booking.status === 'in_progress' ? 'text-amber-900' :
             booking.status === 'completed' ? 'text-green-900' :
             booking.status === 'assigned' ? 'text-blue-900' :
             'text-green-900'
           }`}>
-            {booking.status === 'in_progress' ? 'Ride in Progress' :
+            {booking.status === 'cancelled' ? 'Ride Cancelled' :
+             booking.status === 'refunded' ? 'Ride Refunded' :
+             booking.status === 'in_progress' ? 'Ride in Progress' :
              booking.status === 'completed' ? 'Ride Completed' :
              booking.status === 'assigned' ? 'Driver Assigned' :
              'Ride Booked'}
@@ -182,13 +192,28 @@ export default function Confirmation() {
         </div>
         <p className="text-[11px] text-slate-400 mb-5 text-center">All pickup times shown in {tzShortLabel(settings.business_timezone)}</p>
 
-        {/* Cancelled state — replaces driver block + any cancel UI */}
+        {/* Cancelled state — replaces the driver block. Rendered in red so
+            it's obvious this ride isn't happening; a green "confirmed" strip
+            here would give riders the wrong impression at a glance. */}
         {booking.status === 'cancelled' && (
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5 text-center">
-            <p className="text-sm font-semibold text-slate-700 mb-1">This booking was cancelled</p>
-            {cancelResult?.refund_amount > 0 && (
-              <p className="text-xs text-slate-500">A refund of <b>${cancelResult.refund_amount.toFixed(2)}</b> has been issued. It typically appears on your statement within 5–10 business days.</p>
-            )}
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-5">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-sm text-red-900 mb-0.5">This booking has been cancelled</p>
+                {cancelResult?.refund_amount > 0 ? (
+                  <p className="text-xs text-red-700">
+                    A refund of <b>${cancelResult.refund_amount.toFixed(2)}</b> has been issued to your card right away.
+                  </p>
+                ) : (
+                  <p className="text-xs text-red-700">Your ride was cancelled and any refund owed has been issued to your original payment method.</p>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -236,8 +261,10 @@ export default function Confirmation() {
           </div>
         )}
 
-        {/* Driver section */}
-        {hasDriver ? (
+        {/* Driver section — hidden for cancelled bookings; the red cancel
+            card above already tells the whole story and a green "Booking
+            confirmed!" strip underneath would contradict it. */}
+        {booking.status === 'cancelled' ? null : hasDriver ? (
           <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-5">
             <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-3">Your Driver</p>
             <div className="flex items-center gap-3">

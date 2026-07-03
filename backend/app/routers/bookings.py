@@ -477,6 +477,59 @@ async def cancel_booking(booking_number: str, db: AsyncSession = Depends(get_db)
             except Exception as e:
                 import logging; logging.getLogger("cancel").exception(f"driver in-app notify failed: {e}")
 
+    # If a cashier booked this ride (guest checkout via a hotel desk), void
+    # their pending commission and drop them an in-app note. No SMS here —
+    # cashiers work at a desk, in-app is enough. Doing this AFTER the driver
+    # block so a failure in one doesn't skip the other.
+    if booking.cashier_id:
+        from app.models.payment_split import PaymentSplit
+        from app.models.cashier import Cashier as CashierModel
+        cashier_r = await db.execute(select(CashierModel).where(CashierModel.id == booking.cashier_id))
+        cashier = cashier_r.scalar_one_or_none()
+
+        # Void the cashier commission — no earning on a cancelled ride, and
+        # roll back the cached total_earnings tally so their dashboard doesn't
+        # keep counting the phantom sale.
+        try:
+            cs_r = await db.execute(
+                select(PaymentSplit).where(
+                    PaymentSplit.booking_id == booking.id,
+                    PaymentSplit.recipient_type == "cashier",
+                    PaymentSplit.payout_status.in_(("pending", "pending_review", "released")),
+                )
+            )
+            voided_total = 0.0
+            for split in cs_r.scalars().all():
+                if split.payout_status != "cancelled":
+                    voided_total += float(split.amount or 0)
+                split.payout_status = "cancelled"
+            if cashier and voided_total > 0:
+                cashier.total_earnings = float(cashier.total_earnings or 0) - voided_total
+                if cashier.total_earnings < 0:
+                    cashier.total_earnings = 0
+                if cashier.total_referrals and cashier.total_referrals > 0:
+                    cashier.total_referrals -= 1
+            await db.commit()
+        except Exception as e:
+            import logging; logging.getLogger("cancel").exception(f"voiding cashier split failed: {e}")
+
+        if cashier:
+            try:
+                from app.services.notifications_service import notify
+                await notify(
+                    db,
+                    recipient_type="cashier",
+                    recipient_id=cashier.id,
+                    kind="booking_cancelled_by_rider",
+                    title=f"Guest cancelled — {booking.booking_number}",
+                    body=f"{booking.client_name} cancelled {booking.pickup_name} → {booking.dropoff_name} ({booking.pickup_date} {str(booking.pickup_time)[:5]}). Your commission has been reversed.",
+                    link=f"/reservations",
+                    related_type="booking",
+                    related_id=booking.id,
+                )
+            except Exception as e:
+                import logging; logging.getLogger("cancel").exception(f"cashier in-app notify failed: {e}")
+
     return {
         "ok": True,
         "booking_number": booking.booking_number,
