@@ -1,5 +1,5 @@
-import { useLocation, useNavigate } from 'react-router-dom'
-import { useState } from 'react'
+import { useLocation, useNavigate, useParams, Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import { api } from '../../api/driverClient'
 
 const EXTRA_LABELS = {
@@ -8,13 +8,102 @@ const EXTRA_LABELS = {
   child_seat: 'Child Seat',
 }
 
+// Landing states:
+//   - state != null                          → came from the dashboard Link (fast path)
+//   - state == null, run in available list   → came from an FCM/inbox tap; fetch and render
+//   - state == null, run in driver's own list→ they've already accepted this run themselves
+//   - state == null, run not in either list  → someone else grabbed it (or it was cancelled)
 export default function RunDetail() {
-  const { state: run } = useLocation()
+  const { state: navState } = useLocation()
+  const { runId } = useParams()
   const navigate = useNavigate()
+  const [run, setRun] = useState(navState || null)
+  const [status, setStatus] = useState(navState ? 'ok' : 'loading')  // loading | ok | taken | mine
+  const [mineId, setMineId] = useState(null)
   const [accepting, setAccepting] = useState(false)
   const [error, setError] = useState('')
 
-  if (!run) return <div className="p-4 text-center text-slate-400 py-16">Run not found. Go back and try again.</div>
+  useEffect(() => {
+    if (navState || !runId) return
+    // No state — hit the API. First check available runs; if the id lands
+    // there, we can render normally. Otherwise check my-runs to see if the
+    // current driver already accepted this run themselves (common when they
+    // tap the FCM push after grabbing it from another device).
+    let cancelled = false
+    ;(async () => {
+      try {
+        const available = await api.getAvailableRuns()
+        const hit = (available || []).find(r => r.id === runId)
+        if (cancelled) return
+        if (hit) { setRun(hit); setStatus('ok'); return }
+        const mine = await api.getMyRuns().catch(() => [])
+        if (cancelled) return
+        const own = (mine || []).find(r => r.id === runId)
+        if (own) {
+          setRun(own); setMineId(own.id); setStatus('mine')
+          return
+        }
+        setStatus('taken')
+      } catch (e) {
+        if (!cancelled) setStatus('taken')
+      }
+    })()
+    return () => { cancelled = true }
+  }, [runId, navState])
+
+  if (status === 'loading') {
+    return (
+      <div className="flex justify-center py-16">
+        <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (status === 'taken') {
+    // Somebody else grabbed it, or the rider cancelled and it's no longer a
+    // discoverable run. Deliberately do NOT reveal WHO has the run — drivers
+    // shouldn't be able to see who accepted a booking they didn't get.
+    return (
+      <div className="p-4 pb-20">
+        <button onClick={() => navigate('/driver')} className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-4">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+          Back
+        </button>
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">
+          <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
+            <svg className="w-7 h-7 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-bold text-amber-900 mb-1">This run has already been taken</h2>
+          <p className="text-sm text-amber-700">Another driver grabbed it first, or the rider cancelled. It's no longer available.</p>
+          <Link to="/driver" className="inline-block mt-4 py-2.5 px-5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700">
+            See available runs
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  if (status === 'mine') {
+    // Driver already owns this run — route them to the ride view instead of
+    // showing the accept CTA a second time. Use replace so Back doesn't
+    // loop them back into this component.
+    return (
+      <div className="p-4 pb-20">
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 text-center">
+          <p className="text-sm text-blue-900 font-medium mb-3">You've already accepted this run.</p>
+          <Link
+            to={`/driver/ride/${mineId}`}
+            replace
+            className="inline-block py-2.5 px-5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700"
+          >
+            Open ride
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   const hasExtras = run.extras_chosen && run.extras_chosen.length > 0
 
