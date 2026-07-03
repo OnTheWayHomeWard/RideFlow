@@ -28,19 +28,17 @@ export default function Layout({ auth, children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [me, setMe] = useState(null)
   const [unreadContacts, setUnreadContacts] = useState(0)
-  const [unreadNotifications, setUnreadNotifications] = useState(0)
   const settings = useSettings()
 
   useEffect(() => { api.getMe().then(setMe).catch(() => {}) }, [])
 
+  // Unread notifications count is now owned by the bell (NotificationCenter).
+  // Layout still polls contacts because that badge sits on the sidebar tab.
   useEffect(() => {
     let cancelled = false
     const tick = () => {
       api.unreadContactCount()
         .then(r => { if (!cancelled) setUnreadContacts(r?.count || 0) })
-        .catch(() => {})
-      api.getUnreadCount()
-        .then(r => { if (!cancelled) setUnreadNotifications(r?.count || 0) })
         .catch(() => {})
     }
     tick()
@@ -109,11 +107,6 @@ export default function Layout({ auth, children }) {
               {item.badgeKey === 'contacts' && unreadContacts > 0 && (
                 <span className="bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
                   {unreadContacts}
-                </span>
-              )}
-              {item.badgeKey === 'notifications' && unreadNotifications > 0 && (
-                <span className="bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
-                  {unreadNotifications > 99 ? '99+' : unreadNotifications}
                 </span>
               )}
             </NavLink>
