@@ -223,22 +223,45 @@ export default function StepConfirm({ booking, setBooking, cashierRef, onBack })
 
       <h2 className="text-xl font-bold text-slate-900 mb-4">Confirm your ride</h2>
 
-      {/* Route + Vehicle summary — tappable to go back */}
+      {/* Route + Vehicle summary — tappable to go back. Route is rendered as
+          a two-row itinerary (blue dot = pickup, green dot = drop-off) joined
+          by a dotted vertical line, which matches the way the driver / admin
+          screens visualise a trip and is easier to skim than "A → B" on one
+          line, especially for long addresses. */}
       <button
         onClick={onBack}
-        className="w-full bg-white border border-slate-200 rounded-xl p-3 mb-5 flex items-center gap-3 hover:border-blue-300 transition-all text-left"
+        className="w-full bg-white border border-slate-200 rounded-xl p-3 mb-5 flex items-start gap-3 hover:border-blue-300 transition-all text-left"
       >
-        <div className="w-16 h-12 bg-slate-50 rounded-lg flex items-center justify-center">
+        <div className="w-16 h-12 bg-slate-50 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
           <img
             src={vehicle?.image_url || `https://img.icons8.com/fluency/100/${vehicle?.vehicle_type === 'van' ? 'shuttle-bus' : vehicle?.vehicle_type === 'large_van' ? 'bus2' : vehicle?.vehicle_type || 'sedan'}.png`}
             alt="" className="w-12 h-12 object-contain"
           />
         </div>
-        <div className="flex-1">
-          <p className="font-semibold text-sm text-slate-900">{vehicle?.display_name}</p>
-          <p className="text-xs text-slate-500">{booking.pickup?.name} → {booking.dropoff?.name}</p>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm text-slate-900 mb-1.5">{vehicle?.display_name}</p>
+          <div className="flex items-start gap-2">
+            {/* Track: blue dot → dotted line → green dot. Line height is
+                driven by the row heights next to it, so a single-line pickup
+                and a two-line drop-off still align correctly. */}
+            <div className="flex flex-col items-center pt-[5px] shrink-0">
+              <span className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-blue-100" />
+              <span className="flex-1 my-1 border-l-2 border-dotted border-slate-300 min-h-[16px]" />
+              <span className="w-2 h-2 rounded-full bg-green-500 ring-2 ring-green-100" />
+            </div>
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <p className="text-xs text-slate-700 truncate" title={booking.pickup?.name}>
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mr-1">From</span>
+                {booking.pickup?.name}
+              </p>
+              <p className="text-xs text-slate-700 truncate" title={booking.dropoff?.name}>
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mr-1">To</span>
+                {booking.dropoff?.name}
+              </p>
+            </div>
+          </div>
         </div>
-        <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-4 h-4 text-slate-400 shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
         </svg>
       </button>
