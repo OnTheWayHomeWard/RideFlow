@@ -902,7 +902,7 @@ async def list_bookings(
 
         out.append(AdminBookingOut(
             id=b.id, booking_number=b.booking_number,
-            client_name=b.client_name, client_phone=b.client_phone,
+            client_name=b.client_name, client_phone=b.client_phone, client_email=b.client_email,
             pickup_name=b.pickup_name, dropoff_name=b.dropoff_name,
             pickup_date=b.pickup_date, pickup_time=b.pickup_time,
             vehicle_type=b.vehicle_type, passengers=b.passengers,

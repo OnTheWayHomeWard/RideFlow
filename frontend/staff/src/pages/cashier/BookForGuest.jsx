@@ -85,6 +85,42 @@ export default function BookForGuest() {
       .catch(() => setNearbyRoutes(null))
   }, [pickupCoords?.lat, pickupCoords?.lng])
 
+  // Live price preview — recalc whenever the inputs settle. Debounced 300ms so
+  // rapid typing doesn't spam the backend. Same /pricing/calculate endpoint the
+  // client flow uses, so the number matches what the guest will be charged.
+  const [quote, setQuote] = useState(null)
+  const [quoteLoading, setQuoteLoading] = useState(false)
+  const [quoteError, setQuoteError] = useState('')
+  useEffect(() => {
+    const dropoff = getDropoff()
+    const pickup = getPickup()
+    const usePickup = pickup || (profile?.hotel?.lat && profile?.hotel?.lng
+      ? { lat: profile.hotel.lat, lng: profile.hotel.lng }
+      : null)
+    if (!dropoff?.lat || !dropoff?.lng || !usePickup?.lat || !usePickup?.lng || !vehicleType) {
+      setQuote(null); setQuoteError(''); return
+    }
+    setQuoteLoading(true)
+    const t = setTimeout(() => {
+      const pickup_dt = pickupDate && pickupTime
+        ? `${pickupDate}T${pickupTime.length === 5 ? pickupTime + ':00' : pickupTime}`
+        : null
+      api.calculatePrice({
+        pickup_lat: parseFloat(usePickup.lat),
+        pickup_lng: parseFloat(usePickup.lng),
+        dropoff_lat: parseFloat(dropoff.lat),
+        dropoff_lng: parseFloat(dropoff.lng),
+        vehicle_type: vehicleType,
+        extras: selectedExtras,
+        pickup_dt,
+      })
+        .then(r => { setQuote(r); setQuoteError('') })
+        .catch(err => { setQuote(null); setQuoteError(err?.message || 'Could not price this ride') })
+        .finally(() => setQuoteLoading(false))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [pickedRoute, customDest, customPickup, editingPickup, vehicleType, selectedExtras, pickupDate, pickupTime, profile])
+
   // Cheapest "from $X" for a popular route — same logic as the client screen so
   // the numbers match. Prefer backend-computed floor when present.
   const floorPriceFor = (route) => {
@@ -396,9 +432,12 @@ export default function BookForGuest() {
           </div>
         </div>
 
-        {/* Date + Time — same order-of-operations as the client flow: date
-            first, then time. Changing the date wipes a stale time so you can't
-            keep a value that's no longer reachable. */}
+        {/* Date + Time — date first, then time; changing the date wipes a
+            stale time. Native date/time inputs on mobile only open the picker
+            when the icon is tapped; showPicker() attached to onClick makes the
+            whole input box open the picker. Wrapped in try/catch because
+            showPicker throws in some contexts (e.g. non-user gesture, old
+            browsers) and we don't want a broken picker to noisily error. */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
@@ -406,9 +445,10 @@ export default function BookForGuest() {
               type="date"
               value={pickupDate}
               onChange={e => { setPickupDate(e.target.value); setPickupTime('') }}
+              onClick={e => { try { e.currentTarget.showPicker?.() } catch {} }}
               min={new Date().toISOString().split('T')[0]}
               required
-              className="w-full px-3 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full px-3 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
             />
           </div>
           <div>
@@ -417,10 +457,11 @@ export default function BookForGuest() {
               type="time"
               value={pickupTime}
               onChange={e => setPickupTime(e.target.value)}
+              onClick={e => { if (pickupDate) { try { e.currentTarget.showPicker?.() } catch {} } }}
               disabled={!pickupDate}
               required
               placeholder={pickupDate ? 'Select time' : 'Pick date first'}
-              className="w-full px-3 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+              className="w-full px-3 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer"
             />
             {!pickupDate && <p className="text-[10px] text-slate-400 mt-1">Pick a date first</p>}
           </div>
@@ -461,10 +502,49 @@ export default function BookForGuest() {
           </div>
         )}
 
-        {/* Submit */}
+        {/* Live price preview — recomputed as the cashier fills the form.
+            Prevents the "sent link, then realized the total was wrong" case. */}
+        {(quote || quoteLoading || quoteError) && (
+          <div className={`rounded-xl p-4 border ${
+            quoteError ? 'bg-red-50 border-red-200' :
+            quote ? 'bg-purple-50 border-purple-200' :
+            'bg-slate-50 border-slate-200'
+          }`}>
+            {quoteLoading && !quote && (
+              <p className="text-xs text-slate-500 flex items-center gap-2">
+                <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" strokeWidth={2} className="opacity-25" /><path strokeWidth={2} d="M4 12a8 8 0 018-8" />
+                </svg>
+                Calculating price…
+              </p>
+            )}
+            {quoteError && !quoteLoading && (
+              <p className="text-sm text-red-700">{quoteError}</p>
+            )}
+            {quote && !quoteError && (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-purple-600 uppercase tracking-wide font-medium">Total for guest</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Base ${Number(quote.base_amount).toFixed(2)}
+                    {Number(quote.extras_amount) > 0 && <> · Extras ${Number(quote.extras_amount).toFixed(2)}</>}
+                    {quote.distance_miles && <> · {Number(quote.distance_miles).toFixed(1)} mi</>}
+                  </p>
+                </div>
+                <p className="text-2xl font-bold text-purple-700">${Number(quote.total_amount).toFixed(2)}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Submit — shows the price so the cashier confirms with eyes open. */}
         <button type="submit" disabled={submitting}
           className="w-full py-4 bg-purple-600 text-white rounded-xl font-bold text-sm hover:bg-purple-700 active:scale-[0.98] transition-all disabled:opacity-60">
-          {submitting ? 'Sending...' : 'Send Payment Link to Guest'}
+          {submitting
+            ? 'Sending...'
+            : quote
+              ? `Send Payment Link — $${Number(quote.total_amount).toFixed(2)}`
+              : 'Send Payment Link to Guest'}
         </button>
       </form>
     </div>

@@ -68,7 +68,8 @@ class PayoutRequestOut(BaseModel):
     driver_phone: str
     driver_id: UUID | None = None
     client_name: str
-    client_phone: str
+    # Nullable — email-only bookings will have client_phone=None.
+    client_phone: str | None = None
     vehicle_type: str
     total_fare: float
     driver_amount: float
@@ -255,7 +256,10 @@ class AdminBookingOut(BaseModel):
     id: UUID
     booking_number: str
     client_name: str
-    client_phone: str
+    # Either phone or email is set (schema-level guarantee at create time).
+    # Serializer must accept null so email-only bookings don't crash the list.
+    client_phone: str | None = None
+    client_email: str | None = None
     pickup_name: str
     dropoff_name: str
     pickup_date: date

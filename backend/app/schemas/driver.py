@@ -78,7 +78,8 @@ class DriverRunOut(BaseModel):
     extras_chosen: list | None = None
     notes: str | None = None
     client_name: str
-    client_phone: str
+    # Nullable — email-only bookings will have client_phone=None.
+    client_phone: str | None = None
     client_room: str | None = None
     driver_earnings: float
     status: str

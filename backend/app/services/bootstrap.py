@@ -109,7 +109,7 @@ DEFAULT_SETTINGS = [
     ("sms_client_ride_started", "Hi {client_name}, your ride has started! {driver_name} is taking you from {pickup_name} to {dropoff_name}. Rate your experience: {confirmation_url}", "SMS to client when ride starts. Vars: {client_name}, {driver_name}, {pickup_name}, {dropoff_name}, {confirmation_url}, {booking_number}"),
     ("sms_client_ride_completed", "Hi {client_name}, thanks for riding with us! We hope you enjoyed the trip with {driver_name}. We'd love your feedback — please rate your experience here: {confirmation_url}", "SMS to client when ride is completed (thank-you + feedback link). Vars: {client_name}, {driver_name}, {pickup_name}, {dropoff_name}, {confirmation_url}, {booking_number}"),
     ("sms_client_refund", "Hi {client_name}, your booking {booking_number} has been refunded (${amount}) — {reason}. The refund has been issued to your card right away.", "SMS to client on refund. Vars: {client_name}, {booking_number}, {amount}, {reason}"),
-    ("sms_guest_payment_link", "Hi {client_name}, a ride has been reserved for you by {hotel_name}: {pickup_name} -> {dropoff_name} on {pickup_date} at {pickup_time}. Total: ${total_amount}. Pay here: {payment_url}", "SMS to guest when cashier books for them. Vars: {client_name}, {hotel_name}, {pickup_name}, {dropoff_name}, {pickup_date}, {pickup_time}, {total_amount}, {payment_url}, {booking_number}"),
+    ("sms_guest_payment_link", "Hi {client_name}, a ride has been reserved for you by {cashier_name}: {pickup_name} -> {dropoff_name} on {pickup_date} at {pickup_time}. Total: ${total_amount}. Pay here: {payment_url}", "SMS to guest when cashier books for them. Vars: {client_name}, {cashier_name}, {hotel_name}, {pickup_name}, {dropoff_name}, {pickup_date}, {pickup_time}, {total_amount}, {payment_url}, {booking_number}"),
     ("sms_driver_new_run", "Hi {driver_name}, you have a new run! {pickup_name} -> {dropoff_name} on {pickup_date} at {pickup_time}. Client: {client_name}. Earnings: ${driver_earnings}.", "SMS to driver on run assignment."),
     ("sms_driver_ride_completed", "Hi {driver_name}, ride completed! {pickup_name} -> {dropoff_name}. You earned ${driver_earnings}. Great job!", "SMS to driver on ride completion."),
     ("sms_driver_run_cancelled", "Hi {driver_name}, the run {pickup_name} -> {dropoff_name} on {pickup_date} at {pickup_time} has been reassigned. Reason: {reason}", "SMS to driver when run is reassigned by admin."),
@@ -170,6 +170,11 @@ STALE_DEFAULT_UPGRADES = {
         # Old default — had literal "{reason}" because the cancel endpoint
         # never passed it, and the 5-10-days line was misleading for Stripe.
         "Hi {client_name}, your booking {booking_number} has been refunded (${amount}). Reason: {reason}. The amount will appear in your account within 5-10 business days.",
+    ),
+    "sms_guest_payment_link": (
+        # Old default — referenced the HOTEL name; guests recognize the cashier
+        # by name much more than the hotel, so we now render {cashier_name}.
+        "Hi {client_name}, a ride has been reserved for you by {hotel_name}: {pickup_name} -> {dropoff_name} on {pickup_date} at {pickup_time}. Total: ${total_amount}. Pay here: {payment_url}",
     ),
 }
 

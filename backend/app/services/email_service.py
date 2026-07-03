@@ -204,7 +204,7 @@ async def notify_guest_payment_link_email(
     name = variables.get("client_name") or "there"
     text = (
         f"Hi {name},\n\n"
-        f"A ride has been reserved for you by {variables.get('hotel_name', '')}.\n\n"
+        f"A ride has been reserved for you by {(variables.get('cashier_name') or variables.get('hotel_name') or '')}.\n\n"
         f"Pickup:  {variables.get('pickup_name', '')}\n"
         f"Drop-off: {variables.get('dropoff_name', '')}\n"
         f"When:    {variables.get('pickup_date', '')} {variables.get('pickup_time', '')}\n"
@@ -219,7 +219,7 @@ async def notify_guest_payment_link_email(
     <tr><td style="padding-top:20px;">
       <h1 style="font-size:20px;color:#0f172a;margin:0 0 8px 0;">Complete your ride reservation</h1>
       <p style="color:#475569;margin:0 0 20px 0;">
-        Hi {name}, {variables.get('hotel_name', '')} reserved a ride for you. Review the details and complete the payment to confirm.
+        Hi {name}, {(variables.get('cashier_name') or variables.get('hotel_name') or '')} reserved a ride for you. Review the details and complete the payment to confirm.
       </p>
       <table cellpadding="6" cellspacing="0" style="width:100%;border-collapse:collapse;color:#0f172a;font-size:14px;">
         <tr><td style="color:#64748b;width:32%;">Booking #</td><td><b>{variables.get('booking_number', '')}</b></td></tr>

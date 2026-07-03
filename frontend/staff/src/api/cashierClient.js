@@ -38,6 +38,7 @@ export const api = {
   getVehicleRates: () => request('/vehicle-rates'),
   getCommonRoutes: () => request('/common-routes'),
   getNearbyRoutes: (lat, lng) => request(`/common-routes/nearby?lat=${lat}&lng=${lng}`),
+  calculatePrice: (payload) => request('/pricing/calculate', { method: 'POST', body: JSON.stringify(payload) }),
   getExtras: () => request('/extras'),
 
   // Persisted in-app inbox + FCM token registration (shared /api/notifications/*)

@@ -327,6 +327,10 @@ async def book_for_guest(
     payment_url = checkout.get("checkout_url") or checkout.get("dev_confirm_url", "")
     template_vars = {
         "client_name": req.client_name,
+        # Both are exposed to templates — cashier_name is the default in the
+        # shipped template; admin can swap to {hotel_name} in Settings if they
+        # prefer the hotel brand to be front-of-message.
+        "cashier_name": cashier.name,
         "hotel_name": hotel.name,
         "pickup_name": p_name,
         "dropoff_name": req.dropoff_name,
