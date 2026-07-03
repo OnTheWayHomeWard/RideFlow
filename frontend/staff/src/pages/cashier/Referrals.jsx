@@ -68,21 +68,35 @@ export default function Referrals() {
                 <div className="flex-1 h-px bg-slate-200"></div>
               </div>
 
-              {/* Items */}
+              {/* Items — border, amount colour, and pills all react to the
+                  booking status so the cashier can eyeball their day. Cancelled
+                  rides get a red frame and a struck-through amount so it's
+                  obvious the commission was reversed. */}
               <div className="space-y-2">
-                {group.items.map((r, i) => (
-                  <div key={i} className="bg-white border border-slate-200 rounded-xl p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-sm font-medium text-slate-900">{r.client_name}</p>
-                      <span className="text-sm font-bold text-green-700">+${r.commission.toFixed(2)}</span>
+                {group.items.map((r, i) => {
+                  const tone = statusTone(r.status)
+                  const isCancelled = r.status === 'cancelled' || r.status === 'refunded'
+                  return (
+                    <div key={i} className={`rounded-xl p-3 border ${tone.card}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-sm font-medium text-slate-900">{r.client_name}</p>
+                        {isCancelled ? (
+                          <span className="text-sm font-bold text-red-700 line-through decoration-2">+${r.commission.toFixed(2)}</span>
+                        ) : (
+                          <span className={`text-sm font-bold ${tone.amount}`}>+${r.commission.toFixed(2)}</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500">{r.pickup_name} → {r.dropoff_name}</p>
+                      <div className="flex items-center justify-between mt-1.5 gap-2">
+                        <span className="text-xs text-slate-400 shrink-0">{r.pickup_date}</span>
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                          <StatusPill status={r.status} />
+                          {!isCancelled && <PayoutPill status={r.payout_status} />}
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-xs text-slate-500">{r.pickup_name} → {r.dropoff_name}</p>
-                    <div className="flex items-center justify-between mt-1.5">
-                      <span className="text-xs text-slate-400">{r.pickup_date}</span>
-                      <PayoutPill status={r.payout_status} />
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           ))}
@@ -118,4 +132,39 @@ function PayoutPill({ status }) {
   }
   const m = map[status] || { label: status || 'pending', style: 'bg-slate-100 text-slate-600' }
   return <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${m.style}`}>{m.label}</span>
+}
+
+// Booking-status → card frame + amount colour. Cancelled/refunded lean red so
+// a cashier scanning the list can spot voided commissions at a glance; in-flight
+// bookings (paid/assigned/in_progress) get calmer tones so completed rides
+// (green) still pop as the win.
+function statusTone(status) {
+  switch (status) {
+    case 'cancelled':
+    case 'refunded':
+      return { card: 'bg-red-50 border-red-200', amount: 'text-red-700' }
+    case 'completed':
+      return { card: 'bg-green-50 border-green-200', amount: 'text-green-700' }
+    case 'in_progress':
+      return { card: 'bg-amber-50 border-amber-200', amount: 'text-amber-700' }
+    case 'assigned':
+      return { card: 'bg-blue-50 border-blue-200', amount: 'text-blue-700' }
+    case 'paid':
+      return { card: 'bg-white border-slate-200', amount: 'text-purple-700' }
+    default:
+      return { card: 'bg-white border-slate-200', amount: 'text-slate-700' }
+  }
+}
+
+function StatusPill({ status }) {
+  const map = {
+    paid: { label: 'Awaiting driver', style: 'bg-slate-100 text-slate-600' },
+    assigned: { label: 'Driver assigned', style: 'bg-blue-100 text-blue-700' },
+    in_progress: { label: 'In progress', style: 'bg-amber-100 text-amber-800' },
+    completed: { label: 'Completed', style: 'bg-green-100 text-green-700' },
+    cancelled: { label: 'Cancelled', style: 'bg-red-100 text-red-700' },
+    refunded: { label: 'Refunded', style: 'bg-red-100 text-red-700' },
+  }
+  const m = map[status] || { label: status || '—', style: 'bg-slate-100 text-slate-600' }
+  return <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${m.style}`}>{m.label}</span>
 }
