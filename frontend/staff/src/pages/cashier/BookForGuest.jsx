@@ -396,17 +396,33 @@ export default function BookForGuest() {
           </div>
         </div>
 
-        {/* Date + Time */}
+        {/* Date + Time — same order-of-operations as the client flow: date
+            first, then time. Changing the date wipes a stale time so you can't
+            keep a value that's no longer reachable. */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
-            <input type="date" value={pickupDate} onChange={e => setPickupDate(e.target.value)} min={new Date().toISOString().split('T')[0]} required
-              className="w-full px-3 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+            <input
+              type="date"
+              value={pickupDate}
+              onChange={e => { setPickupDate(e.target.value); setPickupTime('') }}
+              min={new Date().toISOString().split('T')[0]}
+              required
+              className="w-full px-3 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Time</label>
-            <input type="time" value={pickupTime} onChange={e => setPickupTime(e.target.value)} required
-              className="w-full px-3 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+            <input
+              type="time"
+              value={pickupTime}
+              onChange={e => setPickupTime(e.target.value)}
+              disabled={!pickupDate}
+              required
+              placeholder={pickupDate ? 'Select time' : 'Pick date first'}
+              className="w-full px-3 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+            />
+            {!pickupDate && <p className="text-[10px] text-slate-400 mt-1">Pick a date first</p>}
           </div>
         </div>
 
@@ -416,9 +432,9 @@ export default function BookForGuest() {
           <input type="text" placeholder="Guest name" value={clientName} onChange={e => setClientName(e.target.value)} required
             className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
           <PhoneInput value={clientPhone} onChange={setClientPhone} placeholder="Guest phone number" />
-          <input type="email" inputMode="email" placeholder="Guest email (optional if phone given)" value={clientEmail} onChange={e => setClientEmail(e.target.value)}
+          <input type="email" inputMode="email" placeholder="Guest email" value={clientEmail} onChange={e => setClientEmail(e.target.value)}
             className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
-          <p className="text-[11px] text-slate-400 -mt-1">At least one contact method is required. If you provide both, we'll send the payment link to both.</p>
+          <p className="text-[11px] text-slate-400 -mt-1">Provide phone or email — we'll send the payment link to whichever you give us. Both is fine.</p>
           <input type="text" placeholder="Room number (optional)" value={clientRoom} onChange={e => setClientRoom(e.target.value)}
             className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
         </div>
@@ -438,7 +454,7 @@ export default function BookForGuest() {
                     <p className="text-sm font-medium">{ex.name}</p>
                     <p className="text-xs text-slate-500">{ex.description}</p>
                   </div>
-                  <span className="text-sm font-bold text-purple-700">{ex.price_type === 'flat' ? `$${ex.price}` : `${ex.price}%`}</span>
+                  <span className="text-sm font-bold text-purple-700">+${ex.price}</span>
                 </label>
               ))}
             </div>

@@ -313,12 +313,16 @@ async def book_for_guest(
     from app.services.payment_service import create_checkout_session
     checkout = await create_checkout_session(db, booking)
 
-    # Send the payment link to whichever channels the cashier provided. Both
-    # helpers are best-effort — a Twilio/Resend outage shouldn't lose the
-    # booking. `channels_sent` tells the cashier UI what actually went out so
-    # the success screen doesn't lie ("Sent to phone" when the phone was blank).
+    # Commit the booking FIRST — before any notification. SMS/email helpers
+    # do their own db writes (notification_log), and a Twilio/Resend failure
+    # can leave the session in a rolled-back state that would break a
+    # trailing db.commit(). Ordering the commit up front means the booking
+    # is durable even if every notification channel fails.
+    await db.commit()
+    await db.refresh(booking)
+
     payment_url = checkout.get("checkout_url") or checkout.get("dev_confirm_url", "")
-    vars = {
+    template_vars = {
         "client_name": req.client_name,
         "hotel_name": hotel.name,
         "pickup_name": p_name,
@@ -333,20 +337,24 @@ async def book_for_guest(
     if req.client_phone:
         try:
             from app.services.sms_service import notify_guest_payment_link
-            await notify_guest_payment_link(db, req.client_phone, vars)
+            await notify_guest_payment_link(db, req.client_phone, template_vars)
             channels_sent.append("sms")
         except Exception as e:
+            # Session may be in a bad state after a mid-flight failure — reset
+            # so the next channel (email) can still write its own log row.
+            try: await db.rollback()
+            except Exception: pass
             import logging; logging.getLogger("cashier").exception(f"guest SMS failed: {e}")
     if req.client_email:
         try:
             from app.services.email_service import notify_guest_payment_link_email
-            res = await notify_guest_payment_link_email(db, req.client_email, vars, booking)
+            res = await notify_guest_payment_link_email(db, req.client_email, template_vars, booking)
             if res.get("sent"):
                 channels_sent.append("email")
         except Exception as e:
+            try: await db.rollback()
+            except Exception: pass
             import logging; logging.getLogger("cashier").exception(f"guest email failed: {e}")
-
-    await db.commit()
 
     return {
         "booking_number": booking_number,
