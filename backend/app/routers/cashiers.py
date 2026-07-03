@@ -252,9 +252,12 @@ async def book_for_guest(
     from datetime import datetime as _dt, timezone as _tz
     pickup_dt = _dt.combine(req.pickup_date, req.pickup_time, tzinfo=_tz.utc)
 
-    # Merge any forced extras from matching pickup-group (defense in depth)
+    # Merge any forced extras from matching pickup-group (defense in depth).
+    # merge_forced_extras returns (extras, group_names, surcharge) — unpacking
+    # only two was the source of "too many values to unpack" 500s any time
+    # the pickup matched a group (e.g. Waldorf Astoria on the Disney list).
     from app.services.pickup_group_service import merge_forced_extras
-    final_extras, _matched = await merge_forced_extras(db, p_lat, p_lng, req.extras)
+    final_extras, _matched, _surcharge = await merge_forced_extras(db, p_lat, p_lng, req.extras)
 
     try:
         price = await calculate_price(
