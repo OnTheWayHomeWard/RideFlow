@@ -82,6 +82,7 @@ DEFAULT_SETTINGS = [
     # ── Driver priority ──
     ("priority_delay_normal_minutes", 2, "Minutes normal-priority drivers wait before seeing new runs"),
     ("priority_delay_low_minutes", 5, "Minutes low-priority drivers wait before seeing new runs"),
+    ("notify_driver_new_run_sms_enabled", True, "When on, drivers receive an SMS the moment a matching run appears in their queue (respecting priority delay). In-app + FCM notifications always fire regardless."),
 
     # ── Pre-ride reminders ──
     # All three accept decimals (e.g. 1.5). Set to 0 to disable that reminder.
@@ -111,6 +112,7 @@ DEFAULT_SETTINGS = [
     ("sms_client_refund", "Hi {client_name}, your booking {booking_number} has been refunded (${amount}) — {reason}. The refund has been issued to your card right away.", "SMS to client on refund. Vars: {client_name}, {booking_number}, {amount}, {reason}"),
     ("sms_guest_payment_link", "Hi {client_name}, a ride has been reserved for you by {cashier_name}: {pickup_name} -> {dropoff_name} on {pickup_date} at {pickup_time}. Total: ${total_amount}. Pay here: {payment_url}", "SMS to guest when cashier books for them. Vars: {client_name}, {cashier_name}, {hotel_name}, {pickup_name}, {dropoff_name}, {pickup_date}, {pickup_time}, {total_amount}, {payment_url}, {booking_number}"),
     ("sms_driver_new_run", "Hi {driver_name}, you have a new run! {pickup_name} -> {dropoff_name} on {pickup_date} at {pickup_time}. Client: {client_name}. Earnings: ${driver_earnings}.", "SMS to driver on run assignment."),
+    ("sms_driver_run_available", "Hi {driver_name}, a new {vehicle_type} run is available: {pickup_name} -> {dropoff_name} on {pickup_date} at {pickup_time}. You earn ${driver_earnings}. Grab it in the app: {app_url}", "SMS to a driver when a matching, unassigned run first opens up in their queue. Fires once per booking per driver, gated by notify_driver_new_run_sms_enabled. Vars: {driver_name}, {vehicle_type}, {pickup_name}, {dropoff_name}, {pickup_date}, {pickup_time}, {driver_earnings}, {app_url}, {booking_number}"),
     ("sms_driver_ride_completed", "Hi {driver_name}, ride completed! {pickup_name} -> {dropoff_name}. You earned ${driver_earnings}. Great job!", "SMS to driver on ride completion."),
     ("sms_driver_run_cancelled", "Hi {driver_name}, the run {pickup_name} -> {dropoff_name} on {pickup_date} at {pickup_time} has been reassigned. Reason: {reason}", "SMS to driver when run is reassigned by admin."),
     ("sms_driver_run_cancelled_by_rider", "Hi {driver_name}, the rider cancelled their {pickup_name} -> {dropoff_name} run on {pickup_date} at {pickup_time}. The booking is no longer on your schedule.", "SMS to the assigned driver when the rider cancels from the receipt. Vars: {driver_name}, {pickup_name}, {dropoff_name}, {pickup_date}, {pickup_time}, {booking_number}"),

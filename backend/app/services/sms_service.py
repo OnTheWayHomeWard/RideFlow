@@ -230,6 +230,18 @@ async def notify_driver_new_run(db: AsyncSession, driver_phone: str, variables: 
     await send_sms(db, driver_phone, message, "driver_new_run")
 
 
+async def notify_driver_run_available(db: AsyncSession, driver_phone: str, variables: dict):
+    """SMS a driver when a matching, unassigned run first becomes visible to
+    them (i.e. their priority-delay window has elapsed). Distinct from
+    notify_driver_new_run which fires on ASSIGNMENT — this one is a "hey a run
+    just opened up, grab it before another driver does" nudge."""
+    template = await get_template(db, "sms_driver_run_available")
+    if not template:
+        return
+    message = render_template(template, variables)
+    await send_sms(db, driver_phone, message, "driver_run_available")
+
+
 async def notify_driver_ride_completed(db: AsyncSession, driver_phone: str, variables: dict):
     """Notify driver when ride is completed with earnings info."""
     template = await get_template(db, "sms_driver_ride_completed")

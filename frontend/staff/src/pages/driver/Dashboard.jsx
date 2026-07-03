@@ -63,28 +63,7 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="space-y-2">
-            {runs.map(r => {
-              const hasExtras = r.extras_chosen && r.extras_chosen.length > 0
-              return (
-                <Link key={r.id} to={`/driver/run-detail/${r.id}`} state={r}
-                  className="block bg-white border border-slate-200 rounded-xl p-4 hover:border-blue-300 hover:shadow-sm active:scale-[0.99] transition-all">
-                  <div className="flex items-start justify-between mb-1">
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">{r.pickup_name} → {r.dropoff_name}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{fmtDate(r.pickup_date)} at {r.pickup_time?.slice(0, 5)}</p>
-                    </div>
-                    <p className="text-lg font-bold text-green-700">${r.driver_earnings.toFixed(0)}</p>
-                  </div>
-                  {hasExtras && (
-                    <div className="flex gap-1 mt-2 flex-wrap">
-                      {r.extras_chosen.map(e => (
-                        <span key={e} className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium capitalize">{e.replace('_', ' ')}</span>
-                      ))}
-                    </div>
-                  )}
-                </Link>
-              )
-            })}
+            {runs.map(r => <RunCard key={r.id} r={r} />)}
           </div>
         )}
       </div>
@@ -98,15 +77,7 @@ export default function Dashboard() {
           </div>
           <div className="space-y-2">
             {schedule.filter(s => s.status === 'assigned').slice(0, 3).map(r => (
-              <Link key={r.id} to={`/driver/ride/${r.id}`} className="block bg-white border border-slate-200 rounded-xl p-3 hover:border-blue-300 transition-all">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">{r.pickup_name} → {r.dropoff_name}</p>
-                    <p className="text-xs text-slate-500">{fmtDate(r.pickup_date)} at {r.pickup_time?.slice(0, 5)}</p>
-                  </div>
-                  <p className="text-sm font-bold text-green-700">${r.driver_earnings.toFixed(0)}</p>
-                </div>
-              </Link>
+              <RunCard key={r.id} r={r} linkTo={`/driver/ride/${r.id}`} compact />
             ))}
           </div>
         </div>
@@ -121,4 +92,62 @@ function fmtDate(d) {
   if (d === today) return 'Today'
   if (d === tmrw) return 'Tomorrow'
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+// Two-row itinerary card, matches the client confirm summary + admin trip
+// visual. Earnings sit under the date on their own line so they don't collide
+// with long place names on narrow screens; the amount stays visually
+// prominent thanks to the green colour + bold weight.
+function RunCard({ r, linkTo, compact }) {
+  const to = linkTo || `/driver/run-detail/${r.id}`
+  const hasExtras = !compact && r.extras_chosen && r.extras_chosen.length > 0
+  return (
+    <Link
+      to={to}
+      state={r}
+      className={`block bg-white border border-slate-200 rounded-xl ${compact ? 'p-3' : 'p-4'} hover:border-blue-300 hover:shadow-sm active:scale-[0.99] transition-all`}
+    >
+      <div className="flex items-start gap-3">
+        {/* Track: blue dot → dotted line → green dot */}
+        <div className="flex flex-col items-center pt-[5px] shrink-0">
+          <span className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-blue-100" />
+          <span className="flex-1 my-1 border-l-2 border-dotted border-slate-300 min-h-[16px]" />
+          <span className="w-2 h-2 rounded-full bg-green-500 ring-2 ring-green-100" />
+        </div>
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <div className="truncate">
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mr-1">From</span>
+            <span className="text-sm font-medium text-slate-900">{r.pickup_name}</span>
+          </div>
+          <div className="truncate">
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mr-1">To</span>
+            <span className="text-sm font-medium text-slate-900">{r.dropoff_name}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Time + earnings row — separates the "when" and "how much" from the
+          route so long place names don't squeeze the price into the corner. */}
+      <div className={`${compact ? 'mt-2' : 'mt-3'} pt-2 border-t border-slate-100 flex items-center justify-between gap-3`}>
+        <div className="flex items-center gap-1.5 text-xs text-slate-500 min-w-0">
+          <svg className="w-3.5 h-3.5 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span className="truncate">{fmtDate(r.pickup_date)} · {r.pickup_time?.slice(0, 5)}</span>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide leading-none">Earn</p>
+          <p className={`${compact ? 'text-base' : 'text-lg'} font-bold text-green-700 leading-tight`}>${r.driver_earnings?.toFixed(2)}</p>
+        </div>
+      </div>
+
+      {hasExtras && (
+        <div className="flex gap-1 mt-2 flex-wrap">
+          {r.extras_chosen.map(e => (
+            <span key={e} className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium capitalize">{e.replace('_', ' ')}</span>
+          ))}
+        </div>
+      )}
+    </Link>
+  )
 }

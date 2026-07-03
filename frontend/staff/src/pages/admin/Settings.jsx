@@ -49,7 +49,7 @@ export default function Settings() {
       <SettingsGroup title="Website — Section Headings" settings={otherSettings.filter(s => ['website_how_title','website_how_subtitle','website_why_title','website_why_subtitle','website_fleet_title','website_fleet_subtitle','website_testimonials_title','website_testimonials_subtitle','website_service_title','website_service_subtitle','website_contact_title','website_contact_subtitle'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Payment & Commissions" settings={otherSettings.filter(s => ['default_driver_pay_pct','default_cashier_commission_pct','cashier_commission_enabled','driver_payout_schedule','late_cancel_refund_pct','max_active_runs_per_driver'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Booking" settings={otherSettings.filter(s => ['booking_window_days','cancellation_window_hours','cancellation_refund_percent','unassigned_alert_minutes','review_expiry_days','min_advance_booking_hours','common_route_nearby_radius_km'].includes(s.key))} saving={saving} onSave={handleSave} />
-      <SettingsGroup title="Driver Priority" settings={otherSettings.filter(s => ['priority_delay_normal_minutes','priority_delay_low_minutes'].includes(s.key))} saving={saving} onSave={handleSave} />
+      <SettingsGroup title="Driver Priority" settings={otherSettings.filter(s => ['priority_delay_normal_minutes','priority_delay_low_minutes','notify_driver_new_run_sms_enabled'].includes(s.key))} saving={saving} onSave={handleSave} />
       <SettingsGroup title="Pre-Ride Reminders" settings={otherSettings.filter(s => ['client_reminder_hours','client_final_reminder_minutes','driver_reminder_hours'].includes(s.key))} saving={saving} onSave={handleSave} />
       {/* Service Area — countries */}
       {(settings.find(s => s.key === 'service_areas') || settings.find(s => s.key === 'available_countries')) && (
@@ -371,6 +371,7 @@ const FRIENDLY_NAMES = {
   // Driver priority
   priority_delay_normal_minutes: 'Normal Priority Delay (min)',
   priority_delay_low_minutes: 'Low Priority Delay (min)',
+  notify_driver_new_run_sms_enabled: 'Notify Drivers of New Runs (SMS)',
   // Reminders
   client_reminder_hours: 'Client Reminder (hours before pickup)',
   client_final_reminder_minutes: 'Client Final Reminder (min before pickup)',
