@@ -780,7 +780,7 @@ def instance_state(inst: dict, st: dict) -> str:
 
 def sign(value: str) -> str:
     # The password is part of the key, so changing it signs out every session.
-    return hmac.new(SECRET + PASSWORD.encode(), value.encode(), hashlib.sha256).hexdigest()
+    return hmac.new(SECRET + PASSWORD.encode() + b"\0" + USER.encode(), value.encode(), hashlib.sha256).hexdigest()
 
 
 def make_session() -> str:
@@ -1718,9 +1718,10 @@ def check_password(password: str, request: Request):
         raise HTTPException(403, "Wrong password")
 
 
-class ChangePassword(BaseModel):
+class UpdateAccount(BaseModel):
     current_password: str
-    new_password: str
+    new_username: str = ""      # empty = keep
+    new_password: str = ""      # empty = keep
 
 
 def write_env_value(key: str, value: str):
@@ -1742,21 +1743,39 @@ def write_env_value(key: str, value: str):
     os.replace(tmp, ENV_FILE)
 
 
-@app.post("/api/account/password")
-def change_password(body: ChangePassword, request: Request):
-    global PASSWORD
+@app.get("/api/account")
+def get_account():
+    return {"username": USER}
+
+
+@app.post("/api/account")
+def update_account(body: UpdateAccount, request: Request):
+    """Change the manager login (username and/or password). Needs the current password."""
+    global PASSWORD, USER
     check_password(body.current_password, request)
-    new = body.new_password
-    if len(new) < 10:
-        raise HTTPException(400, "New password must be at least 10 characters")
-    if new == body.current_password:
-        raise HTTPException(400, "New password must be different from the current one")
-    if any(c in new for c in "\r\n"):
-        raise HTTPException(400, "Password can't contain line breaks")
-    write_env_value("RFM_PASSWORD", new)
-    PASSWORD = new
-    # Old sessions are now invalid (password is part of the signing key) — keep this one signed in.
-    resp = JSONResponse({"ok": True})
+    new_user = body.new_username.strip()
+    new_pw = body.new_password
+    if not new_user and not new_pw:
+        raise HTTPException(400, "Nothing to change")
+    if new_user and new_user == USER and not new_pw:
+        raise HTTPException(400, "That's already the username")
+    if new_user and not re.fullmatch(r"[A-Za-z0-9._@-]{3,40}", new_user):
+        raise HTTPException(400, "Username: 3–40 characters — letters, numbers, . _ @ -")
+    if new_pw:
+        if len(new_pw) < 10:
+            raise HTTPException(400, "New password must be at least 10 characters")
+        if new_pw == body.current_password:
+            raise HTTPException(400, "New password must be different from the current one")
+        if any(c in new_pw for c in "\r\n"):
+            raise HTTPException(400, "Password can't contain line breaks")
+    if new_user:
+        write_env_value("RFM_USER", new_user)
+        USER = new_user
+    if new_pw:
+        write_env_value("RFM_PASSWORD", new_pw)
+        PASSWORD = new_pw
+    # Other sessions are now invalid (user + password are part of the signing key) — keep this one.
+    resp = JSONResponse({"ok": True, "username": USER})
     resp.set_cookie("rfm_session", make_session(), httponly=True, samesite="strict", max_age=12 * 3600,
                     secure=request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https")
     return resp

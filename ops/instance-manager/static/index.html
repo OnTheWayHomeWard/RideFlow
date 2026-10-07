@@ -69,7 +69,10 @@
             :class="tab===t ? 'bg-white/15 text-white' : 'text-slate-400 hover:text-white'" x-text="t"></button>
         </template>
       </nav>
-      <button @click="pw = { open: true, current: '', next: '', confirm: '', err: '', ok: false, busy: false }" class="text-xs text-slate-400 hover:text-white ml-2 whitespace-nowrap">Account</button>
+      <button @click="openAccount()" class="text-xs text-slate-400 hover:text-white ml-2 whitespace-nowrap flex items-center gap-1.5" title="Manager account">
+        <span class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-[11px] font-semibold text-white" x-text="(me.username || '?').slice(0,1).toUpperCase()"></span>
+        <span class="hidden sm:inline" x-text="me.username"></span>
+      </button>
       <button @click="logout()" class="text-xs text-slate-400 hover:text-white ml-2 whitespace-nowrap">Sign out</button>
     </div>
   </header>
@@ -693,26 +696,31 @@
     </div>
   </div>
 
-  <!-- ═══ Change manager password ═══ -->
+  <!-- ═══ Account (manager login) ═══ -->
   <div x-show="pw.open" x-cloak class="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4" @keydown.escape.window="pw.open=false">
-    <form class="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4" @submit.prevent="changePw()">
+    <form class="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4" @submit.prevent="saveAccount()">
       <div>
-        <h2 class="font-bold text-lg">Change manager password</h2>
-        <p class="text-sm text-slate-500 mt-1">For the Instance Manager login (user <span class="mono">admin</span>). Other signed-in browsers will be signed out.</p>
+        <h2 class="font-bold text-lg">Manager account</h2>
+        <p class="text-sm text-slate-500 mt-1">Login for this Instance Manager. Signed in as <b class="mono" x-text="me.username"></b>. Saving signs out every other browser.</p>
       </div>
-      <input type="text" autocomplete="username" value="admin" class="hidden" readonly>
-      <div><label class="lbl">Current password</label><input type="password" class="inp" x-model="pw.current" autocomplete="current-password" required></div>
-      <div><label class="lbl">New password <span class="text-slate-400">(10+ characters)</span></label>
-        <input type="password" class="inp" x-model="pw.next" autocomplete="new-password" required minlength="10"></div>
-      <div><label class="lbl">Confirm new password</label>
-        <input type="password" class="inp" x-model="pw.confirm" autocomplete="new-password" required
-          :class="pw.confirm && pw.confirm !== pw.next ? '!border-red-300' : ''"></div>
-      <p class="text-xs text-red-600" x-show="pw.confirm && pw.confirm !== pw.next">Passwords don't match.</p>
+      <input type="text" autocomplete="username" :value="me.username" class="hidden" readonly>
+      <div><label class="lbl">Username</label>
+        <input class="inp mono" x-model="pw.username" autocomplete="off" required minlength="3" maxlength="40"></div>
+      <div class="border-t border-slate-100 pt-3">
+        <label class="lbl">New password <span class="text-slate-400">(leave empty to keep the current one)</span></label>
+        <input type="password" class="inp" x-model="pw.next" autocomplete="new-password" placeholder="10+ characters"></div>
+      <div x-show="pw.next"><label class="lbl">Confirm new password</label>
+        <input type="password" class="inp" x-model="pw.confirm" autocomplete="new-password"
+          :class="pw.confirm && pw.confirm !== pw.next ? '!border-red-300' : ''">
+        <p class="text-xs text-red-600 mt-1" x-show="pw.confirm && pw.confirm !== pw.next">Passwords don't match.</p>
+        <p class="text-xs text-amber-700 mt-1" x-show="pw.next && pw.next.length < 10">At least 10 characters.</p></div>
+      <div class="border-t border-slate-100 pt-3"><label class="lbl">Current password <span class="text-slate-400">(required to save)</span></label>
+        <input type="password" class="inp" x-model="pw.current" autocomplete="current-password" required></div>
       <p class="text-sm text-red-600" x-show="pw.err" x-text="pw.err"></p>
-      <p class="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2" x-show="pw.ok">Password changed. Use the new one next time you sign in.</p>
+      <p class="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2" x-show="pw.ok" x-text="pw.ok"></p>
       <div class="flex justify-end gap-2">
         <button type="button" class="btn btn-g" @click="pw.open=false" x-text="pw.ok ? 'Close' : 'Cancel'"></button>
-        <button x-show="!pw.ok" class="btn btn-p" :disabled="pw.busy || pw.next.length < 10 || pw.next !== pw.confirm || !pw.current" x-text="pw.busy ? 'Saving…' : 'Change password'"></button>
+        <button x-show="!pw.ok" class="btn btn-p" :disabled="!acctValid()" x-text="pw.busy ? 'Saving…' : 'Save'"></button>
       </div>
     </form>
   </div>
@@ -966,7 +974,8 @@ function app() {
     toasts: [],
     dt: { open: false, inst: null, d: null, loading: false },
     dm: { edit: false, prefix: '', domain_website: '', domain_client: '', domain_staff: '' },
-    pw: { open: false, current: '', next: '', confirm: '', err: '', ok: false, busy: false },
+    pw: { open: false, username: '', current: '', next: '', confirm: '', err: '', ok: '', busy: false },
+    me: { username: '' },
     cr: { open: false, custom_env: {} }, ed: { open: false }, bk: { open: false, name: '', password: '', err: '', busy: false }, lg: { open: false, service: 'backend', text: '' },
     jb: { open: false, id: null, log: '', status: '', title: '', min: false },
     srv: { name: '', host: '', port: 22, user: 'root', password: '', notes: '', install: true }, srvErr: '', srvBusy: false,
@@ -976,6 +985,7 @@ function app() {
         const sub = document.getElementById('boot-sub')
         if (sub) sub.textContent = 'Still checking servers — a remote server may be slow to answer…'
       }, 6000)
+      this.api('/api/account').then(a => { this.me = a }).catch(() => {})
       const ok = await this.refresh(false, true)
       clearTimeout(slow)
       const boot = document.getElementById('boot')
@@ -1329,11 +1339,22 @@ function app() {
       } catch (e) { this.toast(e.message, 'err') }
       this.ig.busy = false
     },
-    async changePw() {
+    openAccount() { this.pw = { open: true, username: this.me.username, current: '', next: '', confirm: '', err: '', ok: '', busy: false } },
+    acctValid() {
+      const p = this.pw, u = (p.username || '').trim()
+      const changed = (u && u !== this.me.username) || p.next
+      return !p.busy && changed && p.current && u.length >= 3 && (!p.next || (p.next.length >= 10 && p.next === p.confirm))
+    },
+    async saveAccount() {
+      if (!this.acctValid()) return
       this.pw.busy = true; this.pw.err = ''
+      const u = this.pw.username.trim()
       try {
-        await this.api('/api/account/password', { method: 'POST', body: JSON.stringify({ current_password: this.pw.current, new_password: this.pw.next }) })
-        Object.assign(this.pw, { ok: true, current: '', next: '', confirm: '' })
+        const r = await this.api('/api/account', { method: 'POST', body: JSON.stringify({
+          current_password: this.pw.current, new_username: u !== this.me.username ? u : '', new_password: this.pw.next }) })
+        const what = [u !== this.me.username && 'username', this.pw.next && 'password'].filter(Boolean).join(' and ')
+        this.me.username = r.username
+        Object.assign(this.pw, { ok: `Saved — ${what} changed. Use the new login next time.`, current: '', next: '', confirm: '' })
       } catch (e) { this.pw.err = e.message }
       this.pw.busy = false
     },
