@@ -128,6 +128,8 @@ def init_db():
         cols = {r[1] for r in con.execute("PRAGMA table_info(instances)").fetchall()}
         if "domain_status" not in cols:
             con.execute("ALTER TABLE instances ADD COLUMN domain_status TEXT DEFAULT ''")
+        if "integ_status" not in cols:
+            con.execute("ALTER TABLE instances ADD COLUMN integ_status TEXT DEFAULT ''")
         # A job still "running" after a restart was interrupted.
         con.execute("UPDATE jobs SET status='failed', log=log||'\n[interrupted: manager restarted]' WHERE status='running'")
 
@@ -682,6 +684,12 @@ def job_create(inst_id: int, req: CreateInstance):
             settings["company_phone"] = req.contact_phone
         if req.integrations == "sandbox":
             settings.update({"sms_enabled": False, "email_enabled": False})
+        elif req.integrations == "custom":
+            for k in ("resend_api_key", "resend_from_email", "resend_from_name"):
+                if req.custom_env.get(k, "").strip():
+                    settings[k] = req.custom_env[k].strip()
+            if req.custom_env.get("resend_api_key", "").strip():
+                settings["email_enabled"] = True
         upsert_settings(ex_, inst, settings)
         log("Applied company settings (name, URLs, branding)")
 
@@ -1230,6 +1238,300 @@ def set_admin_role(iid: int, aid: str, role: str):
     if role not in ("admin", "super_admin"):
         raise HTTPException(400, "bad role")
     return admin_op(instance(iid), {"op": "set_role", "id": aid, "role": role})
+
+
+# ─── Integrations (Stripe / Twilio / Email / Maps) ─────────────────────────
+
+# Where each value lives: .env (needs a backend restart) or the settings table (live).
+INTEG_ENV = {
+    "stripe": ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
+    "twilio": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER", "TWILIO_MESSAGING_SERVICE_SID"],
+    "maps": ["GOOGLE_MAPS_API_KEY"],
+}
+INTEG_SETTINGS = {
+    "stripe": ["stripe_connect_enabled", "payout_currency"],
+    "twilio": ["sms_enabled"],
+    "email": ["email_enabled", "resend_api_key", "resend_from_email", "resend_from_name"],
+}
+SECRET_KEYS = {"STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "TWILIO_AUTH_TOKEN", "GOOGLE_MAPS_API_KEY", "resend_api_key"}
+ALL_ENV = [k for v in INTEG_ENV.values() for k in v]
+ALL_SETTINGS = [k for v in INTEG_SETTINGS.values() for k in v]
+PLACEHOLDERS = {"", "placeholder", "sk_test_placeholder", "whsec_placeholder", "your_key_here"}
+
+
+def mask(key: str, v: str) -> str:
+    if v in PLACEHOLDERS or key not in SECRET_KEYS:
+        return v
+    return (v[:8] + "…" + v[-4:]) if len(v) > 14 else "•" * 8
+
+
+def effective_env(inst: dict, ex_: Executor) -> dict:
+    """Values the running backend actually sees (compose-interpolated); falls back to .env."""
+    script = "; ".join(f'printf "%s\\t%s\\n" {k} "${{{k}}}"' for k in ALL_ENV)
+    code, out = ex_.run(compose(inst, f"exec -T backend sh -c {shlex.quote(script)}"), check=False, binary=True)
+    vals = {}
+    if code == 0:
+        for line in out.decode(errors="replace").splitlines():
+            k, _, v = line.partition("\t")
+            if k in ALL_ENV:
+                vals[k] = v
+        if vals:
+            return vals
+    raw = parse_env(ex_.read(f"{inst['directory']}/.env"))
+    for k in ALL_ENV:
+        line = raw.get(k, f"{k}=")
+        vals[k] = line.split("=", 1)[1].strip().strip('"').strip("'").replace("$$", "$")
+    return vals
+
+
+def current_settings(inst: dict, ex_: Executor, keys: list[str]) -> dict:
+    sql = ("SELECT coalesce(json_object_agg(key, value), '{}') FROM settings WHERE key IN ("
+           + ", ".join(sql_lit(k) for k in keys) + ")")
+    _, out = ex_.run(compose(inst, "exec -T db psql -U rideflow -d rideflow -At -v ON_ERROR_STOP=1"),
+                     input_bytes=sql.encode(), binary=True)
+    return json.loads(out.decode() or "{}")
+
+
+def summarize(env: dict, st: dict) -> dict:
+    sk = env.get("STRIPE_SECRET_KEY", "")
+    stripe = "off" if sk in PLACEHOLDERS else ("live" if sk.startswith(("sk_live", "rk_live")) else "test")
+    tw = env.get("TWILIO_ACCOUNT_SID", "")
+    sms = "off" if tw in PLACEHOLDERS or st.get("sms_enabled") is False else "on"
+    email = "on" if st.get("email_enabled") is True and st.get("resend_api_key") else "off"
+    maps = "off" if env.get("GOOGLE_MAPS_API_KEY", "") in PLACEHOLDERS else "on"
+    return {"stripe": stripe, "sms": sms, "email": email, "maps": maps}
+
+
+@app.get("/api/instances/{iid}/integrations")
+def get_integrations(iid: int):
+    inst = instance(iid)
+    srv = server(inst["server_id"])
+    ex_ = executor_for(srv)
+    env = effective_env(inst, ex_)
+    st = current_settings(inst, ex_, ALL_SETTINGS)
+    summary = summarize(env, {k: st.get(k) for k in ALL_SETTINGS})
+    ex("UPDATE instances SET integ_status=? WHERE id=?", (json.dumps(summary), iid))
+    values = {k: {"display": mask(k, env.get(k, "")), "set": env.get(k, "") not in PLACEHOLDERS,
+                  "secret": k in SECRET_KEYS} for k in ALL_ENV}
+    for k in ALL_SETTINGS:
+        v = st.get(k)
+        sv = "" if v is None else (v if isinstance(v, str) else json.dumps(v))
+        values[k] = {"display": mask(k, sv), "set": v not in (None, "", False), "secret": k in SECRET_KEYS, "value": v}
+    return {"values": values, "summary": summary, "public_urls": public_urls(inst, srv),
+            "webhook_url": public_urls(inst, srv)["client_base_url"] + "/api/payments/webhook"}
+
+
+class SaveIntegrations(BaseModel):
+    env: dict[str, str] = {}        # blank / missing = keep
+    settings: dict = {}             # values written as-is (bools, strings)
+    clear: list[str] = []           # keys to reset to "not configured"
+
+
+@app.post("/api/instances/{iid}/integrations")
+def save_integrations(iid: int, body: SaveIntegrations):
+    inst = instance(iid)
+    env = {k: v.strip() for k, v in body.env.items() if k in ALL_ENV and v and v.strip()}
+    sets = {k: v for k, v in body.settings.items() if k in ALL_SETTINGS and not (k in SECRET_KEYS and v in ("", None))}
+    for k in body.clear:
+        if k in ALL_ENV:
+            env[k] = SANDBOX_ENV.get(k, "")
+        elif k in ALL_SETTINGS:
+            sets[k] = ""
+    if any("\n" in v for v in env.values()):
+        raise HTTPException(400, "values can't contain line breaks")
+    if not env and not sets:
+        raise HTTPException(400, "nothing to change")
+
+    def run(log):
+        ex_ = executor_for(server(inst["server_id"]))
+        if sets:
+            upsert_settings(ex_, inst, sets)
+            log("Saved settings (live immediately): " + ", ".join(sorted(sets)))
+        if env:
+            envp = f"{inst['directory']}/.env"
+            text = ex_.read(envp)
+            for k, v in env.items():
+                text = set_env_line(text, k, env_escape(v))
+            ex_.write(envp, text)
+            log("Updated .env: " + ", ".join(sorted(env)) + " — restarting the backend to load them…")
+            log(ex_.sh(compose(inst, "up -d backend 2>&1")).strip()[-400:])
+            wait_healthy(ex_, inst, log)
+        _status_cache.clear()
+    return {"job_id": start_job(f"Integrations for {inst['company']}", "integrations", run, instance_id=iid)}
+
+
+def _http(method: str, url: str, headers: dict | None = None, auth: tuple | None = None, timeout=12):
+    import base64
+    import urllib.error
+    import urllib.request
+    h = dict(headers or {})
+    h.setdefault("User-Agent", "rideflow-manager")
+    if auth:
+        h["Authorization"] = "Basic " + base64.b64encode(f"{auth[0]}:{auth[1]}".encode()).decode()
+    req = urllib.request.Request(url, method=method, headers=h)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            body = r.read().decode(errors="replace")
+            return r.status, (json.loads(body) if body.strip().startswith(("{", "[")) else body)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        try:
+            return e.code, json.loads(body)
+        except Exception:  # noqa: BLE001
+            return e.code, body
+    except Exception as e:  # noqa: BLE001
+        return 0, str(e)
+
+
+def _err(body) -> str:
+    if isinstance(body, dict):
+        e = body.get("error") or body.get("message") or body.get("error_message") or body
+        if isinstance(e, dict):
+            e = e.get("message") or e
+        return str(e)[:300]
+    return str(body)[:300]
+
+
+def test_stripe(v: dict, webhook_url: str) -> list:
+    out = []
+    key, wh = v.get("STRIPE_SECRET_KEY", ""), v.get("STRIPE_WEBHOOK_SECRET", "")
+    if key in PLACEHOLDERS:
+        return [{"label": "Secret key", "ok": None, "detail": "Not set — payments run in simulated (dev) mode"}]
+    code, body = _http("GET", "https://api.stripe.com/v1/balance", {"Authorization": f"Bearer {key}"})
+    mode = "LIVE (real money)" if key.startswith(("sk_live", "rk_live")) else "test mode"
+    out.append({"label": "Secret key", "ok": code == 200, "detail": f"Valid — {mode}" if code == 200 else f"Rejected ({code}): {_err(body)}"})
+    if code == 200:
+        c2, b2 = _http("GET", "https://api.stripe.com/v1/webhook_endpoints?limit=100", {"Authorization": f"Bearer {key}"})
+        if c2 == 200:
+            eps = b2.get("data", [])
+            hit = next((e for e in eps if e.get("url") == webhook_url), None)
+            if hit:
+                evs = hit.get("enabled_events", [])
+                good = "*" in evs or "checkout.session.completed" in evs
+                out.append({"label": "Webhook endpoint", "ok": good and hit.get("status") == "enabled",
+                            "detail": f"Registered for {webhook_url} ({hit.get('status')})"
+                                      + ("" if good else " — but it doesn't send checkout.session.completed")})
+            else:
+                urls = ", ".join(e.get("url", "") for e in eps[:4]) or "none"
+                out.append({"label": "Webhook endpoint", "ok": False,
+                            "detail": f"No endpoint for {webhook_url}. Add it in Stripe → Developers → Webhooks "
+                                      f"(event checkout.session.completed). Existing: {urls}"})
+        else:
+            out.append({"label": "Webhook endpoint", "ok": None, "detail": f"Couldn't list webhooks ({c2}) — restricted key?"})
+    if wh in PLACEHOLDERS:
+        out.append({"label": "Webhook signing secret", "ok": False if key not in PLACEHOLDERS else None,
+                    "detail": "Not set — webhook signatures are NOT verified"})
+    else:
+        out.append({"label": "Webhook signing secret", "ok": wh.startswith("whsec_"),
+                    "detail": "Format OK (whsec_…). Stripe can't confirm it matches — copy it from the endpoint above."
+                    if wh.startswith("whsec_") else "Should start with whsec_"})
+    return out
+
+
+def test_twilio(v: dict) -> list:
+    sid, tok = v.get("TWILIO_ACCOUNT_SID", ""), v.get("TWILIO_AUTH_TOKEN", "")
+    num, mg = v.get("TWILIO_PHONE_NUMBER", ""), v.get("TWILIO_MESSAGING_SERVICE_SID", "")
+    if sid in PLACEHOLDERS:
+        return [{"label": "Account", "ok": None, "detail": "Not set — SMS are only printed to the backend log"}]
+    code, body = _http("GET", f"https://api.twilio.com/2010-04-01/Accounts/{sid}.json", auth=(sid, tok))
+    if code != 200:
+        return [{"label": "Account", "ok": False, "detail": f"Rejected ({code}): {_err(body)}"}]
+    out = [{"label": "Account", "ok": body.get("status") == "active",
+            "detail": f"{body.get('friendly_name')} — status {body.get('status')}, type {body.get('type')}"}]
+    if mg and mg not in PLACEHOLDERS:
+        c, b = _http("GET", f"https://messaging.twilio.com/v1/Services/{mg}", auth=(sid, tok))
+        if c == 200:
+            c3, b3 = _http("GET", f"https://messaging.twilio.com/v1/Services/{mg}/PhoneNumbers?PageSize=50", auth=(sid, tok))
+            n = len(b3.get("phone_numbers", [])) if c3 == 200 and isinstance(b3, dict) else "?"
+            out.append({"label": "Messaging service", "ok": n not in (0,), "detail": f"{b.get('friendly_name')} — {n} sender number(s)"
+                        + (" — EMPTY sender pool, SMS will fail" if n == 0 else "") + " (used instead of the phone number)"})
+        else:
+            out.append({"label": "Messaging service", "ok": False, "detail": f"Not found in this account ({c}): {_err(b)}"})
+    if num and num not in PLACEHOLDERS:
+        import urllib.parse
+        c, b = _http("GET", f"https://api.twilio.com/2010-04-01/Accounts/{sid}/IncomingPhoneNumbers.json?PhoneNumber="
+                     + urllib.parse.quote(num), auth=(sid, tok))
+        found = c == 200 and isinstance(b, dict) and b.get("incoming_phone_numbers")
+        out.append({"label": "Phone number", "ok": bool(found),
+                    "detail": f"{num} belongs to this account" if found else f"{num} not found in this account"})
+    elif not mg or mg in PLACEHOLDERS:
+        out.append({"label": "Sender", "ok": False, "detail": "Set a phone number or a messaging service SID"})
+    return out
+
+
+def test_email(v: dict) -> list:
+    key, frm = v.get("resend_api_key", "") or "", v.get("resend_from_email", "") or ""
+    enabled = v.get("email_enabled")
+    out = [{"label": "Email sending", "ok": True if enabled is True else None,
+            "detail": "Enabled" if enabled is True else "Disabled — no emails are sent (toggle below)"}]
+    if not key:
+        out.append({"label": "Resend API key", "ok": None if enabled is not True else False, "detail": "Not set"})
+        return out
+    code, body = _http("GET", "https://api.resend.com/domains", {"Authorization": f"Bearer {key}"})
+    if code == 401 or (code in (400, 403) and "restricted" in json.dumps(body)):
+        if code == 401 and "restricted" not in json.dumps(body):
+            out.append({"label": "Resend API key", "ok": False, "detail": f"Rejected: {_err(body)}"})
+            return out
+        out.append({"label": "Resend API key", "ok": True, "detail": "Valid (sending-only key, can't list domains)"})
+        return out
+    if code != 200:
+        out.append({"label": "Resend API key", "ok": False, "detail": f"Rejected ({code}): {_err(body)}"})
+        return out
+    doms = body.get("data", []) if isinstance(body, dict) else []
+    out.append({"label": "Resend API key", "ok": True, "detail": f"Valid — {len(doms)} domain(s) in the account"})
+    dom = frm.split("@")[-1].lower() if "@" in frm else ""
+    if not dom:
+        out.append({"label": "From address", "ok": False, "detail": "Set a from address like bookings@yourdomain.com"})
+    else:
+        d = next((x for x in doms if x.get("name", "").lower() == dom), None)
+        if not d:
+            out.append({"label": "From address", "ok": False, "detail": f"Domain {dom} isn't added in Resend — add + verify it there"})
+        else:
+            out.append({"label": "From address", "ok": d.get("status") == "verified", "detail": f"{frm} — domain {dom} is {d.get('status')}"})
+    return out
+
+
+def test_maps(v: dict) -> list:
+    key = v.get("GOOGLE_MAPS_API_KEY", "")
+    if key in PLACEHOLDERS:
+        return [{"label": "API key", "ok": None, "detail": "Not set — address boxes fall back to plain text"}]
+    code, body = _http("GET", f"https://maps.googleapis.com/maps/api/geocode/json?address=Times+Square+New+York&key={key}")
+    st = body.get("status") if isinstance(body, dict) else None
+    if st == "OK":
+        return [{"label": "Geocoding API", "ok": True, "detail": "Key works"}]
+    msg = body.get("error_message", "") if isinstance(body, dict) else str(body)
+    if "referer" in msg.lower():
+        return [{"label": "API key", "ok": None, "detail": "Key is restricted to websites (HTTP referrers) — fine for the "
+                 "address boxes, can't be tested from the server"}]
+    return [{"label": "Geocoding API", "ok": False, "detail": f"{st}: {msg}"[:300]}]
+
+
+class TestIntegration(BaseModel):
+    values: dict = {}   # unsaved form values override the current ones
+
+
+@app.post("/api/instances/{iid}/integrations/test/{service}")
+def test_integration(iid: int, service: str, body: TestIntegration):
+    if service not in ("stripe", "twilio", "email", "maps"):
+        raise HTTPException(400, "unknown service")
+    inst = instance(iid)
+    srv = server(inst["server_id"])
+    ex_ = executor_for(srv)
+    vals: dict = {}
+    if service in INTEG_ENV:
+        vals.update(effective_env(inst, ex_))
+    if service in INTEG_SETTINGS:
+        vals.update(current_settings(inst, ex_, INTEG_SETTINGS[service]))
+    vals.update({k: v for k, v in body.values.items() if v not in ("", None)})
+    if service == "stripe":
+        checks = test_stripe(vals, public_urls(inst, srv)["client_base_url"] + "/api/payments/webhook")
+    elif service == "twilio":
+        checks = test_twilio(vals)
+    elif service == "email":
+        checks = test_email(vals)
+    else:
+        checks = test_maps(vals)
+    return {"checks": checks, "ok": all(c["ok"] is not False for c in checks)}
 
 
 @app.get("/api/backups")

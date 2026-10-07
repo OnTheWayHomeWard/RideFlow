@@ -56,9 +56,9 @@
   </script>
 
   <!-- Header -->
-  <header class="bg-slate-950 text-white">
+  <header class="bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 text-white shadow-lg shadow-slate-900/10">
     <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
-      <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-sm">RF</div>
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center font-bold text-sm shadow-inner ring-1 ring-white/10">RF</div>
       <div class="min-w-0">
         <h1 class="font-bold leading-tight">Instance Manager</h1>
         <p class="text-[11px] text-slate-400">RideFlow · one deployment per company</p>
@@ -83,9 +83,9 @@
     <section x-show="tab==='instances'">
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         <template x-for="s in stats()">
-          <div class="bg-white border border-slate-200 rounded-xl p-4">
-            <p class="text-xs text-slate-500" x-text="s.label"></p>
-            <p class="text-2xl font-bold mt-1" :class="s.cls" x-text="s.value"></p>
+          <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+            <p class="text-[11px] uppercase tracking-wide font-semibold text-slate-400" x-text="s.label"></p>
+            <p class="text-3xl font-bold mt-1 tabular-nums" :class="s.cls" x-text="s.value"></p>
           </div>
         </template>
       </div>
@@ -109,7 +109,8 @@
 
       <div class="grid gap-3 lg:grid-cols-2">
         <template x-for="i in filtered()" :key="i.id">
-          <div class="bg-white border rounded-xl p-4 flex flex-col gap-3" :class="sel.includes(i.id) ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200'">
+          <div class="bg-white border border-l-4 rounded-xl p-4 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow"
+            :class="[sel.includes(i.id) ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200', {running:'!border-l-emerald-500',degraded:'!border-l-amber-400',stopped:'!border-l-slate-300',unreachable:'!border-l-red-500'}[i.state] || '']">
             <div class="flex items-start gap-3">
               <input type="checkbox" class="mt-3 w-4 h-4 accent-blue-600 shrink-0 cursor-pointer" :checked="sel.includes(i.id)" @change="toggle(i.id)" title="Select for bulk update">
               <div class="w-10 h-10 rounded-lg shrink-0 flex items-center justify-center text-white font-bold text-sm"
@@ -130,6 +131,12 @@
                 </p>
                 <div class="flex flex-wrap gap-1 mt-1" x-show="i.tags">
                   <template x-for="t in i.tags.split(',').map(x=>x.trim()).filter(Boolean)"><span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700" x-text="t"></span></template>
+                </div>
+                <div class="flex flex-wrap gap-1 mt-1.5" x-show="integ(i)">
+                  <template x-for="b in [['stripe','Stripe'],['sms','SMS'],['email','Email'],['maps','Maps']]">
+                    <button type="button" @click="openInteg(i)" class="text-[10px] px-1.5 py-0.5 rounded-md font-medium" :class="badgeCls(integ(i)?.[b[0]])"
+                      x-text="b[1] + ' · ' + badgeTxt(b[0], integ(i)?.[b[0]])"></button>
+                  </template>
                 </div>
               </div>
             </div>
@@ -154,6 +161,7 @@
               <button class="btn btn-g" :disabled="i.busy" x-show="i.state!=='stopped'" @click="confirm(`Stop ${i.company}? The site will go offline.`) && act(i,'stop')">■ Stop</button>
               <button class="btn btn-g" :disabled="i.busy" @click="act(i,'restart')">↻ Restart</button>
               <button class="btn btn-g" :disabled="i.busy || !data.latest_tag || i.image_tag===data.latest_tag" @click="confirm(`Update ${i.company} to ${data.latest_tag}? A backup is taken first.`) && act(i,'update')">⬆ Update</button>
+              <button class="btn btn-g" @click="openInteg(i)">⚙ Integrations</button>
               <button class="btn btn-g" @click="openLogs(i)">Logs</button>
               <div class="relative" x-data="{o:false}" @click.outside="o=false">
                 <button class="btn btn-g" @click="o=!o">More ▾</button>
@@ -170,7 +178,10 @@
           </div>
         </template>
       </div>
-      <p x-show="!filtered().length && !loading" class="text-center text-slate-400 py-16">No instances match these filters.</p>
+      <div x-show="!filtered().length && !loading" class="text-center py-16 border-2 border-dashed border-slate-200 rounded-2xl">
+        <p class="text-slate-500 font-medium" x-text="data.instances.length ? 'No instances match these filters.' : 'No instances yet.'"></p>
+        <button x-show="!data.instances.length" class="btn btn-p mt-3" @click="openCreate()">+ Create the first one</button>
+      </div>
     </section>
 
     <!-- ═══ Servers ═══ -->
@@ -457,6 +468,91 @@
     </form>
   </div>
 
+  <!-- ═══ Integrations ═══ -->
+  <div x-show="ig.open" x-cloak class="fixed inset-0 z-40 bg-slate-900/60 flex items-start justify-center overflow-y-auto p-4" @keydown.escape.window="ig.open=false">
+    <div class="bg-white rounded-2xl w-full max-w-4xl my-6 shadow-2xl">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+        <div>
+          <h2 class="font-bold text-lg">Integrations</h2>
+          <p class="text-xs text-slate-500"><span x-text="ig.inst?.company"></span> · payments, SMS, email and maps. Leave a key empty to keep the current one.</p>
+        </div>
+        <button class="text-slate-400 hover:text-slate-700 text-xl ml-auto" @click="ig.open=false">×</button>
+      </div>
+      <div x-show="ig.loading" class="p-10 text-center text-sm text-slate-400">Reading current configuration…</div>
+      <p x-show="ig.err" class="mx-6 mt-4 text-sm text-red-600" x-text="ig.err"></p>
+
+      <div x-show="!ig.loading && ig.data" class="p-6 grid lg:grid-cols-2 gap-4">
+        <template x-for="sec in igSections" :key="sec.id">
+          <div class="border border-slate-200 rounded-xl overflow-hidden flex flex-col">
+            <div class="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2">
+              <span class="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold" :style="`background:${sec.color}`" x-text="sec.icon"></span>
+              <div class="min-w-0">
+                <p class="font-semibold text-sm" x-text="sec.title"></p>
+                <p class="text-[11px] text-slate-500" x-text="sec.note"></p>
+              </div>
+              <span class="ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium" :class="badgeCls(ig.data?.summary?.[sec.sum])" x-text="badgeTxt(sec.sum, ig.data?.summary?.[sec.sum])"></span>
+            </div>
+            <div class="p-4 space-y-3 flex-1">
+              <template x-for="t in sec.toggles">
+                <label class="flex items-center justify-between gap-3 text-sm">
+                  <span x-text="t.label"></span>
+                  <button type="button" @click="ig.flags[t.key] = !ig.flags[t.key]" class="relative w-10 h-6 rounded-full transition-colors shrink-0"
+                    :class="ig.flags[t.key] ? 'bg-blue-600' : 'bg-slate-300'">
+                    <span class="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all" :class="ig.flags[t.key] ? 'left-[18px]' : 'left-0.5'"></span>
+                  </button>
+                </label>
+              </template>
+              <template x-for="fd in sec.fields" :key="fd.key">
+                <div>
+                  <label class="lbl flex items-center gap-1.5">
+                    <span x-text="fd.label"></span>
+                    <span x-show="ig.data?.values?.[fd.key]?.set" class="text-[10px] text-emerald-600">● set</span>
+                  </label>
+                  <input class="inp mono text-xs" :type="fd.secret ? 'password' : 'text'" x-model="ig.form[fd.key]" autocomplete="off"
+                    :placeholder="fd.secret ? (ig.data?.values?.[fd.key]?.display || 'not set') + (ig.data?.values?.[fd.key]?.set ? ' — type to replace' : '') : (fd.ph || '')">
+                </div>
+              </template>
+              <div x-show="sec.id==='stripe'" class="text-[11px] text-slate-500 bg-slate-50 rounded-lg p-2">
+                Webhook URL for Stripe (event <span class="mono">checkout.session.completed</span>):
+                <span class="mono text-slate-700 break-all select-all" x-text="ig.data?.webhook_url"></span>
+              </div>
+              <div x-show="ig.tests[sec.id]" class="space-y-1.5 pt-1">
+                <template x-for="c in (ig.tests[sec.id] || [])">
+                  <div class="flex gap-2 text-xs">
+                    <span class="shrink-0 mt-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[10px] text-white"
+                      :class="c.ok === true ? 'bg-emerald-500' : c.ok === false ? 'bg-red-500' : 'bg-slate-400'" x-text="c.ok === true ? '✓' : c.ok === false ? '!' : '–'"></span>
+                    <span><b x-text="c.label"></b> — <span class="text-slate-600" x-text="c.detail"></span></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+            <div class="px-4 py-2.5 border-t border-slate-100 flex items-center gap-2">
+              <button type="button" class="btn btn-g" @click="igTest(sec.id)" :disabled="!!ig.testing[sec.id]" x-text="ig.testing[sec.id] ? 'Testing…' : 'Test connection'"></button>
+              <button type="button" x-show="sec.clear.length" class="text-xs text-slate-400 hover:text-red-600 ml-auto" @click="igClear(sec)">Disconnect</button>
+            </div>
+          </div>
+        </template>
+      </div>
+      <div class="px-6 py-4 border-t border-slate-100 flex flex-wrap items-center gap-2">
+        <p class="text-xs text-slate-500">Stripe, Twilio &amp; Maps keys restart the backend (~15 s). Email and the on/off switches apply instantly.</p>
+        <button type="button" class="btn btn-g ml-auto" @click="ig.open=false">Close</button>
+        <button type="button" class="btn btn-p" @click="igSave()" :disabled="ig.busy || !igChanges().count" x-text="ig.busy ? 'Saving…' : (igChanges().count ? `Save ${igChanges().count} change(s)` : 'No changes')"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Toasts ═══ -->
+  <div class="fixed top-4 right-4 z-[60] flex flex-col gap-2 w-80 max-w-[calc(100vw-2rem)] pointer-events-none">
+    <template x-for="t in toasts" :key="t.id">
+      <div class="pointer-events-auto rounded-xl shadow-lg border px-4 py-3 text-sm flex gap-2 items-start bg-white"
+        :class="t.kind==='err' ? 'border-red-200' : 'border-emerald-200'" x-transition.opacity>
+        <span class="mt-0.5 w-4 h-4 rounded-full shrink-0 flex items-center justify-center text-[10px] text-white" :class="t.kind==='err' ? 'bg-red-500' : 'bg-emerald-500'" x-text="t.kind==='err' ? '!' : '✓'"></span>
+        <span class="flex-1 break-words" x-text="t.msg"></span>
+        <button class="text-slate-400 hover:text-slate-700" @click="toasts = toasts.filter(x => x.id !== t.id)">×</button>
+      </div>
+    </template>
+  </div>
+
   <!-- ═══ Admin users ═══ -->
   <div x-show="ad.open" x-cloak class="fixed inset-0 z-40 bg-slate-900/60 flex items-start justify-center overflow-y-auto p-4" @keydown.escape.window="ad.open=false">
     <div class="bg-white rounded-2xl w-full max-w-4xl my-6 shadow-2xl">
@@ -585,7 +681,7 @@ function app() {
   return {
     tab: 'instances', loading: false, booted: false, data: { servers: [], instances: [], releases: [], latest_tag: '', base_domain: '' },
     jobs: [], backups: [], f: { q: '', state: '', server: '', env: '' }, sel: [], selTag: '',
-    envKeys: ['STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','TWILIO_ACCOUNT_SID','TWILIO_AUTH_TOKEN','TWILIO_PHONE_NUMBER','TWILIO_MESSAGING_SERVICE_SID','GOOGLE_MAPS_API_KEY'],
+    envKeys: ['STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','TWILIO_ACCOUNT_SID','TWILIO_AUTH_TOKEN','TWILIO_PHONE_NUMBER','TWILIO_MESSAGING_SERVICE_SID','GOOGLE_MAPS_API_KEY','resend_api_key','resend_from_email','resend_from_name'],
     ad: { open: false, inst: null, list: [], loading: false, err: '', result: null, reset: null, busy: false, copied: false, new: {} },
     seedModes: [
       ['config', 'Settings only', 'Copy the source’s settings & branding. Vehicles, routes, hotels, drivers and staff start empty.'],
@@ -593,6 +689,32 @@ function app() {
       ['full', 'Full copy', 'Everything, including rides and payments.'],
       ['fresh', 'Fresh / empty', 'Built-in defaults, nothing copied.'],
     ],
+    igSections: [
+      { id: 'stripe', sum: 'stripe', title: 'Stripe', icon: 'S', color: '#635bff', note: 'Card payments + payouts to drivers',
+        fields: [{ key: 'STRIPE_SECRET_KEY', label: 'Secret key (sk_live_… / sk_test_…)', secret: true },
+                 { key: 'STRIPE_WEBHOOK_SECRET', label: 'Webhook signing secret (whsec_…)', secret: true },
+                 { key: 'payout_currency', label: 'Payout currency', ph: 'usd' }],
+        toggles: [{ key: 'stripe_connect_enabled', label: 'Stripe Connect payouts' }],
+        clear: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'] },
+      { id: 'twilio', sum: 'sms', title: 'Twilio SMS', icon: 'T', color: '#f22f46', note: 'Booking confirmations, reminders, driver alerts',
+        fields: [{ key: 'TWILIO_ACCOUNT_SID', label: 'Account SID (AC…)', ph: 'AC…' },
+                 { key: 'TWILIO_AUTH_TOKEN', label: 'Auth token', secret: true },
+                 { key: 'TWILIO_PHONE_NUMBER', label: 'From phone number', ph: '+15551234567' },
+                 { key: 'TWILIO_MESSAGING_SERVICE_SID', label: 'Messaging service SID (optional, MG…)', ph: 'MG…' }],
+        toggles: [{ key: 'sms_enabled', label: 'Send SMS' }],
+        clear: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_PHONE_NUMBER', 'TWILIO_MESSAGING_SERVICE_SID'] },
+      { id: 'email', sum: 'email', title: 'Email (Resend)', icon: '@', color: '#0f172a', note: 'Receipts, guest payment links, cancellations',
+        fields: [{ key: 'resend_api_key', label: 'Resend API key (re_…)', secret: true },
+                 { key: 'resend_from_email', label: 'From address', ph: 'bookings@company.com' },
+                 { key: 'resend_from_name', label: 'From name', ph: 'Company Rides' }],
+        toggles: [{ key: 'email_enabled', label: 'Send emails' }],
+        clear: [] },
+      { id: 'maps', sum: 'maps', title: 'Google Maps', icon: 'G', color: '#34a853', note: 'Address autocomplete + distances',
+        fields: [{ key: 'GOOGLE_MAPS_API_KEY', label: 'API key (AIza…)', secret: true }],
+        toggles: [], clear: ['GOOGLE_MAPS_API_KEY'] },
+    ],
+    ig: { open: false, inst: null, loading: false, err: '', data: null, form: {}, init: {}, flags: {}, initFlags: {}, tests: {}, testing: {}, busy: false, clear: [] },
+    toasts: [],
     pw: { open: false, current: '', next: '', confirm: '', err: '', ok: false, busy: false },
     cr: { open: false, custom_env: {} }, ed: { open: false }, bk: { open: false, name: '', password: '', err: '', busy: false }, lg: { open: false, service: 'backend', text: '' },
     jb: { open: false, id: null, log: '', status: '', title: '', min: false },
@@ -635,7 +757,7 @@ function app() {
       } catch (e) {
         ok = false
         if (boot) this.bootErr = e.message
-        else if (!quiet) alert(e.message)
+        else if (!quiet) this.toast(e.message, 'err')
       }
       this.loading = false
       return ok
@@ -695,12 +817,12 @@ function app() {
     showJob(id) { this.watch(id) },
     async act(i, action) {
       try { const r = await this.api(`/api/instances/${i.id}/action/${action}`, { method: 'POST' }); this.watch(r.job_id); this.refresh(true) }
-      catch (e) { alert(e.message) }
+      catch (e) { this.toast(e.message, 'err') }
     },
-    async build() { try { this.watch((await this.api('/api/releases/build', { method: 'POST' })).job_id) } catch (e) { alert(e.message) } },
+    async build() { try { this.watch((await this.api('/api/releases/build', { method: 'POST' })).job_id) } catch (e) { this.toast(e.message, 'err') } },
     async rollout() {
       if (!confirm(`Update every instance to ${this.data.latest_tag}? Each one is backed up first and restarts briefly.`)) return
-      try { this.watch((await this.api('/api/releases/rollout', { method: 'POST', body: JSON.stringify({ tag: this.data.latest_tag }) })).job_id) } catch (e) { alert(e.message) }
+      try { this.watch((await this.api('/api/releases/rollout', { method: 'POST', body: JSON.stringify({ tag: this.data.latest_tag }) })).job_id) } catch (e) { this.toast(e.message, 'err') }
     },
     toggle(id) { this.sel = this.sel.includes(id) ? this.sel.filter(x => x !== id) : [...this.sel, id] },
     toggleAll() {
@@ -711,14 +833,14 @@ function app() {
       const tag = this.selTag || this.data.latest_tag
       const chosen = this.data.instances.filter(i => this.sel.includes(i.id))
       const todo = chosen.filter(i => i.image_tag !== tag)
-      if (!todo.length) return alert(`All selected instances already run ${tag}.`)
+      if (!todo.length) return this.toast(`All selected instances already run ${tag}.`)
       const older = this.data.releases.findIndex(r => r.tag === tag) > 0
       const list = todo.map(i => `• ${i.company} (${i.image_tag || '?'} → ${tag})`).join('\n')
       if (!confirm(`${older ? 'ROLL BACK' : 'Update'} ${todo.length} instance(s) to ${tag}?\n\n${list}\n\nEach is backed up first and restarts briefly, one at a time.`)) return
       try {
         const r = await this.api('/api/releases/rollout', { method: 'POST', body: JSON.stringify({ tag, instance_ids: todo.map(i => i.id) }) })
         this.sel = []; this.watch(r.job_id); this.refresh(true)
-      } catch (e) { alert(e.message) }
+      } catch (e) { this.toast(e.message, 'err') }
     },
 
     // ── create ──
@@ -770,14 +892,14 @@ function app() {
         this.ed.open = false
         if (r.job_id) this.watch(r.job_id)
         this.refresh(true)
-      } catch (e) { alert(e.message) }
+      } catch (e) { this.toast(e.message, 'err') }
     },
     async del(i) {
       const typed = prompt(`Delete ${i.company}? Containers, folder and Caddy site are removed (a backup is taken first).\n\nType the slug "${i.slug}" to confirm:`)
       if (typed !== i.slug) return
       const wipe = confirm('Also delete the DATABASE volume?\n\nOK = delete data permanently · Cancel = keep the data volume')
       try { this.watch((await this.api(`/api/instances/${i.id}?confirm=${encodeURIComponent(typed)}&delete_data=${wipe}`, { method: 'DELETE' })).job_id) }
-      catch (e) { alert(e.message) }
+      catch (e) { this.toast(e.message, 'err') }
     },
     openLogs(i) { this.lg = { open: true, inst: i, service: 'backend', text: 'Loading…' }; this.loadLogs() },
     async loadLogs() {
@@ -798,7 +920,7 @@ function app() {
     },
     async delServer(s) {
       if (!confirm(`Remove server ${s.name} from the manager?`)) return
-      try { await this.api('/api/servers/' + s.id, { method: 'DELETE' }); this.refresh() } catch (e) { alert(e.message) }
+      try { await this.api('/api/servers/' + s.id, { method: 'DELETE' }); this.refresh() } catch (e) { this.toast(e.message, 'err') }
     },
     genPw() {
       const a = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789', r = crypto.getRandomValues(new Uint32Array(14))
@@ -846,6 +968,66 @@ function app() {
       this.ad.err = ''
       try { await this.api(`/api/instances/${this.ad.inst.id}/admins/${a.id}/role?role=${role}`, { method: 'POST' }); await this.loadAdmins() }
       catch (e) { this.ad.err = e.message }
+    },
+    toast(msg, kind = 'ok') {
+      const id = Date.now() + Math.random()
+      this.toasts.push({ id, msg, kind })
+      setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id) }, kind === 'err' ? 8000 : 4000)
+    },
+    badgeCls(v) { return v === 'live' || v === 'on' ? 'bg-emerald-100 text-emerald-700' : v === 'test' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500' },
+    badgeTxt(k, v) { if (!v) return '…'; return k === 'stripe' ? ({ live: 'live', test: 'test mode', off: 'off' }[v]) : (v === 'on' ? 'on' : 'off') },
+    integ(i) { try { return JSON.parse(i.integ_status || 'null') } catch { return null } },
+    async openInteg(i) {
+      this.ig = { open: true, inst: i, loading: true, err: '', data: null, form: {}, init: {}, flags: {}, initFlags: {}, tests: {}, testing: {}, busy: false, clear: [] }
+      try {
+        const d = await this.api(`/api/instances/${i.id}/integrations`)
+        const form = {}, flags = {}
+        for (const sec of this.igSections) {
+          for (const f of sec.fields) {
+            const v = f.secret ? '' : String(d.values[f.key]?.value ?? d.values[f.key]?.display ?? '')
+            form[f.key] = ['placeholder', 'sk_test_placeholder', 'whsec_placeholder'].includes(v) ? '' : v
+          }
+          for (const t of sec.toggles) flags[t.key] = d.values[t.key]?.value === true || d.values[t.key]?.value === 'true'
+        }
+        Object.assign(this.ig, { data: d, form, init: { ...form }, flags, initFlags: { ...flags }, loading: false })
+      } catch (e) { Object.assign(this.ig, { err: e.message, loading: false }) }
+    },
+    igChanges() {
+      const env = {}, settings = {}
+      const isEnv = k => k === k.toUpperCase()
+      for (const [k, v] of Object.entries(this.ig.form || {})) {
+        if ((v ?? '') === (this.ig.init[k] ?? '')) continue
+        if (isEnv(k)) { if (v) env[k] = v } else settings[k] = v
+      }
+      for (const [k, v] of Object.entries(this.ig.flags || {})) if (v !== this.ig.initFlags[k]) settings[k] = v
+      const count = Object.keys(env).length + Object.keys(settings).length + this.ig.clear.length
+      return { env, settings, count }
+    },
+    igClear(sec) {
+      if (!confirm(`Disconnect ${sec.title}? Its keys are removed (${sec.id === 'stripe' ? 'payments go back to simulated mode' : 'the feature turns off'}). Click Save to apply.`)) return
+      this.ig.clear = [...new Set([...this.ig.clear, ...sec.clear])]
+      for (const k of sec.clear) { this.ig.form[k] = '' ; this.ig.init[k] = '' }
+      this.toast(`${sec.title} will be disconnected when you save`)
+    },
+    async igTest(id) {
+      this.ig.testing[id] = true
+      const sec = this.igSections.find(s => s.id === id), values = {}
+      for (const f of sec.fields) if (this.ig.form[f.key] && this.ig.form[f.key] !== this.ig.init[f.key]) values[f.key] = this.ig.form[f.key]
+      for (const t of sec.toggles) values[t.key] = this.ig.flags[t.key]
+      try { this.ig.tests[id] = (await this.api(`/api/instances/${this.ig.inst.id}/integrations/test/${id}`, { method: 'POST', body: JSON.stringify({ values }) })).checks }
+      catch (e) { this.ig.tests[id] = [{ label: 'Test', ok: false, detail: e.message }] }
+      this.ig.testing[id] = false
+    },
+    async igSave() {
+      const { env, settings } = this.igChanges()
+      this.ig.busy = true
+      try {
+        const r = await this.api(`/api/instances/${this.ig.inst.id}/integrations`, { method: 'POST', body: JSON.stringify({ env, settings, clear: this.ig.clear }) })
+        this.ig.open = false
+        this.watch(r.job_id)
+        this.toast('Saving integrations…')
+      } catch (e) { this.toast(e.message, 'err') }
+      this.ig.busy = false
     },
     async changePw() {
       this.pw.busy = true; this.pw.err = ''
