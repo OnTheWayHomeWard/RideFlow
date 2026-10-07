@@ -456,22 +456,38 @@ def ensure_caddy_import(ex_: Executor, log):
 
 
 def used_ports(ex_: Executor) -> set[int]:
+    """Ports that are taken on a server: anything listening right now, plus host
+    ports reserved by Docker containers that are currently stopped."""
     out = ex_.sh("ss -ltnH | awk '{print $4}' | sed -E 's/.*:([0-9]+)$/\\1/'", check=False)
+    out += " " + ex_.sh(
+        "docker ps -aq | xargs -r docker inspect --format "
+        "'{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{.HostPort}} {{end}}{{end}}' 2>/dev/null",
+        check=False)
     return {int(p) for p in out.split() if p.isdigit()}
 
 
-def suggest_ports(server_id: int, ex_: Executor | None = None) -> dict:
+_port_lock = threading.Lock()   # held while picking + reserving ports for a new instance
+
+
+def taken_ports(server_id: int, ex_: Executor | None = None) -> set[int]:
     taken = set()
     for i in q("SELECT port_website, port_client, port_staff FROM instances WHERE server_id=?", (server_id,)):
         taken |= {i["port_website"], i["port_client"], i["port_staff"]}
     if ex_:
         taken |= used_ports(ex_)
+    return taken
+
+
+def suggest_ports(server_id: int, ex_: Executor | None = None, taken: set[int] | None = None) -> dict:
+    """First free block of 3 consecutive ports: 6172-6174, 6182-6184, 6192-6194, …"""
+    taken = taken if taken is not None else taken_ports(server_id, ex_)
     base = 6170
-    while True:
+    while base < 60000:
         trio = (base + 2, base + 3, base + 4)
         if not taken & set(trio):
             return {"website": trio[0], "client": trio[1], "staff": trio[2]}
         base += 10
+    raise HTTPException(400, "no free port block found")
 
 
 # ─── Release images ──────────────────────────────────────────────────────
@@ -561,9 +577,10 @@ class CreateInstance(BaseModel):
     domain_website: str = ""
     domain_client: str = ""
     domain_staff: str = ""
-    port_website: int
-    port_client: int
-    port_staff: int
+    # 0 / omitted = pick 3 free consecutive ports automatically
+    port_website: int = 0
+    port_client: int = 0
+    port_staff: int = 0
     image_tag: str = ""
     # config      = settings only (everything else empty, new admin login)
     # operational = all data except rides/payments/notifications
@@ -875,12 +892,9 @@ def create_instance(req: CreateInstance):
     server(req.server_id)
     if q("SELECT 1 FROM instances WHERE server_id=? AND slug=?", (req.server_id, slug), one=True):
         raise HTTPException(400, f"an instance '{slug}' already exists on that server")
-    ports = [req.port_website, req.port_client, req.port_staff]
-    if len(set(ports)) != 3 or any(not (1024 < p < 65535) for p in ports):
-        raise HTTPException(400, "ports must be 3 different numbers between 1025 and 65534")
-    for other in q("SELECT * FROM instances WHERE server_id=?", (req.server_id,)):
-        if set(ports) & {other["port_website"], other["port_client"], other["port_staff"]}:
-            raise HTTPException(400, f"ports clash with instance '{other['slug']}'")
+    manual = [req.port_website, req.port_client, req.port_staff]
+    if any(manual) and (len(set(manual)) != 3 or any(not (1024 < p < 65535) for p in manual)):
+        raise HTTPException(400, "ports must be 3 different numbers between 1025 and 65534 (or leave them on Auto)")
     if req.seed_mode != "fresh" and not req.source_instance_id:
         raise HTTPException(400, "choose a source instance to copy from")
     if req.integrations == "inherit" and not req.source_instance_id:
@@ -897,7 +911,31 @@ def create_instance(req: CreateInstance):
     if not tag:
         raise HTTPException(400, "no release built yet — build one on the Releases tab first")
     project = f"rideflow-{slug}"
-    iid = ex("""INSERT INTO instances(slug, company, contact_name, contact_email, contact_phone, environment, tags,
+    _port_lock.acquire()
+    try:
+        try:
+            srv_ex = executor_for(server(req.server_id))
+            taken = taken_ports(req.server_id, srv_ex)
+            if isinstance(srv_ex, RemoteExec):
+                srv_ex.close()
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(400, f"can't reach the server to check free ports: {e}")
+        if any(manual):
+            clash = sorted(taken & set(manual))
+            if clash:
+                raise HTTPException(400, f"port(s) {clash} already in use on that server — pick others or use Auto")
+        else:
+            auto = suggest_ports(req.server_id, taken=taken)
+            req.port_website, req.port_client, req.port_staff = auto["website"], auto["client"], auto["staff"]
+        iid = _insert_instance(req, slug, project, tag)
+    finally:
+        _port_lock.release()
+    jid = start_job(f"Create {req.company}", "create", job_create(iid, req), instance_id=iid, server_id=req.server_id)
+    return {"id": iid, "job_id": jid, "ports": {"website": req.port_website, "client": req.port_client, "staff": req.port_staff}}
+
+
+def _insert_instance(req: "CreateInstance", slug: str, project: str, tag: str) -> int:
+    return ex("""INSERT INTO instances(slug, company, contact_name, contact_email, contact_phone, environment, tags,
                 notes, server_id, project, directory, domain_website, domain_client, domain_staff, port_website,
                 port_client, port_staff, image_tag, caddy_managed, brand_color, created_at, updated_at)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)""",
@@ -905,8 +943,6 @@ def create_instance(req: CreateInstance):
               req.tags, req.notes, req.server_id, project, f"{INSTANCES_DIR}/{slug}",
               req.domain_website.strip().lower(), req.domain_client.strip().lower(), req.domain_staff.strip().lower(),
               req.port_website, req.port_client, req.port_staff, tag, req.brand_primary_color, now(), now()))
-    jid = start_job(f"Create {req.company}", "create", job_create(iid, req), instance_id=iid, server_id=req.server_id)
-    return {"id": iid, "job_id": jid}
 
 
 class EditInstance(BaseModel):

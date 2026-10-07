@@ -262,10 +262,28 @@
             <div>
               <label class="lbl" x-text="{website:'Website',client:'Booking app',staff:'Staff portal'}[svc] + ' domain'"></label>
               <input class="inp mono text-xs" x-model="cr['domain_'+svc]" placeholder="optional">
-              <label class="lbl mt-2">Port</label>
-              <input class="inp mono" type="number" x-model.number="cr['port_'+svc]" required>
+              <template x-if="!cr.auto_ports">
+                <div><label class="lbl mt-2">Port</label>
+                  <input class="inp mono" type="number" x-model.number="cr['port_'+svc]" required></div>
+              </template>
             </div>
           </template>
+          <div class="sm:col-span-3 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm">
+            <span class="font-medium text-slate-700">Ports</span>
+            <template x-if="cr.auto_ports">
+              <span class="flex flex-wrap items-center gap-2">
+                <span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">Auto</span>
+                <span class="text-slate-600" x-show="cr.port_website">
+                  <span class="mono" x-text="`${cr.port_website} · ${cr.port_client} · ${cr.port_staff}`"></span>
+                  <span class="text-xs text-slate-400">— free right now on this server; confirmed again when you click Create</span>
+                </span>
+                <span class="text-xs text-slate-400" x-show="!cr.port_website">checking server…</span>
+              </span>
+            </template>
+            <template x-if="!cr.auto_ports"><span class="text-xs text-slate-500">Manual — website · booking · staff ports above.</span></template>
+            <button type="button" class="ml-auto text-xs font-medium text-blue-600 hover:underline" @click="cr.auto_ports=!cr.auto_ports; if (cr.auto_ports) suggest()"
+              x-text="cr.auto_ports ? 'Choose manually' : 'Back to auto'"></button>
+          </div>
           <p class="text-xs text-slate-500 sm:col-span-3">Domains get HTTPS automatically through Caddy once their DNS A records point at the server. The ports also work straight away at <span class="mono">http://server-ip:port</span>.</p>
         </fieldset>
 
@@ -643,7 +661,7 @@ function app() {
         open: true, busy: false, err: '', slugTouched: false,
         company: '', slug: '', contact_name: '', contact_email: '', contact_phone: '', environment: 'production', tags: '', notes: '',
         server_id: local?.id, image_tag: this.data.latest_tag,
-        domain_website: '', domain_client: '', domain_staff: '', port_website: '', port_client: '', port_staff: '',
+        domain_website: '', domain_client: '', domain_staff: '', port_website: '', port_client: '', port_staff: '', auto_ports: true,
         seed_mode: 'config', source_instance_id: (src || this.data.instances[0])?.id, integrations: 'inherit', custom_env: {},
         admin_email: '', admin_password: '', brand_primary_color: '', brand_secondary_color: '', company_logo_url: '',
       }
@@ -658,13 +676,14 @@ function app() {
     async suggest() {
       if (!this.cr.server_id) return
       const s = await this.api(`/api/suggest?server_id=${this.cr.server_id}&slug=${encodeURIComponent(this.cr.slug || '')}`)
-      Object.assign(this.cr, { port_website: s.ports.website, port_client: s.ports.client, port_staff: s.ports.staff })
+      if (this.cr.auto_ports || !this.cr.port_website) Object.assign(this.cr, { port_website: s.ports.website, port_client: s.ports.client, port_staff: s.ports.staff })
       if (s.domains.website) Object.assign(this.cr, { domain_website: s.domains.website, domain_client: s.domains.client, domain_staff: s.domains.staff })
     },
     async create() {
       this.cr.busy = true; this.cr.err = ''
       try {
-        const { open, busy, err, slugTouched, ...body } = this.cr
+        const { open, busy, err, slugTouched, auto_ports, ...body } = this.cr
+        if (auto_ports) Object.assign(body, { port_website: 0, port_client: 0, port_staff: 0 })
         if (body.seed_mode === 'fresh' && body.integrations !== 'inherit') body.source_instance_id = null
         const r = await this.api('/api/instances', { method: 'POST', body: JSON.stringify(body) })
         this.cr.open = false
