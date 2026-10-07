@@ -153,7 +153,9 @@ class CmdError(Exception):
 class Executor:
     label = ""
 
-    def run(self, cmd: str, input_bytes: bytes | None = None, check=True, timeout=1800) -> tuple[int, bytes]:
+    def run(self, cmd: str, input_bytes: bytes | None = None, check=True, timeout=1800,
+            binary=False) -> tuple[int, bytes]:
+        """binary=True keeps stderr out of the returned bytes (for dumps etc.)."""
         raise NotImplementedError
 
     def sh(self, cmd: str, **kw) -> str:
@@ -174,11 +176,12 @@ class Executor:
 class LocalExec(Executor):
     label = "local"
 
-    def run(self, cmd, input_bytes=None, check=True, timeout=1800):
+    def run(self, cmd, input_bytes=None, check=True, timeout=1800, binary=False):
         p = subprocess.run(["bash", "-c", cmd], input=input_bytes, stdout=subprocess.PIPE,
-                           stderr=subprocess.STDOUT, timeout=timeout)
+                           stderr=subprocess.PIPE if binary else subprocess.STDOUT, timeout=timeout)
         if check and p.returncode != 0:
-            raise CmdError(f"exit {p.returncode}: {p.stdout.decode(errors='replace')[-2000:]}")
+            err = (p.stderr or b"") if binary else p.stdout
+            raise CmdError(f"exit {p.returncode}: {err.decode(errors='replace')[-2000:]}")
         return p.returncode, p.stdout
 
 
@@ -195,10 +198,10 @@ class RemoteExec(Executor):
         self.client.connect(**kw)
         self.client.get_transport().set_keepalive(20)
 
-    def run(self, cmd, input_bytes=None, check=True, timeout=1800):
+    def run(self, cmd, input_bytes=None, check=True, timeout=1800, binary=False):
         chan = self.client.get_transport().open_session()
         chan.settimeout(timeout)
-        chan.set_combine_stderr(True)
+        chan.set_combine_stderr(not binary)
         chan.exec_command(f"bash -c {shlex.quote(cmd)}")
         if input_bytes is not None:
             for i in range(0, len(input_bytes), 32768):
@@ -211,9 +214,13 @@ class RemoteExec(Executor):
                 break
             out.write(data)
         code = chan.recv_exit_status()
+        err = b""
+        if binary:
+            while chan.recv_stderr_ready():
+                err += chan.recv_stderr(65536)
         chan.close()
         if check and code != 0:
-            raise CmdError(f"exit {code}: {out.getvalue().decode(errors='replace')[-2000:]}")
+            raise CmdError(f"exit {code}: {(err if binary else out.getvalue()).decode(errors='replace')[-2000:]}")
         return code, out.getvalue()
 
     def pipe_from_local(self, local_cmd: str, remote_cmd: str, log=None):
@@ -382,7 +389,7 @@ def wait_settings(ex_: Executor, inst: dict, log, timeout=180):
     """Wait until the backend has migrated + bootstrapped (settings rows exist)."""
     t0 = time.time()
     while time.time() - t0 < timeout:
-        code, out = ex_.run(compose(inst, "exec -T db psql -U rideflow -d rideflow -At -c 'SELECT count(*) FROM settings'"), check=False)
+        code, out = ex_.run(compose(inst, "exec -T db psql -U rideflow -d rideflow -At -c 'SELECT count(*) FROM settings'"), check=False, binary=True)
         if code == 0 and out.strip().isdigit() and int(out.strip()) > 0:
             return
         time.sleep(3)
@@ -522,7 +529,7 @@ def job_update(inst_id: int, tag: str):
 
 
 def take_backup(inst: dict, ex_: Executor, log, reason="manual") -> str:
-    _, dump = ex_.run(compose(inst, "exec -T db pg_dump -U rideflow -d rideflow -Fc"))
+    _, dump = ex_.run(compose(inst, "exec -T db pg_dump -U rideflow -d rideflow -Fc"), binary=True)
     name = f"{inst['slug']}-s{inst['server_id']}-{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}-{reason}.dump"
     (BACKUPS / name).write_bytes(dump)
     log(f"Backup saved: {name} ({len(dump) / 1024:.0f} KB)")
@@ -616,7 +623,7 @@ def job_create(inst_id: int, req: CreateInstance):
         if req.seed_mode in ("config", "full") and src:
             excl = "" if req.seed_mode == "full" else " ".join(f"--exclude-table-data={t}" for t in TRANSACTIONAL_TABLES)
             log(f"Dumping {'config-only' if excl else 'full'} data from '{src['company']}'…")
-            _, dump = src_ex.run(compose(src, f"exec -T db pg_dump -U rideflow -d rideflow -Fc {excl}"))
+            _, dump = src_ex.run(compose(src, f"exec -T db pg_dump -U rideflow -d rideflow -Fc {excl}"), binary=True)
             log(f"Restoring {len(dump) / 1024:.0f} KB…")
             ex_.run(compose(inst, "exec -T db pg_restore -U rideflow -d rideflow --no-owner --exit-on-error"), input_bytes=dump)
 
