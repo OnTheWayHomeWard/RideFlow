@@ -396,6 +396,18 @@ def wait_settings(ex_: Executor, inst: dict, log, timeout=180):
     raise CmdError("backend did not finish starting (no settings rows) — check its logs")
 
 
+def wait_healthy(ex_: Executor, inst: dict, log, timeout=240) -> dict:
+    """Wait until all three frontends answer /api/settings/public with 200 (backend up)."""
+    t0, h = time.time(), {}
+    while time.time() - t0 < timeout:
+        h = health(ex_, inst)
+        if all(v == "200" for v in h.values()):
+            log(f"Healthy: {h}")
+            return h
+        time.sleep(4)
+    raise CmdError(f"instance not healthy after {timeout}s: {h} — check the backend logs")
+
+
 def health(ex_: Executor, inst: dict) -> dict:
     out = {}
     for svc in ("website", "client", "staff"):
@@ -523,8 +535,7 @@ def job_update(inst_id: int, tag: str):
         log("Backing up database before update…")
         take_backup(inst, ex_, log, reason="pre-update")
         op_up(inst, log, ex_)
-        wait_settings(ex_, inst, log)
-        log(f"Health: {health(ex_, inst)}")
+        wait_healthy(ex_, inst, log)
     return run
 
 
@@ -656,7 +667,7 @@ def job_create(inst_id: int, req: CreateInstance):
 
         if inst["caddy_managed"] and any(inst[f"domain_{s}"] for s in ("website", "client", "staff")):
             caddy_apply(ex_, inst, log)
-        log(f"Health: {health(ex_, inst)}")
+        wait_healthy(ex_, inst, log)
         log("Instance is up. Remember to point DNS A records for its domains at " + srv_public_host(srv))
     return run
 
