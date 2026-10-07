@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Instance Manager — Sign in</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>body{font-family:Inter,system-ui,sans-serif}</style>
+</head>
+<body class="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+  <form id="f" class="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-7 space-y-4">
+    <div class="flex items-center gap-3 mb-2">
+      <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold">RF</div>
+      <div>
+        <h1 class="text-lg font-bold text-slate-900 leading-tight">Instance Manager</h1>
+        <p class="text-xs text-slate-500">RideFlow multi-company deployments</p>
+      </div>
+    </div>
+    <label class="block">
+      <span class="text-xs font-medium text-slate-600">Username</span>
+      <input name="username" autocomplete="username" required class="mt-1 w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+    </label>
+    <label class="block">
+      <span class="text-xs font-medium text-slate-600">Password</span>
+      <input name="password" type="password" autocomplete="current-password" required class="mt-1 w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+    </label>
+    <p id="err" class="text-sm text-red-600 hidden"></p>
+    <button class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm">Sign in</button>
+  </form>
+  <script>
+    document.getElementById('f').addEventListener('submit', async e => {
+      e.preventDefault()
+      const fd = new FormData(e.target)
+      const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: fd.get('username'), password: fd.get('password') }) })
+      if (r.ok) location.href = '/'
+      else {
+        const el = document.getElementById('err')
+        el.textContent = (await r.json().catch(() => ({}))).detail || 'Sign in failed'
+        el.classList.remove('hidden')
+      }
+    })
+  </script>
+</body>
+</html>

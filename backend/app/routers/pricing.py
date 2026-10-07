@@ -254,6 +254,7 @@ async def get_public_settings(db: AsyncSession = Depends(get_db)):
     from app.services.service_area_service import get_service_areas, derive_country_codes
     keys = [
         "company_name", "company_phone", "company_email", "company_logo_url",
+        "brand_primary_color", "brand_secondary_color", "brand_font",
         "allow_cross_country_booking", "min_advance_booking_hours", "client_base_url", "website_base_url",
         # Website content
         "website_hero_badge", "website_hero_title", "website_hero_title_accent",
@@ -285,6 +286,9 @@ async def get_public_settings(db: AsyncSession = Depends(get_db)):
         "company_phone": str(settings.get("company_phone", "")),
         "company_email": str(settings.get("company_email", "")),
         "company_logo_url": str(settings.get("company_logo_url", "")),
+        "brand_primary_color": str(settings.get("brand_primary_color", "") or ""),
+        "brand_secondary_color": str(settings.get("brand_secondary_color", "") or ""),
+        "brand_font": str(settings.get("brand_font", "") or ""),
         "client_base_url": str(settings.get("client_base_url", "")),
         "website_base_url": str(settings.get("website_base_url", "")),
         **out_settings,

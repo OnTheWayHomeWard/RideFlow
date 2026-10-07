@@ -25,6 +25,9 @@ DEFAULT_SETTINGS = [
     ("company_phone", "", "Company contact phone (shown to clients on the confirmation page)"),
     ("company_email", "", "Company support email (shown to clients on the confirmation page)"),
     ("company_logo_url", "", "Company logo URL. Empty = default icon."),
+    ("brand_primary_color", "", "Primary brand colour (hex, e.g. #1e40af). Recolours buttons, links and highlights across the client, staff and website apps. Empty = default theme."),
+    ("brand_secondary_color", "", "Secondary/highlight colour (hex). Used for website accents (hero accent line, badges). Empty = default theme."),
+    ("brand_font", "", "Font family from Google Fonts, e.g. Poppins. Empty = Inter (default)."),
 
     # ── Public URLs ──  (used in SMS messages, Stripe redirects, QR codes)
     ("client_base_url", "http://localhost:5173", "Public URL of the client booking app, e.g. https://ride.example.com"),
@@ -140,9 +143,9 @@ DEFAULT_SETTINGS = [
 async def ensure_default_admin():
     """Ensure at least one super-admin exists. Idempotent — only creates if there
     is no super_admin in the table."""
-    email = os.environ.get("DEFAULT_ADMIN_EMAIL", "onthewayhomeward@gmail.com")
-    password = os.environ.get("DEFAULT_ADMIN_PASSWORD", "mahtot@rideflow#21")
-    name = os.environ.get("DEFAULT_ADMIN_NAME", "Super Admin")
+    email = os.environ.get("DEFAULT_ADMIN_EMAIL") or "onthewayhomeward@gmail.com"
+    password = os.environ.get("DEFAULT_ADMIN_PASSWORD") or "mahtot@rideflow#21"
+    name = os.environ.get("DEFAULT_ADMIN_NAME") or "Super Admin"
 
     async with async_session() as db:
         existing = await db.execute(select(Admin).where(Admin.role == "super_admin").limit(1))

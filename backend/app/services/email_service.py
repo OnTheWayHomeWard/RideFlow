@@ -12,6 +12,7 @@ Public entry points:
   - notify_client_cancellation_email(db, booking, settings, refund_amount, refund_currency)
 """
 import logging
+import re
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -108,6 +109,12 @@ async def send_email(
 
 # ─── Templates ──────────────────────────────────────────────────────────
 
+def _accent(settings: dict, default: str) -> str:
+    """Brand accent colour for email buttons — admin's brand_primary_color if it's a valid hex."""
+    v = str(settings.get("brand_primary_color") or "").strip()
+    return v if re.fullmatch(r"#[0-9a-fA-F]{6}", v) else default
+
+
 def _brand_block(brand: str, logo_url: str | None) -> str:
     if logo_url:
         return f'<img src="{logo_url}" alt="{brand}" style="height:36px"/>'
@@ -121,7 +128,7 @@ async def notify_client_booking_email(
     if not booking.client_email:
         return {"sent": False, "disabled": False, "error": "no email on booking", "resend_id": None}
     # Resolve brand bits from settings for a nicer header
-    r = await db.execute(select(Setting).where(Setting.key.in_(["company_name", "company_logo_url"])))
+    r = await db.execute(select(Setting).where(Setting.key.in_(["company_name", "company_logo_url", "brand_primary_color"])))
     s = {row.key: row.value for row in r.scalars().all()}
     brand = (s.get("company_name") or "GoBellMe")
     logo = (s.get("company_logo_url") or None)
@@ -153,7 +160,7 @@ async def notify_client_booking_email(
         <tr><td style="color:#64748b;">Total paid</td><td><b>${booking.total_amount}</b></td></tr>
       </table>
       <p style="margin-top:24px;">
-        <a href="{confirmation_url}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">View your receipt</a>
+        <a href="{confirmation_url}" style="display:inline-block;background:{_accent(s, "#2563eb")};color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">View your receipt</a>
       </p>
       <p style="color:#94a3b8;font-size:12px;margin-top:24px;">
         Need to cancel? Open your receipt — you can self-cancel up to the configured window before pickup.
@@ -183,7 +190,7 @@ async def notify_guest_payment_link_email(
     r = await db.execute(
         select(Setting).where(
             Setting.key.in_([
-                "company_name", "company_logo_url",
+                "company_name", "company_logo_url", "brand_primary_color",
                 "email_guest_payment_link_subject",
             ])
         )
@@ -229,7 +236,7 @@ async def notify_guest_payment_link_email(
         <tr><td style="color:#64748b;">Total</td><td><b>${variables.get('total_amount', '')}</b></td></tr>
       </table>
       <p style="margin-top:24px;">
-        <a href="{variables.get('payment_url', '')}" style="display:inline-block;background:#7c3aed;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;">Pay ${variables.get('total_amount', '')}</a>
+        <a href="{variables.get('payment_url', '')}" style="display:inline-block;background:{_accent(s, "#7c3aed")};color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;">Pay ${variables.get('total_amount', '')}</a>
       </p>
       <p style="color:#94a3b8;font-size:12px;margin-top:24px;">
         This link is unique to your reservation. If you didn't request this ride, you can ignore this email.
@@ -249,7 +256,7 @@ async def notify_client_cancellation_email(
     """Send the cancellation + refund-confirmed email."""
     if not booking.client_email:
         return {"sent": False, "disabled": False, "error": "no email on booking", "resend_id": None}
-    r = await db.execute(select(Setting).where(Setting.key.in_(["company_name", "company_logo_url"])))
+    r = await db.execute(select(Setting).where(Setting.key.in_(["company_name", "company_logo_url", "brand_primary_color"])))
     s = {row.key: row.value for row in r.scalars().all()}
     brand = (s.get("company_name") or "GoBellMe")
     logo = (s.get("company_logo_url") or None)

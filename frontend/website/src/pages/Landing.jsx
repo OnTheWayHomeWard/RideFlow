@@ -154,18 +154,18 @@ function HeroVisual({ imageUrl, brandName }) {
           <defs>
             <linearGradient id="bodyGrad" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0%" stopColor="#fef9f0" />
-              <stop offset="100%" stopColor="#d4a017" />
+              <stop offset="100%" style={{ stopColor: 'var(--gold)' }} />
             </linearGradient>
             <linearGradient id="windowGrad" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#0a7c5e" />
-              <stop offset="100%" stopColor="#022c22" />
+              <stop offset="0%" style={{ stopColor: 'var(--emerald-2)' }} />
+              <stop offset="100%" style={{ stopColor: 'var(--emerald-deep)' }} />
             </linearGradient>
           </defs>
           <ellipse cx="200" cy="195" rx="160" ry="8" fill="#000" opacity="0.25" />
           <path d="M40,160 L70,120 Q90,95 130,90 L260,90 Q300,95 320,120 L360,160 Q365,168 360,175 L40,175 Q35,168 40,160 Z" fill="url(#bodyGrad)" />
           <path d="M105,123 L125,103 Q135,98 150,98 L240,98 Q260,98 275,108 L295,128 Q298,135 290,135 L115,135 Q102,135 105,123 Z" fill="url(#windowGrad)" />
           <line x1="200" y1="98" x2="200" y2="135" stroke="#fef9f0" strokeWidth="2" opacity="0.3" />
-          <line x1="200" y1="135" x2="200" y2="170" stroke="#022c22" strokeWidth="1.5" opacity="0.4" />
+          <line x1="200" y1="135" x2="200" y2="170" style={{ stroke: 'var(--emerald-deep)' }} strokeWidth="1.5" opacity="0.4" />
           <circle cx="345" cy="135" r="6" fill="#fef9f0" />
           <circle cx="115" cy="175" r="22" fill="#1a1a1a" />
           <circle cx="115" cy="175" r="11" fill="#444" />

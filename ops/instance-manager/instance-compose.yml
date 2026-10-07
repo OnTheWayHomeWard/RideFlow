@@ -1,0 +1,79 @@
+# RideFlow instance — managed by the RideFlow Instance Manager.
+#
+# One copy of this file lives in every instance folder
+# (/opt/rideflow/instances/<slug>/compose.yml) next to its own .env.
+# It runs pre-built images (rideflow/<service>:${RF_TAG}) — nothing is built
+# here, so many instances can share one release build.
+#
+# Required .env keys: COMPOSE_PROJECT_NAME, RF_TAG, WEBSITE_PORT, CLIENT_PORT,
+#   STAFF_PORT, DB_PASSWORD, JWT_SECRET (+ the integration keys below).
+
+services:
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rideflow
+      POSTGRES_USER: rideflow
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rideflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: rideflow/backend:${RF_TAG:-latest}
+    restart: unless-stopped
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    expose:
+      - "8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://rideflow:${DB_PASSWORD}@db:5432/rideflow
+      DATABASE_URL_SYNC: postgresql://rideflow:${DB_PASSWORD}@db:5432/rideflow
+      JWT_SECRET: ${JWT_SECRET}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER:-}
+      TWILIO_MESSAGING_SERVICE_SID: ${TWILIO_MESSAGING_SERVICE_SID:-}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:-}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-}
+      FIREBASE_CREDENTIALS_PATH: /app/firebase-service-account.json
+    volumes:
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  client:
+    image: rideflow/client:${RF_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${CLIENT_PORT}:80"
+    depends_on:
+      - backend
+
+  staff:
+    image: rideflow/staff:${RF_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${STAFF_PORT}:80"
+    depends_on:
+      - backend
+
+  website:
+    image: rideflow/website:${RF_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${WEBSITE_PORT}:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

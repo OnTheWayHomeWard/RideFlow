@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { api } from '../../api/adminClient'
 import { useSettings } from '../../hooks/useSettings'
 import TierEditor, { buildTiersPayload, tiersToForm } from '../../components/admin/TierEditor'
+import { applyTheme } from '../../branding'
 
 export default function Settings() {
   const [settings, setSettings] = useState([])
@@ -39,6 +40,9 @@ export default function Settings() {
 
       {/* Logo card — special treatment */}
       {logoSetting && <LogoCard setting={logoSetting} saving={saving === logoSetting.key} onSave={handleSave} />}
+
+      {/* Branding — colours + font, applied live across client / staff / website */}
+      <BrandingCard settings={settings} saving={saving} onSave={handleSave} />
 
       {/* Group settings by category */}
       <SettingsGroup title="Company" settings={otherSettings.filter(s => s.key.startsWith('company_'))} saving={saving} onSave={handleSave} />
@@ -330,6 +334,151 @@ function LogoCard({ setting, saving, onSave }) {
               </button>
             )}
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const BRAND_PRESETS = [
+  { name: 'Default blue', primary: '', secondary: '' },
+  { name: 'Emerald', primary: '#047857', secondary: '#d4a017' },
+  { name: 'Teal', primary: '#0f766e', secondary: '#f59e0b' },
+  { name: 'Indigo', primary: '#4f46e5', secondary: '#f472b6' },
+  { name: 'Violet', primary: '#7c3aed', secondary: '#facc15' },
+  { name: 'Crimson', primary: '#be123c', secondary: '#fbbf24' },
+  { name: 'Orange', primary: '#c2410c', secondary: '#0ea5e9' },
+  { name: 'Graphite', primary: '#334155', secondary: '#eab308' },
+]
+
+const BRAND_FONTS = ['Poppins', 'Montserrat', 'Roboto', 'Open Sans', 'Lato', 'Nunito', 'Raleway', 'Manrope', 'DM Sans', 'Work Sans', 'Outfit']
+
+const isHex = v => /^#[0-9a-fA-F]{6}$/.test(v || '')
+
+// Relative luminance → is white text readable on this colour?
+function whiteTextOk(hex) {
+  if (!isHex(hex)) return true
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map(c => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+  const L = 0.2126 * r + 0.7152 * g + 0.0722 * b
+  return (1.05 / (L + 0.05)) >= 3
+}
+
+function BrandColorField({ label, help, value, fallback, onChange }) {
+  return (
+    <div>
+      <p className="text-sm font-medium text-slate-900">{label}</p>
+      <p className="text-xs text-slate-400 mb-2">{help}</p>
+      <div className="flex items-center gap-2">
+        <input type="color" value={isHex(value) ? value : fallback}
+          onChange={e => onChange(e.target.value)}
+          className="w-11 h-10 p-0.5 border border-slate-200 rounded-lg cursor-pointer bg-white shrink-0" />
+        <input value={value} placeholder="Default" maxLength={7}
+          onChange={e => onChange(e.target.value.trim())}
+          className={`w-28 px-3 py-2 border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 ${value && !isHex(value) ? 'border-red-300' : 'border-slate-200'}`} />
+        {value && (
+          <button type="button" onClick={() => onChange('')} className="text-xs text-slate-500 hover:text-slate-800">Reset</button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function BrandingCard({ settings, saving, onSave }) {
+  const get = k => String(settings.find(s => s.key === k)?.value ?? '')
+  const saved = { primary: get('brand_primary_color'), secondary: get('brand_secondary_color'), font: get('brand_font') }
+  const logo = get('company_logo_url')
+  const [form, setForm] = useState(saved)
+  const exists = settings.some(s => s.key === 'brand_primary_color')
+
+  // Live preview: recolour this admin page while editing.
+  useEffect(() => {
+    applyTheme({ brand_primary_color: form.primary, brand_secondary_color: form.secondary, brand_font: form.font, company_logo_url: logo })
+  }, [form.primary, form.secondary, form.font, logo])
+  // Leaving the page with unsaved edits → fall back to the saved theme.
+  const savedRef = useRef(saved)
+  savedRef.current = { ...saved, logo }
+  useEffect(() => () => {
+    const s = savedRef.current
+    applyTheme({ brand_primary_color: s.primary, brand_secondary_color: s.secondary, brand_font: s.font, company_logo_url: s.logo })
+  }, [])
+
+  if (!exists) return null
+  const changed = form.primary !== saved.primary || form.secondary !== saved.secondary || form.font !== saved.font
+  const invalid = (form.primary && !isHex(form.primary)) || (form.secondary && !isHex(form.secondary))
+  const busy = ['brand_primary_color', 'brand_secondary_color', 'brand_font'].includes(saving)
+  const set = field => v => setForm(f => ({ ...f, [field]: v }))
+
+  const save = async () => {
+    if (form.primary !== saved.primary) await onSave('brand_primary_color', form.primary)
+    if (form.secondary !== saved.secondary) await onSave('brand_secondary_color', form.secondary)
+    if (form.font !== saved.font) await onSave('brand_font', form.font.trim())
+    try { localStorage.removeItem('rf_brand_v1') } catch { /* ignore */ }
+  }
+
+  return (
+    <div className="mb-5">
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Branding</h2>
+      <div className="bg-white border border-slate-200 rounded-xl p-4 lg:p-5 space-y-5">
+        <div>
+          <p className="text-sm font-medium text-slate-900">Presets</p>
+          <p className="text-xs text-slate-400 mb-2">Pick a starting point, then fine-tune below. Changes preview live on this page.</p>
+          <div className="flex flex-wrap gap-2">
+            {BRAND_PRESETS.map(p => {
+              const active = form.primary === p.primary && form.secondary === p.secondary
+              return (
+                <button key={p.name} type="button" onClick={() => setForm(f => ({ ...f, primary: p.primary, secondary: p.secondary }))}
+                  className={`flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full border text-xs font-medium ${active ? 'border-slate-900 bg-slate-50' : 'border-slate-200 hover:border-slate-300'}`}>
+                  <span className="flex">
+                    <span className="w-4 h-4 rounded-full border border-white" style={{ background: p.primary || '#2563eb' }} />
+                    <span className="w-4 h-4 rounded-full border border-white -ml-1.5" style={{ background: p.secondary || '#d4a017' }} />
+                  </span>
+                  {p.name}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-5">
+          <BrandColorField label="Primary colour" help="Buttons, links, highlights — client, staff & website."
+            value={form.primary} fallback="#2563eb" onChange={set('primary')} />
+          <BrandColorField label="Secondary colour" help="Website accents (hero accent line, badges)."
+            value={form.secondary} fallback="#d4a017" onChange={set('secondary')} />
+        </div>
+        {!whiteTextOk(form.primary) && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            This primary colour is quite light — white text on buttons may be hard to read. A darker shade is recommended.
+          </p>
+        )}
+
+        <div>
+          <p className="text-sm font-medium text-slate-900">Font</p>
+          <p className="text-xs text-slate-400 mb-2">Loaded from Google Fonts. Type any family name or pick one. Empty = Inter.</p>
+          <input list="brand-fonts" value={form.font} placeholder="Inter (default)" onChange={e => set('font')(e.target.value)}
+            className="w-full sm:w-64 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <datalist id="brand-fonts">{BRAND_FONTS.map(f => <option key={f} value={f} />)}</datalist>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 p-4 bg-slate-50">
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-3">Preview</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold">Book a ride</span>
+            <span className="px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg text-sm font-semibold">Secondary</span>
+            <span className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-semibold">Confirmed</span>
+            <span className="text-sm text-blue-600 font-medium underline underline-offset-2">A link</span>
+            <span className="px-2.5 py-1 rounded-full text-xs font-semibold text-white" style={{ background: isHex(form.secondary) ? form.secondary : '#d4a017' }}>Website accent</span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2">
+          {changed && (
+            <button type="button" onClick={() => setForm(saved)} className="px-3 py-2 text-xs font-medium text-slate-600 hover:text-slate-900">Discard</button>
+          )}
+          <button type="button" onClick={save} disabled={!changed || invalid || busy}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+            {busy ? 'Saving…' : 'Save branding'}
+          </button>
         </div>
       </div>
     </div>

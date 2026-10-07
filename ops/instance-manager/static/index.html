@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Instance Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: Inter, system-ui, sans-serif; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    [x-cloak] { display: none !important; }
+    .inp { width: 100%; padding: .55rem .75rem; border: 1px solid #e2e8f0; border-radius: .5rem; font-size: .875rem; background: #fff; }
+    .inp:focus { outline: none; box-shadow: 0 0 0 2px #3b82f6; border-color: transparent; }
+    .lbl { display: block; font-size: .75rem; font-weight: 500; color: #475569; margin-bottom: .25rem; }
+    .btn { display: inline-flex; align-items: center; gap: .375rem; padding: .45rem .8rem; border-radius: .5rem; font-size: .8125rem; font-weight: 600; }
+    .btn-p { background: #2563eb; color: #fff; } .btn-p:hover { background: #1d4ed8; }
+    .btn-g { background: #fff; color: #334155; border: 1px solid #e2e8f0; } .btn-g:hover { background: #f8fafc; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen" x-data="app()" x-init="init()">
+
+  <!-- Header -->
+  <header class="bg-slate-950 text-white">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-sm">RF</div>
+      <div class="min-w-0">
+        <h1 class="font-bold leading-tight">Instance Manager</h1>
+        <p class="text-[11px] text-slate-400">RideFlow · one deployment per company</p>
+      </div>
+      <nav class="ml-auto flex gap-1 overflow-x-auto">
+        <template x-for="t in ['instances','servers','releases','jobs','backups']">
+          <button @click="tab=t; if(t==='backups') loadBackups()" class="px-3 py-1.5 rounded-lg text-sm capitalize whitespace-nowrap"
+            :class="tab===t ? 'bg-white/15 text-white' : 'text-slate-400 hover:text-white'" x-text="t"></button>
+        </template>
+      </nav>
+      <button @click="logout()" class="text-xs text-slate-400 hover:text-white ml-2">Sign out</button>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- ═══ Instances ═══ -->
+    <section x-show="tab==='instances'">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        <template x-for="s in stats()">
+          <div class="bg-white border border-slate-200 rounded-xl p-4">
+            <p class="text-xs text-slate-500" x-text="s.label"></p>
+            <p class="text-2xl font-bold mt-1" :class="s.cls" x-text="s.value"></p>
+          </div>
+        </template>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 mb-4">
+        <input x-model="f.q" placeholder="Search company, slug, domain, contact, tag…" class="inp !w-full sm:!w-72">
+        <select x-model="f.state" class="inp !w-auto">
+          <option value="">All states</option><option>running</option><option>degraded</option><option>stopped</option><option>unreachable</option>
+        </select>
+        <select x-model="f.server" class="inp !w-auto">
+          <option value="">All servers</option>
+          <template x-for="s in data.servers"><option :value="s.id" x-text="s.name"></option></template>
+        </select>
+        <select x-model="f.env" class="inp !w-auto">
+          <option value="">All environments</option><option>production</option><option>staging</option><option>demo</option>
+        </select>
+        <button class="btn btn-g" @click="refresh()" :disabled="loading"><span x-text="loading ? 'Refreshing…' : 'Refresh'"></span></button>
+        <button class="btn btn-p ml-auto" @click="openCreate()">+ New instance</button>
+      </div>
+
+      <div class="grid gap-3 lg:grid-cols-2">
+        <template x-for="i in filtered()" :key="i.id">
+          <div class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col gap-3">
+            <div class="flex items-start gap-3">
+              <div class="w-10 h-10 rounded-lg shrink-0 flex items-center justify-center text-white font-bold text-sm"
+                :style="`background:${i.brand_color || '#2563eb'}`" x-text="i.company.slice(0,2).toUpperCase()"></div>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h3 class="font-semibold truncate" x-text="i.company"></h3>
+                  <span class="text-[11px] px-2 py-0.5 rounded-full font-medium" :class="stateCls(i.state)" x-text="i.busy ? 'working…' : i.state"></span>
+                  <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600" x-text="i.environment"></span>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  <span class="mono" x-text="i.slug"></span> · <span x-text="i.server_name"></span> ·
+                  release <span class="mono" x-text="i.image_tag || '?'"></span>
+                  <span x-show="data.latest_tag && i.image_tag !== data.latest_tag" class="text-amber-600 font-medium">(update available)</span>
+                </p>
+                <p class="text-xs text-slate-500" x-show="i.contact_name || i.contact_email">
+                  <span x-text="i.contact_name"></span> <span x-text="i.contact_email"></span> <span x-text="i.contact_phone"></span>
+                </p>
+                <div class="flex flex-wrap gap-1 mt-1" x-show="i.tags">
+                  <template x-for="t in i.tags.split(',').map(x=>x.trim()).filter(Boolean)"><span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700" x-text="t"></span></template>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 text-xs">
+              <template x-for="svc in ['website','client','staff']">
+                <div class="rounded-lg bg-slate-50 border border-slate-100 p-2 min-w-0">
+                  <p class="text-[10px] uppercase tracking-wide text-slate-400 font-semibold" x-text="svc==='client' ? 'booking' : svc"></p>
+                  <a x-show="i['domain_'+svc]" :href="'https://'+i['domain_'+svc]" target="_blank" class="block truncate text-blue-600 hover:underline" x-text="i['domain_'+svc]"></a>
+                  <a :href="`http://${i.public_host}:${i['port_'+svc]}`" target="_blank" class="block truncate text-slate-500 hover:underline mono" x-text="`:${i['port_'+svc]}`"></a>
+                </div>
+              </template>
+            </div>
+
+            <div class="flex flex-wrap gap-1.5">
+              <button class="btn btn-g" :disabled="i.busy" x-show="i.state!=='running'" @click="act(i,'start')">▶ Start</button>
+              <button class="btn btn-g" :disabled="i.busy" x-show="i.state!=='stopped'" @click="confirm(`Stop ${i.company}? The site will go offline.`) && act(i,'stop')">■ Stop</button>
+              <button class="btn btn-g" :disabled="i.busy" @click="act(i,'restart')">↻ Restart</button>
+              <button class="btn btn-g" :disabled="i.busy || !data.latest_tag || i.image_tag===data.latest_tag" @click="confirm(`Update ${i.company} to ${data.latest_tag}? A backup is taken first.`) && act(i,'update')">⬆ Update</button>
+              <button class="btn btn-g" @click="openLogs(i)">Logs</button>
+              <div class="relative" x-data="{o:false}" @click.outside="o=false">
+                <button class="btn btn-g" @click="o=!o">More ▾</button>
+                <div x-show="o" x-cloak class="absolute z-20 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg py-1 text-sm">
+                  <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; openEdit(i)">Edit details</button>
+                  <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; act(i,'backup')">Back up database</button>
+                  <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; act(i,'health')">Health check</button>
+                  <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; openCreate(i)">Clone as new company…</button>
+                  <button class="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600" @click="o=false; del(i)">Delete…</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+      <p x-show="!filtered().length && !loading" class="text-center text-slate-400 py-16">No instances match these filters.</p>
+    </section>
+
+    <!-- ═══ Servers ═══ -->
+    <section x-show="tab==='servers'" x-cloak>
+      <div class="grid lg:grid-cols-3 gap-5">
+        <div class="lg:col-span-2 space-y-3">
+          <template x-for="s in data.servers" :key="s.id">
+            <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-3">
+              <span class="w-2.5 h-2.5 rounded-full" :class="s.reachable ? 'bg-emerald-500' : 'bg-red-500'"></span>
+              <div class="flex-1 min-w-0">
+                <p class="font-semibold" x-text="s.name"></p>
+                <p class="text-xs text-slate-500 mono" x-text="s.is_local ? 'local (this machine)' : `${s.user}@${s.host}:${s.port}`"></p>
+                <p class="text-xs text-red-600" x-show="s.error" x-text="s.error"></p>
+              </div>
+              <span class="text-xs text-slate-500" x-text="`${s.instance_count} instance(s)`"></span>
+              <button x-show="!s.is_local && !s.instance_count" class="btn btn-g text-red-600" @click="delServer(s)">Remove</button>
+            </div>
+          </template>
+        </div>
+        <form class="bg-white border border-slate-200 rounded-xl p-4 space-y-3 h-fit" @submit.prevent="addServer()">
+          <h3 class="font-semibold">Add a server</h3>
+          <p class="text-xs text-slate-500">Enter the IP and root password once. The manager installs its own SSH key, Docker and Caddy there. The password is <b>not</b> stored.</p>
+          <div><label class="lbl">Name</label><input class="inp" x-model="srv.name" required placeholder="e.g. Client X VPS"></div>
+          <div class="grid grid-cols-3 gap-2">
+            <div class="col-span-2"><label class="lbl">IP / host</label><input class="inp mono" x-model="srv.host" required placeholder="203.0.113.10"></div>
+            <div><label class="lbl">SSH port</label><input class="inp" type="number" x-model.number="srv.port"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="lbl">User</label><input class="inp" x-model="srv.user"></div>
+            <div><label class="lbl">Password</label><input class="inp" type="password" x-model="srv.password" required autocomplete="new-password"></div>
+          </div>
+          <div><label class="lbl">Notes</label><input class="inp" x-model="srv.notes" placeholder="provider, region, owner…"></div>
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" x-model="srv.install"> Install Docker + Caddy if missing</label>
+          <p class="text-sm text-red-600" x-show="srvErr" x-text="srvErr"></p>
+          <button class="btn btn-p w-full justify-center" :disabled="srvBusy" x-text="srvBusy ? 'Connecting…' : 'Connect & prepare'"></button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ═══ Releases ═══ -->
+    <section x-show="tab==='releases'" x-cloak>
+      <div class="bg-white border border-slate-200 rounded-xl p-5 mb-5 flex flex-wrap items-center gap-3">
+        <div class="flex-1 min-w-[16rem]">
+          <h3 class="font-semibold">Releases</h3>
+          <p class="text-sm text-slate-500">“Build” pulls the latest code from GitHub on this server and builds images once. Then update instances one by one, or roll out to all of them.</p>
+        </div>
+        <button class="btn btn-g" @click="build()">⚙ Build latest code</button>
+        <button class="btn btn-p" :disabled="!data.latest_tag" @click="rollout()">⬆ Roll out <span class="mono" x-text="data.latest_tag"></span> to all</button>
+      </div>
+      <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-left text-xs text-slate-500"><tr><th class="p-3">Tag</th><th class="p-3">Commit</th><th class="p-3">Built</th><th class="p-3">Instances on it</th></tr></thead>
+          <tbody>
+            <template x-for="r in data.releases" :key="r.tag">
+              <tr class="border-t border-slate-100">
+                <td class="p-3 mono" x-text="r.tag"></td>
+                <td class="p-3" x-text="r.commit_msg"></td>
+                <td class="p-3 text-slate-500" x-text="ago(r.created_at)"></td>
+                <td class="p-3 text-slate-500" x-text="data.instances.filter(i=>i.image_tag===r.tag).map(i=>i.slug).join(', ') || '—'"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ═══ Jobs ═══ -->
+    <section x-show="tab==='jobs'" x-cloak>
+      <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <template x-for="j in jobs" :key="j.id">
+          <button class="w-full text-left flex items-center gap-3 px-4 py-3 border-b border-slate-100 hover:bg-slate-50" @click="showJob(j.id)">
+            <span class="text-[11px] px-2 py-0.5 rounded-full font-medium" :class="{'bg-blue-100 text-blue-700':j.status==='running','bg-emerald-100 text-emerald-700':j.status==='success','bg-red-100 text-red-700':j.status==='failed'}" x-text="j.status"></span>
+            <span class="flex-1 text-sm" x-text="j.title"></span>
+            <span class="text-xs text-slate-400" x-text="ago(j.created_at)"></span>
+          </button>
+        </template>
+        <p x-show="!jobs.length" class="p-8 text-center text-slate-400 text-sm">No jobs yet.</p>
+      </div>
+    </section>
+
+    <!-- ═══ Backups ═══ -->
+    <section x-show="tab==='backups'" x-cloak>
+      <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <template x-for="b in backups" :key="b.name">
+          <div class="flex items-center gap-3 px-4 py-3 border-b border-slate-100 text-sm">
+            <span class="mono flex-1 truncate" x-text="b.name"></span>
+            <span class="text-slate-500" x-text="(b.size/1024).toFixed(0)+' KB'"></span>
+            <a class="btn btn-g" :href="'/api/backups/'+encodeURIComponent(b.name)">Download</a>
+          </div>
+        </template>
+        <p x-show="!backups.length" class="p-8 text-center text-slate-400 text-sm">No backups yet. Updates and deletes take one automatically.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- ═══ Create modal ═══ -->
+  <div x-show="cr.open" x-cloak class="fixed inset-0 z-40 bg-slate-900/60 flex items-start justify-center overflow-y-auto p-4">
+    <form class="bg-white rounded-2xl w-full max-w-3xl my-6 shadow-2xl" @submit.prevent="create()">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center">
+        <h2 class="font-bold text-lg">New instance</h2>
+        <button type="button" class="ml-auto text-slate-400 hover:text-slate-700 text-xl" @click="cr.open=false">×</button>
+      </div>
+      <div class="p-6 space-y-6">
+        <fieldset class="grid sm:grid-cols-2 gap-3">
+          <legend class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2 col-span-2">Company</legend>
+          <div><label class="lbl">Company name *</label><input class="inp" x-model="cr.company" @input="autoSlug()" required placeholder="KPS Transport"></div>
+          <div><label class="lbl">Slug * <span class="text-slate-400">(short id, used in folder & subdomains)</span></label><input class="inp mono" x-model="cr.slug" @input="cr.slugTouched=true; suggest()" required placeholder="kps"></div>
+          <div><label class="lbl">Contact name</label><input class="inp" x-model="cr.contact_name"></div>
+          <div><label class="lbl">Contact email</label><input class="inp" type="email" x-model="cr.contact_email"></div>
+          <div><label class="lbl">Contact phone</label><input class="inp" x-model="cr.contact_phone"></div>
+          <div><label class="lbl">Environment</label>
+            <select class="inp" x-model="cr.environment"><option>production</option><option>staging</option><option>demo</option></select></div>
+          <div><label class="lbl">Tags <span class="text-slate-400">(comma-separated)</span></label><input class="inp" x-model="cr.tags" placeholder="usa, hotel-partner"></div>
+          <div><label class="lbl">Notes</label><input class="inp" x-model="cr.notes"></div>
+        </fieldset>
+
+        <fieldset class="grid sm:grid-cols-3 gap-3">
+          <legend class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2 col-span-3">Where</legend>
+          <div class="sm:col-span-2"><label class="lbl">Server</label>
+            <select class="inp" x-model.number="cr.server_id" @change="suggest()">
+              <template x-for="s in data.servers"><option :value="s.id" x-text="s.name + (s.is_local ? '' : ` (${s.host})`)"></option></template>
+            </select></div>
+          <div><label class="lbl">Release</label>
+            <select class="inp mono" x-model="cr.image_tag">
+              <template x-for="r in data.releases"><option :value="r.tag" x-text="r.tag + (r.tag===data.latest_tag ? ' (latest)' : '')"></option></template>
+            </select></div>
+          <template x-for="svc in ['website','client','staff']">
+            <div>
+              <label class="lbl" x-text="{website:'Website',client:'Booking app',staff:'Staff portal'}[svc] + ' domain'"></label>
+              <input class="inp mono text-xs" x-model="cr['domain_'+svc]" placeholder="optional">
+              <label class="lbl mt-2">Port</label>
+              <input class="inp mono" type="number" x-model.number="cr['port_'+svc]" required>
+            </div>
+          </template>
+          <p class="text-xs text-slate-500 sm:col-span-3">Domains get HTTPS automatically through Caddy once their DNS A records point at the server. The ports also work straight away at <span class="mono">http://server-ip:port</span>.</p>
+        </fieldset>
+
+        <fieldset class="space-y-3">
+          <legend class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">Data</legend>
+          <div class="grid sm:grid-cols-3 gap-2">
+            <template x-for="m in [['config','Copy configuration','Vehicles, rates, routes, hotels, drivers, staff, settings — no rides/payments'],['full','Full copy','Everything, including rides and payments'],['fresh','Fresh / empty','Empty database with a new admin login']]">
+              <label class="border rounded-lg p-3 cursor-pointer text-sm" :class="cr.seed_mode===m[0] ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200'">
+                <input type="radio" class="sr-only" :value="m[0]" x-model="cr.seed_mode">
+                <p class="font-semibold" x-text="m[1]"></p><p class="text-xs text-slate-500 mt-0.5" x-text="m[2]"></p>
+              </label>
+            </template>
+          </div>
+          <div x-show="cr.seed_mode!=='fresh' || cr.integrations==='inherit'"><label class="lbl">Source instance</label>
+            <select class="inp" x-model.number="cr.source_instance_id">
+              <template x-for="i in data.instances"><option :value="i.id" x-text="`${i.company} (${i.slug} · ${i.server_name})`"></option></template>
+            </select></div>
+          <div class="grid sm:grid-cols-2 gap-3" x-show="cr.seed_mode==='fresh'">
+            <div><label class="lbl">Admin email</label><input class="inp" type="email" x-model="cr.admin_email"></div>
+            <div><label class="lbl">Admin password (8+ chars)</label><input class="inp" x-model="cr.admin_password" autocomplete="new-password"></div>
+          </div>
+        </fieldset>
+
+        <fieldset class="space-y-3">
+          <legend class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">Integrations (Stripe, Twilio SMS, Google Maps)</legend>
+          <div class="grid sm:grid-cols-3 gap-2">
+            <template x-for="m in [['inherit','Same as source','Reuse the source instance’s keys'],['sandbox','Sandbox','No real charges, SMS or email'],['custom','Custom keys','This company’s own accounts']]">
+              <label class="border rounded-lg p-3 cursor-pointer text-sm" :class="cr.integrations===m[0] ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200'">
+                <input type="radio" class="sr-only" :value="m[0]" x-model="cr.integrations">
+                <p class="font-semibold" x-text="m[1]"></p><p class="text-xs text-slate-500 mt-0.5" x-text="m[2]"></p>
+              </label>
+            </template>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-3" x-show="cr.integrations==='custom'">
+            <template x-for="k in envKeys">
+              <div><label class="lbl mono" x-text="k"></label><input class="inp mono text-xs" x-model="cr.custom_env[k]" placeholder="blank = copy from source"></div>
+            </template>
+          </div>
+        </fieldset>
+
+        <fieldset class="grid sm:grid-cols-3 gap-3">
+          <legend class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2 col-span-3">Branding <span class="normal-case font-normal">(can be changed later in the instance’s admin → Settings)</span></legend>
+          <div><label class="lbl">Primary colour</label>
+            <div class="flex gap-2"><input type="color" class="h-10 w-12 border border-slate-200 rounded-lg" :value="cr.brand_primary_color || '#2563eb'" @input="cr.brand_primary_color=$event.target.value">
+              <input class="inp mono" x-model="cr.brand_primary_color" placeholder="keep source"></div></div>
+          <div><label class="lbl">Secondary colour</label>
+            <div class="flex gap-2"><input type="color" class="h-10 w-12 border border-slate-200 rounded-lg" :value="cr.brand_secondary_color || '#d4a017'" @input="cr.brand_secondary_color=$event.target.value">
+              <input class="inp mono" x-model="cr.brand_secondary_color" placeholder="keep source"></div></div>
+          <div><label class="lbl">Logo URL</label><input class="inp" x-model="cr.company_logo_url" placeholder="https://…"></div>
+        </fieldset>
+        <p class="text-sm text-red-600" x-show="cr.err" x-text="cr.err"></p>
+      </div>
+      <div class="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
+        <button type="button" class="btn btn-g" @click="cr.open=false">Cancel</button>
+        <button class="btn btn-p" :disabled="cr.busy" x-text="cr.busy ? 'Starting…' : 'Create instance'"></button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ═══ Edit modal ═══ -->
+  <div x-show="ed.open" x-cloak class="fixed inset-0 z-40 bg-slate-900/60 flex items-start justify-center overflow-y-auto p-4">
+    <form class="bg-white rounded-2xl w-full max-w-2xl my-6 shadow-2xl" @submit.prevent="saveEdit()">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center">
+        <h2 class="font-bold text-lg">Edit <span x-text="ed.slug" class="mono"></span></h2>
+        <button type="button" class="ml-auto text-slate-400 hover:text-slate-700 text-xl" @click="ed.open=false">×</button>
+      </div>
+      <div class="p-6 grid sm:grid-cols-2 gap-3">
+        <div><label class="lbl">Company</label><input class="inp" x-model="ed.company" required></div>
+        <div><label class="lbl">Environment</label><select class="inp" x-model="ed.environment"><option>production</option><option>staging</option><option>demo</option></select></div>
+        <div><label class="lbl">Contact name</label><input class="inp" x-model="ed.contact_name"></div>
+        <div><label class="lbl">Contact email</label><input class="inp" x-model="ed.contact_email"></div>
+        <div><label class="lbl">Contact phone</label><input class="inp" x-model="ed.contact_phone"></div>
+        <div><label class="lbl">Tags</label><input class="inp" x-model="ed.tags"></div>
+        <div class="sm:col-span-2"><label class="lbl">Notes</label><textarea class="inp" rows="2" x-model="ed.notes"></textarea></div>
+        <div><label class="lbl">Website domain</label><input class="inp mono text-xs" x-model="ed.domain_website"></div>
+        <div><label class="lbl">Booking domain</label><input class="inp mono text-xs" x-model="ed.domain_client"></div>
+        <div><label class="lbl">Staff domain</label><input class="inp mono text-xs" x-model="ed.domain_staff"></div>
+        <label class="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" x-model="ed.apply_domains"> Apply domain changes now (Caddy + public URLs in the app)</label>
+      </div>
+      <div class="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
+        <button type="button" class="btn btn-g" @click="ed.open=false">Cancel</button>
+        <button class="btn btn-p">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ═══ Logs modal ═══ -->
+  <div x-show="lg.open" x-cloak class="fixed inset-0 z-40 bg-slate-900/60 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[90vh]">
+      <div class="px-5 py-3 border-b border-slate-100 flex items-center gap-2 flex-wrap">
+        <h2 class="font-bold">Logs · <span x-text="lg.inst?.company"></span></h2>
+        <select class="inp !w-auto ml-2" x-model="lg.service" @change="loadLogs()">
+          <option>backend</option><option>db</option><option>client</option><option>staff</option><option>website</option>
+        </select>
+        <button class="btn btn-g" @click="loadLogs()">Reload</button>
+        <button class="ml-auto text-slate-400 hover:text-slate-700 text-xl" @click="lg.open=false">×</button>
+      </div>
+      <pre class="mono text-[11px] leading-relaxed bg-slate-950 text-slate-200 p-4 overflow-auto flex-1 rounded-b-2xl" x-text="lg.text"></pre>
+    </div>
+  </div>
+
+  <!-- ═══ Job drawer ═══ -->
+  <div x-show="jb.open" x-cloak class="fixed inset-x-0 bottom-0 z-50 p-3 sm:p-4 pointer-events-none">
+    <div class="max-w-4xl mx-auto bg-slate-950 text-slate-100 rounded-2xl shadow-2xl pointer-events-auto">
+      <div class="px-4 py-2.5 flex items-center gap-2 border-b border-white/10">
+        <span class="w-2 h-2 rounded-full" :class="{'bg-blue-400 animate-pulse':jb.status==='running','bg-emerald-400':jb.status==='success','bg-red-400':jb.status==='failed'}"></span>
+        <span class="text-sm font-medium" x-text="jb.title"></span>
+        <span class="text-xs text-slate-400" x-text="jb.status"></span>
+        <button class="ml-auto text-xs text-slate-400 hover:text-white" @click="jb.min=!jb.min" x-text="jb.min ? 'Expand' : 'Minimize'"></button>
+        <button class="text-slate-400 hover:text-white text-lg ml-2" @click="jb.open=false">×</button>
+      </div>
+      <pre x-show="!jb.min" x-ref="joblog" class="mono text-[11px] leading-relaxed p-4 max-h-80 overflow-auto whitespace-pre-wrap" x-text="jb.log"></pre>
+    </div>
+  </div>
+
+<script>
+function app() {
+  return {
+    tab: 'instances', loading: false, data: { servers: [], instances: [], releases: [], latest_tag: '', base_domain: '' },
+    jobs: [], backups: [], f: { q: '', state: '', server: '', env: '' },
+    envKeys: ['STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','TWILIO_ACCOUNT_SID','TWILIO_AUTH_TOKEN','TWILIO_PHONE_NUMBER','TWILIO_MESSAGING_SERVICE_SID','GOOGLE_MAPS_API_KEY'],
+    cr: { open: false }, ed: { open: false }, lg: { open: false, service: 'backend', text: '' },
+    jb: { open: false, id: null, log: '', status: '', title: '', min: false },
+    srv: { name: '', host: '', port: 22, user: 'root', password: '', notes: '', install: true }, srvErr: '', srvBusy: false,
+
+    async init() {
+      await this.refresh()
+      setInterval(() => { if (!document.hidden) this.refresh(true) }, 15000)
+    },
+    async api(path, opts = {}) {
+      const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts })
+      if (r.status === 401) { location.href = '/login'; throw new Error('auth') }
+      const body = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail || body))
+      return body
+    },
+    async refresh(quiet) {
+      if (!quiet) this.loading = true
+      try {
+        this.data = await this.api('/api/overview')
+        this.jobs = await this.api('/api/jobs')
+      } catch (e) { if (!quiet) alert(e.message) }
+      this.loading = false
+    },
+    async loadBackups() { this.backups = await this.api('/api/backups') },
+    stats() {
+      const I = this.data.instances
+      return [
+        { label: 'Instances', value: I.length, cls: '' },
+        { label: 'Running', value: I.filter(i => i.state === 'running').length, cls: 'text-emerald-600' },
+        { label: 'Needs attention', value: I.filter(i => ['degraded','stopped','unreachable'].includes(i.state)).length, cls: 'text-amber-600' },
+        { label: 'Servers', value: this.data.servers.length, cls: '' },
+      ]
+    },
+    filtered() {
+      const q = this.f.q.toLowerCase()
+      return this.data.instances.filter(i =>
+        (!this.f.state || i.state === this.f.state) &&
+        (!this.f.server || String(i.server_id) === String(this.f.server)) &&
+        (!this.f.env || i.environment === this.f.env) &&
+        (!q || [i.company, i.slug, i.domain_website, i.domain_client, i.domain_staff, i.contact_name, i.contact_email, i.contact_phone, i.tags, i.notes]
+          .join(' ').toLowerCase().includes(q)))
+    },
+    stateCls(s) {
+      return { running: 'bg-emerald-100 text-emerald-700', degraded: 'bg-amber-100 text-amber-700',
+        stopped: 'bg-slate-200 text-slate-600', unreachable: 'bg-red-100 text-red-700' }[s] || 'bg-slate-100'
+    },
+    ago(t) {
+      if (!t) return ''
+      const s = (Date.now() - new Date(t).getTime()) / 1000
+      if (s < 60) return 'just now'; if (s < 3600) return Math.floor(s / 60) + 'm ago'
+      if (s < 86400) return Math.floor(s / 3600) + 'h ago'; return new Date(t).toLocaleDateString()
+    },
+
+    // ── jobs ──
+    async watch(jobId) {
+      Object.assign(this.jb, { open: true, id: jobId, log: '', status: 'running', min: false })
+      const poll = async () => {
+        if (this.jb.id !== jobId) return
+        const j = await this.api('/api/jobs/' + jobId)
+        Object.assign(this.jb, { log: j.log || '', status: j.status, title: j.title })
+        this.$nextTick(() => { const el = this.$refs.joblog; if (el) el.scrollTop = el.scrollHeight })
+        if (j.status === 'running') setTimeout(poll, 1500)
+        else this.refresh(true)
+      }
+      poll()
+    },
+    showJob(id) { this.watch(id) },
+    async act(i, action) {
+      try { const r = await this.api(`/api/instances/${i.id}/action/${action}`, { method: 'POST' }); this.watch(r.job_id); this.refresh(true) }
+      catch (e) { alert(e.message) }
+    },
+    async build() { try { this.watch((await this.api('/api/releases/build', { method: 'POST' })).job_id) } catch (e) { alert(e.message) } },
+    async rollout() {
+      if (!confirm(`Update every instance to ${this.data.latest_tag}? Each one is backed up first and restarts briefly.`)) return
+      try { this.watch((await this.api('/api/releases/rollout', { method: 'POST' })).job_id) } catch (e) { alert(e.message) }
+    },
+
+    // ── create ──
+    openCreate(src) {
+      const local = this.data.servers.find(s => s.is_local) || this.data.servers[0]
+      this.cr = {
+        open: true, busy: false, err: '', slugTouched: false,
+        company: '', slug: '', contact_name: '', contact_email: '', contact_phone: '', environment: 'production', tags: '', notes: '',
+        server_id: local?.id, image_tag: this.data.latest_tag,
+        domain_website: '', domain_client: '', domain_staff: '', port_website: '', port_client: '', port_staff: '',
+        seed_mode: 'config', source_instance_id: (src || this.data.instances[0])?.id, integrations: 'inherit', custom_env: {},
+        admin_email: '', admin_password: '', brand_primary_color: '', brand_secondary_color: '', company_logo_url: '',
+      }
+      this.suggest()
+    },
+    autoSlug() {
+      if (!this.cr.slugTouched) {
+        this.cr.slug = this.cr.company.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20)
+        clearTimeout(this._st); this._st = setTimeout(() => this.suggest(), 300)
+      }
+    },
+    async suggest() {
+      if (!this.cr.server_id) return
+      const s = await this.api(`/api/suggest?server_id=${this.cr.server_id}&slug=${encodeURIComponent(this.cr.slug || '')}`)
+      Object.assign(this.cr, { port_website: s.ports.website, port_client: s.ports.client, port_staff: s.ports.staff })
+      if (s.domains.website) Object.assign(this.cr, { domain_website: s.domains.website, domain_client: s.domains.client, domain_staff: s.domains.staff })
+    },
+    async create() {
+      this.cr.busy = true; this.cr.err = ''
+      try {
+        const { open, busy, err, slugTouched, ...body } = this.cr
+        if (body.seed_mode === 'fresh' && body.integrations !== 'inherit') body.source_instance_id = null
+        const r = await this.api('/api/instances', { method: 'POST', body: JSON.stringify(body) })
+        this.cr.open = false
+        this.watch(r.job_id); this.refresh(true)
+      } catch (e) { this.cr.err = e.message }
+      this.cr.busy = false
+    },
+
+    // ── edit / delete / logs ──
+    openEdit(i) { this.ed = { ...i, open: true, apply_domains: false } },
+    async saveEdit() {
+      try {
+        const r = await this.api('/api/instances/' + this.ed.id, { method: 'PUT', body: JSON.stringify(this.ed) })
+        this.ed.open = false
+        if (r.job_id) this.watch(r.job_id)
+        this.refresh(true)
+      } catch (e) { alert(e.message) }
+    },
+    async del(i) {
+      const typed = prompt(`Delete ${i.company}? Containers, folder and Caddy site are removed (a backup is taken first).\n\nType the slug "${i.slug}" to confirm:`)
+      if (typed !== i.slug) return
+      const wipe = confirm('Also delete the DATABASE volume?\n\nOK = delete data permanently · Cancel = keep the data volume')
+      try { this.watch((await this.api(`/api/instances/${i.id}?confirm=${encodeURIComponent(typed)}&delete_data=${wipe}`, { method: 'DELETE' })).job_id) }
+      catch (e) { alert(e.message) }
+    },
+    openLogs(i) { this.lg = { open: true, inst: i, service: 'backend', text: 'Loading…' }; this.loadLogs() },
+    async loadLogs() {
+      this.lg.text = 'Loading…'
+      try { this.lg.text = (await this.api(`/api/instances/${this.lg.inst.id}/logs?service=${this.lg.service}`)).logs || '(empty)' }
+      catch (e) { this.lg.text = e.message }
+    },
+
+    // ── servers ──
+    async addServer() {
+      this.srvBusy = true; this.srvErr = ''
+      try {
+        const r = await this.api('/api/servers', { method: 'POST', body: JSON.stringify(this.srv) })
+        this.srv = { name: '', host: '', port: 22, user: 'root', password: '', notes: '', install: true }
+        this.watch(r.job_id); this.refresh(true)
+      } catch (e) { this.srvErr = e.message }
+      this.srvBusy = false
+    },
+    async delServer(s) {
+      if (!confirm(`Remove server ${s.name} from the manager?`)) return
+      try { await this.api('/api/servers/' + s.id, { method: 'DELETE' }); this.refresh() } catch (e) { alert(e.message) }
+    },
+    async logout() { await fetch('/api/logout', { method: 'POST' }); location.href = '/login' },
+  }
+}
+</script>
+</body>
+</html>
