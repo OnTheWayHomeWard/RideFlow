@@ -102,8 +102,13 @@
               <template x-for="svc in ['website','client','staff']">
                 <div class="rounded-lg bg-slate-50 border border-slate-100 p-2 min-w-0">
                   <p class="text-[10px] uppercase tracking-wide text-slate-400 font-semibold" x-text="svc==='client' ? 'booking' : svc"></p>
-                  <a x-show="i['domain_'+svc]" :href="'https://'+i['domain_'+svc]" target="_blank" class="block truncate text-blue-600 hover:underline" x-text="i['domain_'+svc]"></a>
-                  <a :href="`http://${i.public_host}:${i['port_'+svc]}`" target="_blank" class="block truncate text-slate-500 hover:underline mono" x-text="`:${i['port_'+svc]}`"></a>
+                  <template x-if="i['domain_'+svc]">
+                    <div class="flex items-center gap-1 min-w-0">
+                      <span class="shrink-0 w-1.5 h-1.5 rounded-full" :class="domCls(i, i['domain_'+svc])" :title="domMsg(i, i['domain_'+svc])"></span>
+                      <a :href="'https://'+i['domain_'+svc]" target="_blank" class="truncate text-blue-600 hover:underline" :title="domMsg(i, i['domain_'+svc])" x-text="i['domain_'+svc]"></a>
+                    </div>
+                  </template>
+                  <a :href="`http://${i.public_host}:${i['port_'+svc]}`" target="_blank" class="block truncate text-slate-500 hover:underline mono text-[11px]" x-text="`${i.public_host}:${i['port_'+svc]}`"></a>
                 </div>
               </template>
             </div>
@@ -120,7 +125,7 @@
                   <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; openAdmins(i)">Admin users</button>
                   <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; openEdit(i)">Edit details</button>
                   <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; act(i,'backup')">Back up database</button>
-                  <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; act(i,'health')">Health check</button>
+                  <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; act(i,'health')">Check health &amp; HTTPS</button>
                   <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; openCreate(i)">Clone as new company…</button>
                   <button class="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600" @click="o=false; del(i)">Delete…</button>
                 </div>
@@ -364,7 +369,11 @@
         <div><label class="lbl">Website domain</label><input class="inp mono text-xs" x-model="ed.domain_website"></div>
         <div><label class="lbl">Booking domain</label><input class="inp mono text-xs" x-model="ed.domain_client"></div>
         <div><label class="lbl">Staff domain</label><input class="inp mono text-xs" x-model="ed.domain_staff"></div>
-        <label class="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" x-model="ed.apply_domains"> Apply domain changes now (Caddy + public URLs in the app)</label>
+        <div class="sm:col-span-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1">
+          <p><b>HTTPS is automatic:</b> Caddy gets a free Let's Encrypt certificate for each domain and renews it. Point an <b>A record</b> for each domain at <span class="mono" x-text="ed.public_host"></span> first — until then the instance stays reachable by IP.</p>
+          <p>Leave a domain empty to use <span class="mono" x-text="`http://${ed.public_host}:port`"></span> for that app.</p>
+        </div>
+        <label class="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" x-model="ed.apply_domains"> Apply domain changes on save (Caddy/HTTPS + the app's links in SMS, emails and QR codes)</label>
       </div>
       <div class="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
         <button type="button" class="btn btn-g" @click="ed.open=false">Cancel</button>
@@ -693,7 +702,10 @@ function app() {
     },
 
     // ── edit / delete / logs ──
-    openEdit(i) { this.ed = { ...i, open: true, apply_domains: false } },
+    openEdit(i) { this.ed = { ...i, open: true, apply_domains: true } },
+    domStatus(i, dom) { try { return (JSON.parse(i.domain_status || '{}'))[dom] || null } catch { return null } },
+    domCls(i, dom) { const s = this.domStatus(i, dom); return !s ? 'bg-slate-300' : s.state === 'ok' ? 'bg-emerald-500' : s.state === 'pending' ? 'bg-amber-400' : 'bg-red-500' },
+    domMsg(i, dom) { const s = this.domStatus(i, dom); return s ? `${s.msg} (checked ${this.ago(s.checked_at)})` : 'Not checked yet — More → Check health & HTTPS' },
     async saveEdit() {
       try {
         const r = await this.api('/api/instances/' + this.ed.id, { method: 'PUT', body: JSON.stringify(this.ed) })

@@ -125,6 +125,9 @@ def init_db():
                 "INSERT INTO servers(name, host, is_local, created_at) VALUES (?,?,1,?)",
                 ("This server", "localhost", now()),
             )
+        cols = {r[1] for r in con.execute("PRAGMA table_info(instances)").fetchall()}
+        if "domain_status" not in cols:
+            con.execute("ALTER TABLE instances ADD COLUMN domain_status TEXT DEFAULT ''")
         # A job still "running" after a restart was interrupted.
         con.execute("UPDATE jobs SET status='failed', log=log||'\n[interrupted: manager restarted]' WHERE status='running'")
 
@@ -666,13 +669,7 @@ def job_create(inst_id: int, req: CreateInstance):
         if req.seed_mode == "config" and src:
             copy_settings(src_ex, src, ex_, inst, log)
 
-        scheme = lambda dom, port: f"https://{dom}" if dom else f"http://{srv_public_host(srv)}:{port}"  # noqa: E731
-        settings = {
-            "company_name": inst["company"],
-            "client_base_url": scheme(inst["domain_client"], inst["port_client"]),
-            "staff_base_url": scheme(inst["domain_staff"], inst["port_staff"]),
-            "website_base_url": scheme(inst["domain_website"], inst["port_website"]),
-        }
+        settings = {"company_name": inst["company"], **public_urls(inst, srv)}
         if req.brand_primary_color:
             settings["brand_primary_color"] = req.brand_primary_color
         if req.brand_secondary_color:
@@ -691,7 +688,9 @@ def job_create(inst_id: int, req: CreateInstance):
         if inst["caddy_managed"] and any(inst[f"domain_{s}"] for s in ("website", "client", "staff")):
             caddy_apply(ex_, inst, log)
         wait_healthy(ex_, inst, log)
-        log("Instance is up. Remember to point DNS A records for its domains at " + srv_public_host(srv))
+        log("Instance is up: " + ", ".join(f"http://{srv_public_host(srv)}:{inst[f'port_{x}']}" for x in ("website", "client", "staff")))
+        if any(inst[f"domain_{x}"] for x in ("website", "client", "staff")):
+            domain_report(inst, srv, log)
     return run
 
 
@@ -830,14 +829,17 @@ def logout():
     return resp
 
 
+NO_CACHE = {"Cache-Control": "no-store, max-age=0"}
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page():
-    return (HERE / "static" / "login.html").read_text()
+    return HTMLResponse((HERE / "static" / "login.html").read_text(), headers=NO_CACHE)
 
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    return (HERE / "static" / "index.html").read_text()
+    return HTMLResponse((HERE / "static" / "index.html").read_text(), headers=NO_CACHE)
 
 
 # ─── API: overview ───────────────────────────────────────────────────────
@@ -971,19 +973,59 @@ def edit_instance(iid: int, body: EditInstance):
     if body.apply_domains and domains_changed:
         def run(log):
             inst = instance(iid)
-            ex_ = executor_for(server(inst["server_id"]))
+            srv = server(inst["server_id"])
+            ex_ = executor_for(srv)
             if inst["caddy_managed"]:
                 caddy_apply(ex_, inst, log)
             else:
-                log("Caddy for this instance is managed by hand — update /etc/caddy/Caddyfile yourself")
-            upsert_settings(ex_, inst, {
-                "client_base_url": f"https://{inst['domain_client']}" if inst["domain_client"] else "",
-                "staff_base_url": f"https://{inst['domain_staff']}" if inst["domain_staff"] else "",
-                "website_base_url": f"https://{inst['domain_website']}" if inst["domain_website"] else "",
-            })
-            log("Updated public URLs in the instance settings")
+                log("⚠ Caddy for this instance is managed by hand — update /etc/caddy/Caddyfile yourself")
+            upsert_settings(ex_, inst, public_urls(inst, srv))
+            log("Updated the app's public links: " + ", ".join(public_urls(inst, srv).values()))
+            if any(inst[f"domain_{x}"] for x in ("website", "client", "staff")):
+                log("Checking DNS + HTTPS (Caddy requests the certificate as soon as DNS points here)…")
+                time.sleep(5)
+                domain_report(inst, srv, log)
         return {"job_id": start_job(f"Apply domains for {body.company}", "domains", run, instance_id=iid)}
     return {"ok": True}
+
+
+def public_urls(inst: dict, srv: dict) -> dict:
+    """What the app uses in SMS/emails/QR codes: https://domain, or http://IP:port without one."""
+    def url(svc):
+        dom = inst.get(f"domain_{svc}")
+        return f"https://{dom}" if dom else f"http://{srv_public_host(srv)}:{inst[f'port_{svc}']}"
+    return {"client_base_url": url("client"), "staff_base_url": url("staff"), "website_base_url": url("website")}
+
+
+def domain_report(inst: dict, srv: dict, log=None) -> dict:
+    """For each domain: does DNS point at the server, and is HTTPS (Caddy's Let's Encrypt cert) live?"""
+    import socket
+    want = srv_public_host(srv)
+    out = {}
+    for svc in ("website", "client", "staff"):
+        dom = (inst.get(f"domain_{svc}") or "").strip()
+        if not dom:
+            continue
+        try:
+            ips = sorted({ai[4][0] for ai in socket.getaddrinfo(dom, 443, proto=socket.IPPROTO_TCP)})
+        except socket.gaierror:
+            ips = []
+        if not ips:
+            st = {"state": "dns", "msg": f"no DNS record yet — add an A record {dom} → {want}"}
+        elif want not in ips:
+            st = {"state": "dns", "msg": f"DNS points to {', '.join(ips)}, should be {want}"}
+        else:
+            code = LocalExec().sh(f"curl -s -o /dev/null -m 10 -w '%{{http_code}}' https://{dom}/ || true", check=False).strip()
+            if code[:1] in ("2", "3"):
+                st = {"state": "ok", "msg": "HTTPS ✓ (certificate active)"}
+            else:
+                st = {"state": "pending", "msg": "DNS ✓ — HTTPS not ready yet (Caddy is getting the certificate, usually < 1 min; ports 80/443 must be open)"}
+        st["checked_at"] = now()
+        out[dom] = st
+        if log:
+            log(f"  {dom}: {st['msg']}")
+    ex("UPDATE instances SET domain_status=? WHERE id=?", (json.dumps(out), inst["id"]))
+    return out
 
 
 @app.post("/api/instances/{iid}/action/{action}")
@@ -1007,7 +1049,13 @@ def instance_action(iid: int, action: str, tag: str = ""):
             take_backup(inst, executor_for(server(inst["server_id"])), log)
     elif action == "health":
         def fn(log):
-            log(f"Health (HTTP codes for /api/settings/public): {health(executor_for(server(inst['server_id'])), inst)}")
+            srv = server(inst["server_id"])
+            log(f"App health (HTTP codes for /api/settings/public): {health(executor_for(srv), inst)}")
+            if any(inst[f"domain_{x}"] for x in ("website", "client", "staff")):
+                log("Domains:")
+                domain_report(inst, srv, log)
+            else:
+                log("No domains set — reachable by IP only. Add them under More → Edit details.")
     else:
         raise HTTPException(400, "unknown action")
     return {"job_id": start_job(title, action, fn, instance_id=iid, server_id=inst["server_id"])}
