@@ -1002,6 +1002,31 @@ def download_backup(name: str):
     return FileResponse(p, filename=name)
 
 
+class ConfirmPassword(BaseModel):
+    password: str
+
+
+def check_password(password: str, request: Request):
+    """Re-confirm the manager password for destructive actions (shares the login rate limit)."""
+    ip = request.client.host if request.client else "?"
+    recent = [t for t in _login_attempts.get(ip, []) if time.time() - t < 600]
+    if len(recent) >= 10:
+        raise HTTPException(429, "Too many wrong passwords, wait 10 minutes")
+    if not PASSWORD or not hmac.compare_digest(password, PASSWORD):
+        _login_attempts[ip] = recent + [time.time()]
+        raise HTTPException(403, "Wrong password")
+
+
+@app.post("/api/backups/{name}/delete")
+def delete_backup(name: str, body: ConfirmPassword, request: Request):
+    check_password(body.password, request)
+    p = (BACKUPS / name).resolve()
+    if p.parent != BACKUPS.resolve() or not p.name.endswith(".dump") or not p.exists():
+        raise HTTPException(404, "backup not found")
+    p.unlink()
+    return {"ok": True, "deleted": name}
+
+
 # ─── API: servers ────────────────────────────────────────────────────────
 
 class AddServer(BaseModel):
