@@ -525,27 +525,75 @@
           <p x-show="dt.loading && !dt.d" class="text-center text-sm text-slate-400 py-10">Loading details…</p>
           <template x-for="(msg, k) in (dt.d?.errors || {})"><p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"><b x-text="k"></b>: <span x-text="msg"></span></p></template>
 
-          <!-- apps -->
+          <!-- apps + domains -->
           <div class="bg-white border border-slate-200 rounded-xl">
-            <h3 class="px-4 py-3 border-b border-slate-100 text-sm font-semibold">Apps</h3>
-            <template x-for="svc in ['website','client','staff']">
-              <div class="px-4 py-3 border-b border-slate-100 last:border-0 flex flex-wrap items-center gap-x-4 gap-y-1">
-                <p class="w-28 text-sm font-medium" x-text="{website:'Website',client:'Booking app',staff:'Staff portal'}[svc]"></p>
-                <div class="flex-1 min-w-0 text-sm">
-                  <template x-if="dt.inst['domain_'+svc]">
-                    <div class="flex items-center gap-1.5">
-                      <span class="w-2 h-2 rounded-full shrink-0" :class="domCls(dt.inst, dt.inst['domain_'+svc])"></span>
-                      <a class="text-blue-600 hover:underline truncate" target="_blank" :href="'https://'+dt.inst['domain_'+svc]" x-text="'https://'+dt.inst['domain_'+svc]"></a>
+            <div class="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+              <h3 class="text-sm font-semibold">Apps &amp; domains</h3>
+              <button class="ml-auto text-xs font-medium text-blue-600 hover:underline" x-show="!dm.edit" @click="dmStart()">Edit domains</button>
+            </div>
+
+            <!-- view -->
+            <template x-if="!dm.edit">
+              <div>
+                <template x-for="svc in ['website','client','staff']">
+                  <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <p class="w-28 text-sm font-medium" x-text="{website:'Website',client:'Booking app',staff:'Staff portal'}[svc]"></p>
+                    <div class="flex-1 min-w-0 text-sm">
+                      <template x-if="dt.inst['domain_'+svc]">
+                        <div class="flex items-center gap-1.5">
+                          <span class="w-2 h-2 rounded-full shrink-0" :class="domCls(dt.inst, dt.inst['domain_'+svc])"></span>
+                          <a class="text-blue-600 hover:underline truncate" target="_blank" :href="'https://'+dt.inst['domain_'+svc]" x-text="'https://'+dt.inst['domain_'+svc]"></a>
+                        </div>
+                      </template>
+                      <p class="text-[11px] text-slate-500 ml-3.5" x-show="dt.inst['domain_'+svc]" x-text="domMsg(dt.inst, dt.inst['domain_'+svc])"></p>
+                      <a class="text-slate-600 hover:underline mono text-xs" target="_blank" :href="`http://${dt.inst.public_host}:${dt.inst['port_'+svc]}`" x-text="`http://${dt.inst.public_host}:${dt.inst['port_'+svc]}`"></a>
                     </div>
-                  </template>
-                  <p class="text-[11px] text-slate-500 ml-3.5" x-show="dt.inst['domain_'+svc]" x-text="domMsg(dt.inst, dt.inst['domain_'+svc])"></p>
-                  <a class="text-slate-600 hover:underline mono text-xs" target="_blank" :href="`http://${dt.inst.public_host}:${dt.inst['port_'+svc]}`" x-text="`http://${dt.inst.public_host}:${dt.inst['port_'+svc]}`"></a>
+                  </div>
+                </template>
+                <div class="px-4 py-3 bg-slate-50 rounded-b-xl flex flex-wrap items-center gap-2">
+                  <button class="btn btn-p" :disabled="dtBusy()" @click="dmApply(true)"
+                    x-show="dt.inst.domain_website || dt.inst.domain_client || dt.inst.domain_staff">↻ Re-apply domains &amp; get HTTPS</button>
+                  <button class="btn btn-g" :disabled="dtBusy()" @click="act(dt.inst,'health')">Check HTTPS</button>
+                  <p class="text-[11px] text-slate-500 w-full sm:w-auto sm:flex-1">Re-apply after adding DNS records — it reloads Caddy so certificates are requested right away.</p>
                 </div>
               </div>
             </template>
-            <div class="px-4 py-2.5 bg-slate-50 rounded-b-xl flex">
-              <button class="text-xs font-medium text-blue-600 hover:underline" @click="act(dt.inst,'health')">Check health &amp; HTTPS now</button>
-            </div>
+
+            <!-- edit -->
+            <template x-if="dm.edit">
+              <form class="p-4 space-y-3" @submit.prevent="dmApply(false)">
+                <div class="flex flex-wrap items-end gap-2 bg-blue-50/60 border border-blue-100 rounded-lg p-3">
+                  <div class="flex-1 min-w-[10rem]">
+                    <label class="lbl">Quick fill from a subdomain</label>
+                    <div class="flex items-center gap-1 text-sm">
+                      <input class="inp mono !w-32" x-model="dm.prefix" placeholder="kps" @keydown.enter.prevent="dmFill()">
+                      <span class="mono text-slate-500 text-xs" x-text="'.' + (data.base_domain || 'gobellme.com')"></span>
+                    </div>
+                  </div>
+                  <button type="button" class="btn btn-g" @click="dmFill()" :disabled="!dm.prefix.trim()">Fill all 3</button>
+                  <p class="text-[11px] text-slate-500 w-full mono" x-show="dm.prefix.trim()"
+                    x-text="`→ ${dmPat('website')} · ${dmPat('client')} · ${dmPat('staff')}`"></p>
+                </div>
+                <template x-for="svc in ['website','client','staff']">
+                  <div class="grid sm:grid-cols-[7rem_1fr] items-center gap-x-3 gap-y-1">
+                    <label class="text-sm font-medium" x-text="{website:'Website',client:'Booking app',staff:'Staff portal'}[svc]"></label>
+                    <div>
+                      <div class="flex items-center">
+                        <span class="px-2.5 py-2 text-xs text-slate-400 bg-slate-50 border border-r-0 border-slate-200 rounded-l-lg mono">https://</span>
+                        <input class="inp mono text-xs !rounded-l-none" x-model="dm['domain_'+svc]" placeholder="leave empty → IP only">
+                      </div>
+                      <p class="text-[11px] text-slate-400 mono mt-0.5" x-text="`→ localhost:${dt.inst['port_'+svc]}  ·  A record → ${dt.inst.public_host}`"></p>
+                    </div>
+                  </div>
+                </template>
+                <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" x-show="!dt.inst.caddy_managed">
+                  This instance's Caddy blocks are kept by hand in /etc/caddy/Caddyfile — Apply updates the app links only.</p>
+                <div class="flex justify-end gap-2 pt-1">
+                  <button type="button" class="btn btn-g" @click="dm.edit=false">Cancel</button>
+                  <button class="btn btn-p" :disabled="dtBusy()">Apply domains &amp; get HTTPS</button>
+                </div>
+              </form>
+            </template>
           </div>
 
           <!-- stats -->
@@ -917,6 +965,7 @@ function app() {
     ig: { open: false, inst: null, loading: false, err: '', data: null, form: {}, init: {}, flags: {}, initFlags: {}, tests: {}, testing: {}, busy: false, clear: [] },
     toasts: [],
     dt: { open: false, inst: null, d: null, loading: false },
+    dm: { edit: false, prefix: '', domain_website: '', domain_client: '', domain_staff: '' },
     pw: { open: false, current: '', next: '', confirm: '', err: '', ok: false, busy: false },
     cr: { open: false, custom_env: {} }, ed: { open: false }, bk: { open: false, name: '', password: '', err: '', busy: false }, lg: { open: false, service: 'backend', text: '' },
     jb: { open: false, id: null, log: '', status: '', title: '', min: false },
@@ -1012,7 +1061,10 @@ function app() {
         Object.assign(this.jb, { log: j.log || '', status: j.status, title: j.title })
         this.$nextTick(() => { const el = this.$refs.joblog; if (el) el.scrollTop = el.scrollHeight })
         if (j.status === 'running') setTimeout(poll, 1500)
-        else this.refresh(true)
+        else {
+          await this.refresh(true)
+          if (this.dt.open && this.dt.inst) { this.dt.inst = this.dtLive(); this.loadDetails() }
+        }
       }
       poll()
     },
@@ -1086,7 +1138,31 @@ function app() {
     // ── edit / delete / logs ──
     openEdit(i) { this.ed = { ...i, open: true, apply_domains: true, sync_name: false, busy: false, _tag: '', _orig: { ...i } } },
     // ── details ──
-    openDetails(i) { this.dt = { open: true, inst: i, d: null, loading: false }; this.loadDetails() },
+    openDetails(i) { this.dt = { open: true, inst: i, d: null, loading: false }; this.dm = { edit: false, prefix: '' }; this.loadDetails() },
+    dmStart() {
+      const i = this.dt.inst
+      const guess = (i.domain_website || i.domain_client || '').split('.')[0] || i.slug
+      this.dm = { edit: true, prefix: guess, domain_website: i.domain_website || '', domain_client: i.domain_client || '', domain_staff: i.domain_staff || '' }
+    },
+    dmPat(svc) {
+      const p = this.dm.prefix.trim().toLowerCase().replace(/[^a-z0-9-]/g, ''), b = this.data.base_domain || 'gobellme.com'
+      return { website: `${p}.${b}`, client: `${p}.ride.${b}`, staff: `${p}.staff.${b}` }[svc]
+    },
+    dmFill() { if (!this.dm.prefix.trim()) return; for (const s of ['website', 'client', 'staff']) this.dm['domain_' + s] = this.dmPat(s) },
+    async dmApply(reapply) {
+      const i = this.dt.inst
+      const body = reapply
+        ? { domain_website: i.domain_website || '', domain_client: i.domain_client || '', domain_staff: i.domain_staff || '' }
+        : { domain_website: this.dm.domain_website, domain_client: this.dm.domain_client, domain_staff: this.dm.domain_staff }
+      try {
+        const r = await this.api(`/api/instances/${i.id}/domains`, { method: 'POST', body: JSON.stringify(body) })
+        this.dm.edit = false
+        Object.assign(this.dt.inst, body)
+        this.watch(r.job_id)
+        this.toast(reapply ? 'Re-applying domains…' : 'Applying domains…')
+      } catch (e) { this.toast(e.message, 'err') }
+    },
+
     async loadDetails() {
       if (!this.dt.inst) return
       this.dt.loading = true

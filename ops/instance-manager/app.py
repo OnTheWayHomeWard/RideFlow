@@ -1028,6 +1028,66 @@ def edit_instance(iid: int, body: EditInstance):
     return {"ok": True}
 
 
+class ApplyDomains(BaseModel):
+    domain_website: str = ""
+    domain_client: str = ""
+    domain_staff: str = ""
+
+
+@app.post("/api/instances/{iid}/domains")
+def apply_domains(iid: int, body: ApplyDomains):
+    """Save the 3 domains and (re)apply them: Caddy config + forced reload (restarts certificate
+    attempts right away), app links, then wait until HTTPS is live. Safe to run with no changes."""
+    inst = instance(iid)
+    doms = {k: getattr(body, f"domain_{k}").strip().lower().removeprefix("https://").removeprefix("http://").rstrip("/")
+            for k in ("website", "client", "staff")}
+    for d in doms.values():
+        if d and not re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,}", d):
+            raise HTTPException(400, f"invalid domain: {d}")
+    filled = [d for d in doms.values() if d]
+    if len(filled) != len(set(filled)):
+        raise HTTPException(400, "each app needs a different domain")
+    for other in q("SELECT slug, domain_website, domain_client, domain_staff FROM instances WHERE id != ?", (iid,)):
+        clash = set(filled) & {other["domain_website"], other["domain_client"], other["domain_staff"]}
+        if clash:
+            raise HTTPException(400, f"{', '.join(clash)} is already used by instance '{other['slug']}'")
+    ex("UPDATE instances SET domain_website=?, domain_client=?, domain_staff=?, updated_at=? WHERE id=?",
+       (doms["website"], doms["client"], doms["staff"], now(), iid))
+
+    def run(log):
+        cur = instance(iid)
+        srv = server(cur["server_id"])
+        ex_ = executor_for(srv)
+        if cur["caddy_managed"]:
+            caddy_apply(ex_, cur, log)
+        else:
+            log("⚠ This instance's Caddy blocks live in the main Caddyfile (managed by hand) — "
+                "edit /etc/caddy/Caddyfile for domain changes. Updating the app links only.")
+        urls = public_urls(cur, srv)
+        upsert_settings(ex_, cur, urls)
+        log("App links (SMS, emails, QR codes): " + ", ".join(urls.values()))
+        if not filled:
+            log("No domains — the apps are reachable by IP only.")
+            return
+        log("Waiting for DNS + HTTPS certificates (up to 2 minutes)…")
+        t0, rep = time.time(), {}
+        while True:
+            rep = domain_report(cur, srv)
+            states = [v["state"] for v in rep.values()]
+            if all(st == "ok" for st in states) or "dns" in states or time.time() - t0 > 120:
+                break
+            time.sleep(10)
+        for dom, st in rep.items():
+            log(("  ✓ " if st["state"] == "ok" else "  ✖ ") + f"{dom}: {st['msg']}")
+        if all(v["state"] == "ok" for v in rep.values()):
+            log("All domains are live on HTTPS.")
+        elif any(v["state"] == "dns" for v in rep.values()):
+            log(f"Fix the DNS records above (A record → {srv_public_host(srv)}), then click Apply again.")
+        else:
+            log("Certificates are still being issued — Caddy keeps trying; click 'Check HTTPS' in a minute.")
+    return {"job_id": start_job(f"Apply domains for {inst['company']}", "domains", run, instance_id=iid)}
+
+
 def public_urls(inst: dict, srv: dict) -> dict:
     """What the app uses in SMS/emails/QR codes: https://domain, or http://IP:port without one."""
     def url(svc):
