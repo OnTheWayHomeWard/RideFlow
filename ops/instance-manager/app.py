@@ -56,6 +56,7 @@ SOURCE_DIR = Path(os.environ.get("RFM_SOURCE_DIR", "/root/RideFlow"))
 BASE_DOMAIN = os.environ.get("RFM_BASE_DOMAIN", "gobellme.com")
 USER = os.environ.get("RFM_USER", "admin")
 PASSWORD = os.environ.get("RFM_PASSWORD", "")
+ENV_FILE = Path(os.environ.get("RFM_ENV_FILE", "/etc/rideflow-manager.env"))
 SECRET = (os.environ.get("RFM_SECRET") or hashlib.sha256(("rfm" + PASSWORD).encode()).hexdigest()).encode()
 SSH_KEY = DATA / "id_ed25519"
 TEMPLATE = (HERE / "instance-compose.yml").read_text()
@@ -754,7 +755,8 @@ def instance_state(inst: dict, st: dict) -> str:
 # ─── Auth ────────────────────────────────────────────────────────────────
 
 def sign(value: str) -> str:
-    return hmac.new(SECRET, value.encode(), hashlib.sha256).hexdigest()
+    # The password is part of the key, so changing it signs out every session.
+    return hmac.new(SECRET + PASSWORD.encode(), value.encode(), hashlib.sha256).hexdigest()
 
 
 def make_session() -> str:
@@ -1174,6 +1176,50 @@ def check_password(password: str, request: Request):
     if not PASSWORD or not hmac.compare_digest(password, PASSWORD):
         _login_attempts[ip] = recent + [time.time()]
         raise HTTPException(403, "Wrong password")
+
+
+class ChangePassword(BaseModel):
+    current_password: str
+    new_password: str
+
+
+def write_env_value(key: str, value: str):
+    """Replace KEY=... in the manager's env file (systemd EnvironmentFile syntax), atomically."""
+    quoted = '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    lines = ENV_FILE.read_text().splitlines() if ENV_FILE.exists() else []
+    out, done = [], False
+    for ln in lines:
+        if ln.startswith(f"{key}="):
+            out.append(f"{key}={quoted}")
+            done = True
+        else:
+            out.append(ln)
+    if not done:
+        out.append(f"{key}={quoted}")
+    tmp = ENV_FILE.with_suffix(".tmp")
+    tmp.write_text("\n".join(out) + "\n")
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, ENV_FILE)
+
+
+@app.post("/api/account/password")
+def change_password(body: ChangePassword, request: Request):
+    global PASSWORD
+    check_password(body.current_password, request)
+    new = body.new_password
+    if len(new) < 10:
+        raise HTTPException(400, "New password must be at least 10 characters")
+    if new == body.current_password:
+        raise HTTPException(400, "New password must be different from the current one")
+    if any(c in new for c in "\r\n"):
+        raise HTTPException(400, "Password can't contain line breaks")
+    write_env_value("RFM_PASSWORD", new)
+    PASSWORD = new
+    # Old sessions are now invalid (password is part of the signing key) — keep this one signed in.
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie("rfm_session", make_session(), httponly=True, samesite="strict", max_age=12 * 3600,
+                    secure=request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https")
+    return resp
 
 
 @app.post("/api/backups/{name}/delete")
