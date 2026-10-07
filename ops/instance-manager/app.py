@@ -7,8 +7,8 @@ reached over SSH.
 
   * Releases  — `git pull` the source checkout and build shared images
                 (rideflow/<service>:<git-sha>) once; every instance runs them.
-  * Instances — create (fresh / config-only copy / full copy of another
-                instance), start, stop, restart, update to a release, logs,
+  * Instances — create (fresh / settings-only copy / everything except
+                rides & payments / full copy of another instance), start, stop, restart, update to a release, logs,
                 backups, delete. Each instance = a folder with compose.yml +
                 .env, its own Postgres volume, and a Caddy site file.
   * Servers   — add a remote server with IP + root password once; the manager
@@ -564,7 +564,10 @@ class CreateInstance(BaseModel):
     port_client: int
     port_staff: int
     image_tag: str = ""
-    seed_mode: str = Field("config", pattern="^(config|full|fresh)$")
+    # config      = settings only (everything else empty, new admin login)
+    # operational = all data except rides/payments/notifications
+    # full        = everything        fresh = empty, built-in defaults
+    seed_mode: str = Field("config", pattern="^(config|operational|full|fresh)$")
     source_instance_id: int | None = None
     integrations: str = Field("inherit", pattern="^(inherit|sandbox|custom)$")
     custom_env: dict[str, str] = {}
@@ -613,7 +616,7 @@ def job_create(inst_id: int, req: CreateInstance):
                 lines.append(f"{k}={SANDBOX_ENV[k]}")
             elif k in src_env:
                 lines.append(src_env[k])          # verbatim — same meaning as the source
-        if req.seed_mode == "fresh" and req.admin_email:
+        if req.seed_mode in ("fresh", "config") and req.admin_email:
             lines.append(f"DEFAULT_ADMIN_EMAIL={env_escape(req.admin_email)}")
             lines.append(f"DEFAULT_ADMIN_PASSWORD={env_escape(req.admin_password)}")
         d = inst["directory"]
@@ -631,9 +634,9 @@ def job_create(inst_id: int, req: CreateInstance):
         # ── database ──
         log(ex_.sh(compose(inst, "up -d db 2>&1")).strip()[-500:])
         wait_db(ex_, inst, log)
-        if req.seed_mode in ("config", "full") and src:
+        if req.seed_mode in ("operational", "full") and src:
             excl = "" if req.seed_mode == "full" else " ".join(f"--exclude-table-data={t}" for t in TRANSACTIONAL_TABLES)
-            log(f"Dumping {'config-only' if excl else 'full'} data from '{src['company']}'…")
+            log(f"Dumping {'all data except rides/payments' if excl else 'full'} data from '{src['company']}'…")
             _, dump = src_ex.run(compose(src, f"exec -T db pg_dump -U rideflow -d rideflow -Fc {excl}"), binary=True)
             log(f"Restoring {len(dump) / 1024:.0f} KB…")
             ex_.run(compose(inst, "exec -T db pg_restore -U rideflow -d rideflow --no-owner --exit-on-error"), input_bytes=dump)
@@ -642,6 +645,8 @@ def job_create(inst_id: int, req: CreateInstance):
         op_up(inst, log, ex_)
         log("Waiting for backend migrations + bootstrap…")
         wait_settings(ex_, inst, log)
+        if req.seed_mode == "config" and src:
+            copy_settings(src_ex, src, ex_, inst, log)
 
         scheme = lambda dom, port: f"https://{dom}" if dom else f"http://{srv_public_host(srv)}:{port}"  # noqa: E731
         settings = {
@@ -670,6 +675,22 @@ def job_create(inst_id: int, req: CreateInstance):
         wait_healthy(ex_, inst, log)
         log("Instance is up. Remember to point DNS A records for its domains at " + srv_public_host(srv))
     return run
+
+
+def copy_settings(src_ex: Executor, src: dict, ex_: Executor, inst: dict, log):
+    """Copy every row of the source's settings table (incl. uploaded logo) — nothing else."""
+    sql = ("SELECT coalesce(json_agg(json_build_object('key', key, 'value', value, 'description', description)), '[]') "
+           "FROM settings WHERE key NOT IN ('client_base_url', 'staff_base_url', 'website_base_url')")
+    _, out = src_ex.run(compose(src, "exec -T db psql -U rideflow -d rideflow -At -v ON_ERROR_STOP=1"),
+                        input_bytes=sql.encode(), binary=True)
+    rows = json.loads(out.decode())
+    psql(ex_, inst,
+         "INSERT INTO settings(key, value, description) "
+         f"SELECT key, value, description FROM json_to_recordset({sql_lit(json.dumps(rows))}::json) "
+         "AS x(key text, value jsonb, description text) "
+         "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, description = EXCLUDED.description, "
+         "updated_by = NULL, updated_at = now();")
+    log(f"Copied {len(rows)} settings from '{src['company']}' (no other data)")
 
 
 def srv_public_host(srv: dict) -> str:
@@ -862,8 +883,8 @@ def create_instance(req: CreateInstance):
         raise HTTPException(400, "choose a source instance to copy from")
     if req.integrations == "inherit" and not req.source_instance_id:
         raise HTTPException(400, "'same as source' integrations needs a source instance")
-    if req.seed_mode == "fresh" and (not req.admin_email or len(req.admin_password) < 8):
-        raise HTTPException(400, "fresh instances need an admin email and a password (8+ chars)")
+    if req.seed_mode in ("fresh", "config") and (not req.admin_email or len(req.admin_password) < 8):
+        raise HTTPException(400, "this data option needs a first admin email and a password (8+ chars)")
     for c in (req.brand_primary_color, req.brand_secondary_color):
         if c and not re.fullmatch(r"#[0-9a-fA-F]{6}", c):
             raise HTTPException(400, "colours must be hex like #0f766e")
@@ -985,6 +1006,144 @@ def instance_logs(iid: int, service: str = "backend", lines: int = 200):
     ex_ = executor_for(server(inst["server_id"]))
     out = ex_.sh(compose(inst, f"logs --no-color --tail {min(int(lines), 2000)} {service} 2>&1"), check=False)
     return {"logs": out}
+
+
+ADMIN_SCRIPT = r"""
+import sys, json, asyncio, bcrypt
+from sqlalchemy import select
+from app.database import async_session
+from app.models import Admin
+
+req = json.loads(sys.stdin.read())
+
+
+def row(a):
+    return {"id": str(a.id), "name": a.name, "email": a.email, "role": a.role, "is_active": a.is_active,
+            "password_changed": a.password_changed, "created_at": a.created_at.isoformat() if a.created_at else None}
+
+
+def hpw(p):
+    return bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode()
+
+
+def active_supers(admins):
+    return sum(1 for x in admins if x.role == "super_admin" and x.is_active)
+
+
+async def main():
+    async with async_session() as db:
+        op = req["op"]
+        admins = (await db.execute(select(Admin).order_by(Admin.created_at))).scalars().all()
+        if op == "list":
+            return [row(a) for a in admins]
+        if op == "create":
+            email = req["email"].strip().lower()
+            if any(a.email.lower() == email for a in admins):
+                raise ValueError("an admin with that email already exists")
+            a = Admin(name=req["name"].strip(), email=email, password_hash=hpw(req["password"]), role=req["role"],
+                      is_active=True, password_changed=not req.get("require_change", True))
+            db.add(a)
+            await db.commit()
+            await db.refresh(a)
+            return row(a)
+        a = next((x for x in admins if str(x.id) == req.get("id")), None)
+        if not a:
+            raise ValueError("admin not found")
+        if op == "reset":
+            a.password_hash = hpw(req["password"])
+            a.password_changed = not req.get("require_change", True)
+            a.is_active = True
+        elif op == "set_active":
+            if not req["active"] and a.role == "super_admin" and a.is_active and active_supers(admins) <= 1:
+                raise ValueError("can't disable the last active super admin")
+            a.is_active = bool(req["active"])
+        elif op == "set_role":
+            if req["role"] != "super_admin" and a.role == "super_admin" and a.is_active and active_supers(admins) <= 1:
+                raise ValueError("can't demote the last super admin")
+            a.role = req["role"]
+        else:
+            raise ValueError("bad op")
+        await db.commit()
+        return row(a)
+
+try:
+    print("__RESULT__" + json.dumps({"ok": True, "data": asyncio.run(main())}))
+except Exception as e:
+    print("__RESULT__" + json.dumps({"ok": False, "error": str(e)}))
+"""
+
+
+def admin_op(inst: dict, payload: dict):
+    """Run an admin-user operation inside the instance's backend container
+    (uses the app's own models + bcrypt, so hashes match what the app expects)."""
+    ex_ = executor_for(server(inst["server_id"]))
+    _, out = ex_.run(compose(inst, f"exec -T backend python -c {shlex.quote(ADMIN_SCRIPT)}"),
+                     input_bytes=json.dumps(payload).encode(), check=False, binary=True)
+    line = next((ln for ln in out.decode(errors="replace").splitlines() if ln.startswith("__RESULT__")), None)
+    if not line:
+        raise HTTPException(502, "instance backend not reachable — is the instance running?")
+    res = json.loads(line[len("__RESULT__"):])
+    if not res["ok"]:
+        raise HTTPException(400, res["error"])
+    return res["data"]
+
+
+def gen_password() -> str:
+    alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(14))
+
+
+class NewAdmin(BaseModel):
+    name: str
+    email: str
+    role: str = Field("admin", pattern="^(admin|super_admin)$")
+    password: str = ""
+    require_change: bool = True
+
+
+class ResetPassword(BaseModel):
+    password: str = ""
+    require_change: bool = True
+
+
+@app.get("/api/instances/{iid}/admins")
+def list_admins(iid: int):
+    return admin_op(instance(iid), {"op": "list"})
+
+
+@app.post("/api/instances/{iid}/admins")
+def create_admin(iid: int, body: NewAdmin):
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", body.email.strip()):
+        raise HTTPException(400, "invalid email")
+    if not body.name.strip():
+        raise HTTPException(400, "name is required")
+    pw = body.password or gen_password()
+    if len(pw) < 8:
+        raise HTTPException(400, "password must be 8+ characters")
+    a = admin_op(instance(iid), {"op": "create", "name": body.name, "email": body.email, "role": body.role,
+                                 "password": pw, "require_change": body.require_change})
+    return {"admin": a, "password": pw}
+
+
+@app.post("/api/instances/{iid}/admins/{aid}/reset-password")
+def reset_admin_password(iid: int, aid: str, body: ResetPassword):
+    pw = body.password or gen_password()
+    if len(pw) < 8:
+        raise HTTPException(400, "password must be 8+ characters")
+    a = admin_op(instance(iid), {"op": "reset", "id": aid, "password": pw, "require_change": body.require_change})
+    return {"admin": a, "password": pw}
+
+
+@app.post("/api/instances/{iid}/admins/{aid}/active")
+def set_admin_active(iid: int, aid: str, active: bool):
+    return admin_op(instance(iid), {"op": "set_active", "id": aid, "active": active})
+
+
+@app.post("/api/instances/{iid}/admins/{aid}/role")
+def set_admin_role(iid: int, aid: str, role: str):
+    if role not in ("admin", "super_admin"):
+        raise HTTPException(400, "bad role")
+    return admin_op(instance(iid), {"op": "set_role", "id": aid, "role": role})
 
 
 @app.get("/api/backups")

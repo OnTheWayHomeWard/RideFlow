@@ -116,6 +116,7 @@
               <div class="relative" x-data="{o:false}" @click.outside="o=false">
                 <button class="btn btn-g" @click="o=!o">More ▾</button>
                 <div x-show="o" x-cloak class="absolute z-20 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg py-1 text-sm">
+                  <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; openAdmins(i)">Admin users</button>
                   <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; openEdit(i)">Edit details</button>
                   <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; act(i,'backup')">Back up database</button>
                   <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; act(i,'health')">Health check</button>
@@ -269,8 +270,8 @@
 
         <fieldset class="space-y-3">
           <legend class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">Data</legend>
-          <div class="grid sm:grid-cols-3 gap-2">
-            <template x-for="m in [['config','Copy configuration','Vehicles, rates, routes, hotels, drivers, staff, settings — no rides/payments'],['full','Full copy','Everything, including rides and payments'],['fresh','Fresh / empty','Empty database with a new admin login']]">
+          <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            <template x-for="m in seedModes">
               <label class="border rounded-lg p-3 cursor-pointer text-sm" :class="cr.seed_mode===m[0] ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200'">
                 <input type="radio" class="sr-only" :value="m[0]" x-model="cr.seed_mode">
                 <p class="font-semibold" x-text="m[1]"></p><p class="text-xs text-slate-500 mt-0.5" x-text="m[2]"></p>
@@ -281,9 +282,12 @@
             <select class="inp" x-model.number="cr.source_instance_id">
               <template x-for="i in data.instances"><option :value="i.id" x-text="`${i.company} (${i.slug} · ${i.server_name})`"></option></template>
             </select></div>
-          <div class="grid sm:grid-cols-2 gap-3" x-show="cr.seed_mode==='fresh'">
-            <div><label class="lbl">Admin email</label><input class="inp" type="email" x-model="cr.admin_email"></div>
-            <div><label class="lbl">Admin password (8+ chars)</label><input class="inp" x-model="cr.admin_password" autocomplete="new-password"></div>
+          <div class="grid sm:grid-cols-2 gap-3" x-show="cr.seed_mode==='fresh' || cr.seed_mode==='config'">
+            <p class="text-xs text-slate-500 sm:col-span-2">No staff accounts are copied with this option — this becomes the first super admin login. Add more later under <b>More → Admin users</b>.</p>
+            <div><label class="lbl">First admin email</label><input class="inp" type="email" x-model="cr.admin_email"></div>
+            <div><label class="lbl">First admin password (8+ chars)</label>
+              <div class="flex gap-2"><input class="inp mono" x-model="cr.admin_password" autocomplete="new-password">
+                <button type="button" class="btn btn-g shrink-0" @click="cr.admin_password=genPw()">Generate</button></div></div>
           </div>
         </fieldset>
 
@@ -365,6 +369,80 @@
     </div>
   </div>
 
+  <!-- ═══ Admin users ═══ -->
+  <div x-show="ad.open" x-cloak class="fixed inset-0 z-40 bg-slate-900/60 flex items-start justify-center overflow-y-auto p-4" @keydown.escape.window="ad.open=false">
+    <div class="bg-white rounded-2xl w-full max-w-4xl my-6 shadow-2xl">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+        <div>
+          <h2 class="font-bold text-lg">Admin users</h2>
+          <p class="text-xs text-slate-500"><span x-text="ad.inst?.company"></span> · staff portal logins</p>
+        </div>
+        <button class="btn btn-g ml-auto" @click="loadAdmins()" :disabled="ad.loading">Reload</button>
+        <button class="text-slate-400 hover:text-slate-700 text-xl" @click="ad.open=false">×</button>
+      </div>
+
+      <div class="p-6 space-y-5">
+        <!-- one-time password result -->
+        <div x-show="ad.result" class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <p class="text-sm font-semibold text-emerald-800" x-text="ad.result?.title"></p>
+          <p class="text-xs text-emerald-700 mt-0.5">Copy it now — it isn't shown again. Login at the staff portal → Admin.</p>
+          <div class="flex flex-wrap items-center gap-2 mt-2">
+            <span class="mono text-sm bg-white border border-emerald-200 rounded-lg px-3 py-1.5" x-text="ad.result?.email"></span>
+            <span class="mono text-sm bg-white border border-emerald-200 rounded-lg px-3 py-1.5 select-all" x-text="ad.result?.password"></span>
+            <button class="btn btn-g" @click="navigator.clipboard?.writeText(ad.result.password); ad.copied=true; setTimeout(()=>ad.copied=false,1500)" x-text="ad.copied ? 'Copied ✓' : 'Copy password'"></button>
+            <button class="text-xs text-emerald-700 ml-auto" @click="ad.result=null">Dismiss</button>
+          </div>
+        </div>
+        <p class="text-sm text-red-600" x-show="ad.err" x-text="ad.err"></p>
+
+        <div class="border border-slate-200 rounded-xl overflow-hidden">
+          <p x-show="ad.loading" class="p-6 text-center text-sm text-slate-400">Loading…</p>
+          <template x-for="a in ad.list" :key="a.id">
+            <div class="border-b border-slate-100 last:border-0">
+              <div class="px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                <div class="min-w-0 flex-1">
+                  <p class="font-medium text-sm" :class="a.is_active ? '' : 'text-slate-400 line-through'" x-text="a.name"></p>
+                  <p class="text-xs text-slate-500 mono truncate" x-text="a.email"></p>
+                </div>
+                <span class="text-[11px] px-2 py-0.5 rounded-full font-medium" :class="a.role==='super_admin' ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-600'" x-text="a.role==='super_admin' ? 'super admin' : 'admin'"></span>
+                <span x-show="!a.is_active" class="text-[11px] px-2 py-0.5 rounded-full bg-red-100 text-red-700">disabled</span>
+                <span x-show="a.is_active && !a.password_changed" class="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700" title="Will be asked to set a new password at next login">must change password</span>
+                <span class="text-xs text-slate-400" x-text="a.created_at ? 'added ' + ago(a.created_at) : ''"></span>
+                <div class="flex gap-1.5 w-full sm:w-auto">
+                  <button class="btn btn-g" @click="ad.reset = ad.reset?.id===a.id ? null : { id: a.id, password: '', require_change: true }">Reset password</button>
+                  <button class="btn btn-g" @click="adminRole(a)" x-text="a.role==='super_admin' ? 'Make admin' : 'Make super admin'"></button>
+                  <button class="btn btn-g" :class="a.is_active ? '!text-red-600' : ''" @click="adminActive(a)" x-text="a.is_active ? 'Disable' : 'Enable'"></button>
+                </div>
+              </div>
+              <form x-show="ad.reset?.id===a.id" class="px-4 pb-4 flex flex-wrap items-end gap-2 bg-slate-50 pt-3" @submit.prevent="adminReset(a)">
+                <div class="flex-1 min-w-[14rem]"><label class="lbl">New password <span class="text-slate-400">(leave empty to generate one)</span></label>
+                  <input class="inp mono" x-model="ad.reset.password" autocomplete="new-password" placeholder="auto-generate"></div>
+                <label class="flex items-center gap-2 text-xs text-slate-600 pb-2.5"><input type="checkbox" x-model="ad.reset.require_change"> Ask them to change it at next login</label>
+                <button class="btn btn-p">Set password</button>
+              </form>
+            </div>
+          </template>
+          <p x-show="!ad.loading && !ad.list.length" class="p-6 text-center text-sm text-slate-400">No admin users.</p>
+        </div>
+
+        <form class="border border-slate-200 rounded-xl p-4 space-y-3" @submit.prevent="adminCreate()">
+          <h3 class="font-semibold text-sm">Add admin user</h3>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div><label class="lbl">Name</label><input class="inp" x-model="ad.new.name" required></div>
+            <div><label class="lbl">Email (login)</label><input class="inp" type="email" x-model="ad.new.email" required></div>
+            <div><label class="lbl">Role</label>
+              <select class="inp" x-model="ad.new.role"><option value="admin">Admin</option><option value="super_admin">Super admin (can manage admins & public URLs)</option></select></div>
+            <div><label class="lbl">Password <span class="text-slate-400">(empty = generate)</span></label><input class="inp mono" x-model="ad.new.password" autocomplete="new-password" placeholder="auto-generate"></div>
+          </div>
+          <div class="flex flex-wrap items-center gap-3">
+            <label class="flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" x-model="ad.new.require_change"> Ask them to change it at first login</label>
+            <button class="btn btn-p ml-auto" :disabled="ad.busy" x-text="ad.busy ? 'Adding…' : 'Add admin'"></button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══ Delete backup (password confirm) ═══ -->
   <div x-show="bk.open" x-cloak class="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4" @keydown.escape.window="bk.open=false">
     <form class="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4" @submit.prevent="deleteBackup()">
@@ -418,6 +496,13 @@ function app() {
     tab: 'instances', loading: false, data: { servers: [], instances: [], releases: [], latest_tag: '', base_domain: '' },
     jobs: [], backups: [], f: { q: '', state: '', server: '', env: '' }, sel: [], selTag: '',
     envKeys: ['STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','TWILIO_ACCOUNT_SID','TWILIO_AUTH_TOKEN','TWILIO_PHONE_NUMBER','TWILIO_MESSAGING_SERVICE_SID','GOOGLE_MAPS_API_KEY'],
+    ad: { open: false, inst: null, list: [], loading: false, err: '', result: null, reset: null, busy: false, copied: false, new: {} },
+    seedModes: [
+      ['config', 'Settings only', 'Copy the source’s settings & branding. Vehicles, routes, hotels, drivers and staff start empty.'],
+      ['operational', 'Everything except rides', 'Settings, vehicles, rates, routes, hotels, drivers, staff — no rides/payments.'],
+      ['full', 'Full copy', 'Everything, including rides and payments.'],
+      ['fresh', 'Fresh / empty', 'Built-in defaults, nothing copied.'],
+    ],
     cr: { open: false }, ed: { open: false }, bk: { open: false, name: '', password: '', err: '', busy: false }, lg: { open: false, service: 'backend', text: '' },
     jb: { open: false, id: null, log: '', status: '', title: '', min: false },
     srv: { name: '', host: '', port: 22, user: 'root', password: '', notes: '', install: true }, srvErr: '', srvBusy: false,
@@ -601,6 +686,53 @@ Each is backed up first and restarts briefly, one at a time.`)) return
     async delServer(s) {
       if (!confirm(`Remove server ${s.name} from the manager?`)) return
       try { await this.api('/api/servers/' + s.id, { method: 'DELETE' }); this.refresh() } catch (e) { alert(e.message) }
+    },
+    genPw() {
+      const a = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789', r = crypto.getRandomValues(new Uint32Array(14))
+      return Array.from(r, x => a[x % a.length]).join('')
+    },
+    openAdmins(i) {
+      this.ad = { open: true, inst: i, list: [], loading: false, err: '', result: null, reset: null, busy: false, copied: false,
+        new: { name: '', email: '', role: 'admin', password: '', require_change: true } }
+      this.loadAdmins()
+    },
+    async loadAdmins() {
+      this.ad.loading = true; this.ad.err = ''
+      try { this.ad.list = await this.api(`/api/instances/${this.ad.inst.id}/admins`) } catch (e) { this.ad.err = e.message }
+      this.ad.loading = false
+    },
+    async adminCreate() {
+      this.ad.busy = true; this.ad.err = ''
+      try {
+        const r = await this.api(`/api/instances/${this.ad.inst.id}/admins`, { method: 'POST', body: JSON.stringify(this.ad.new) })
+        this.ad.result = { title: `Admin ${r.admin.name} created`, email: r.admin.email, password: r.password }
+        this.ad.new = { name: '', email: '', role: 'admin', password: '', require_change: true }
+        await this.loadAdmins()
+      } catch (e) { this.ad.err = e.message }
+      this.ad.busy = false
+    },
+    async adminReset(a) {
+      this.ad.err = ''
+      try {
+        const r = await this.api(`/api/instances/${this.ad.inst.id}/admins/${a.id}/reset-password`, { method: 'POST',
+          body: JSON.stringify({ password: this.ad.reset.password, require_change: this.ad.reset.require_change }) })
+        this.ad.result = { title: `New password for ${a.name}`, email: a.email, password: r.password }
+        this.ad.reset = null
+        await this.loadAdmins()
+      } catch (e) { this.ad.err = e.message }
+    },
+    async adminActive(a) {
+      if (a.is_active && !confirm(`Disable ${a.name}? They won't be able to log in.`)) return
+      this.ad.err = ''
+      try { await this.api(`/api/instances/${this.ad.inst.id}/admins/${a.id}/active?active=${!a.is_active}`, { method: 'POST' }); await this.loadAdmins() }
+      catch (e) { this.ad.err = e.message }
+    },
+    async adminRole(a) {
+      const role = a.role === 'super_admin' ? 'admin' : 'super_admin'
+      if (!confirm(`Change ${a.name} to ${role.replace('_', ' ')}?`)) return
+      this.ad.err = ''
+      try { await this.api(`/api/instances/${this.ad.inst.id}/admins/${a.id}/role?role=${role}`, { method: 'POST' }); await this.loadAdmins() }
+      catch (e) { this.ad.err = e.message }
     },
     async logout() { await fetch('/api/logout', { method: 'POST' }); location.href = '/login' },
   }
