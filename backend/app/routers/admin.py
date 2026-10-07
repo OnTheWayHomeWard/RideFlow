@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, timedelta, date
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -2023,8 +2023,59 @@ async def delete_extra(extra_id: str, admin: Admin = Depends(get_current_admin),
 
 @router.get("/settings", response_model=list[SettingOut])
 async def list_settings(admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Setting))
+    # company_logo_file holds the uploaded image bytes — served by
+    # /api/settings/logo, never shipped in this list.
+    result = await db.execute(select(Setting).where(Setting.key != LOGO_FILE_KEY))
     return result.scalars().all()
+
+
+LOGO_FILE_KEY = "company_logo_file"
+LOGO_MAX_BYTES = 2 * 1024 * 1024
+LOGO_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon"}
+
+
+async def _put_setting(db: AsyncSession, key: str, value, admin: Admin):
+    row = (await db.execute(select(Setting).where(Setting.key == key))).scalar_one_or_none()
+    if row:
+        row.value = value
+        row.updated_by = admin.id
+    else:
+        db.add(Setting(key=key, value=value, updated_by=admin.id))
+
+
+@router.post("/settings/logo")
+async def upload_logo(
+    file: UploadFile = File(...),
+    admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Store an uploaded logo in the DB and point company_logo_url at it."""
+    import base64
+    import hashlib
+    ctype = (file.content_type or "").lower()
+    if ctype not in LOGO_TYPES:
+        raise HTTPException(status_code=400, detail="Logo must be PNG, JPG, WEBP, GIF, SVG or ICO")
+    data = await file.read(LOGO_MAX_BYTES + 1)
+    if len(data) > LOGO_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="Logo must be 2 MB or smaller")
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    digest = hashlib.sha256(data).hexdigest()[:12]
+    await _put_setting(db, LOGO_FILE_KEY, {"content_type": ctype, "data": base64.b64encode(data).decode(), "sha": digest}, admin)
+    url = f"/api/settings/logo?v={digest}"
+    await _put_setting(db, "company_logo_url", url, admin)
+    await db.commit()
+    return {"company_logo_url": url}
+
+
+@router.delete("/settings/logo")
+async def remove_logo(admin: Admin = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    row = (await db.execute(select(Setting).where(Setting.key == LOGO_FILE_KEY))).scalar_one_or_none()
+    if row:
+        await db.delete(row)
+    await _put_setting(db, "company_logo_url", "", admin)
+    await db.commit()
+    return {"company_logo_url": ""}
 
 
 SUPER_ADMIN_ONLY_SETTINGS = {"client_base_url", "staff_base_url", "website_base_url"}
@@ -2036,6 +2087,8 @@ async def update_setting(
     admin: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    if req.key == LOGO_FILE_KEY:
+        raise HTTPException(status_code=400, detail="Use the logo upload endpoint")
     if req.key in SUPER_ADMIN_ONLY_SETTINGS and admin.role != "super_admin":
         raise HTTPException(status_code=403, detail="Only the super admin can change this setting")
 

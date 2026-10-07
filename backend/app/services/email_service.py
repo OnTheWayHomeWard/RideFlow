@@ -115,6 +115,15 @@ def _accent(settings: dict, default: str) -> str:
     return v if re.fullmatch(r"#[0-9a-fA-F]{6}", v) else default
 
 
+def _abs_logo(settings: dict) -> str | None:
+    """Uploaded logos are stored as a site-relative URL; emails need an absolute one."""
+    url = str(settings.get("company_logo_url") or "").strip()
+    if url.startswith("/"):
+        base = str(settings.get("client_base_url") or "").rstrip("/")
+        return f"{base}{url}" if base.startswith("http") else None
+    return url or None
+
+
 def _brand_block(brand: str, logo_url: str | None) -> str:
     if logo_url:
         return f'<img src="{logo_url}" alt="{brand}" style="height:36px"/>'
@@ -128,10 +137,10 @@ async def notify_client_booking_email(
     if not booking.client_email:
         return {"sent": False, "disabled": False, "error": "no email on booking", "resend_id": None}
     # Resolve brand bits from settings for a nicer header
-    r = await db.execute(select(Setting).where(Setting.key.in_(["company_name", "company_logo_url", "brand_primary_color"])))
+    r = await db.execute(select(Setting).where(Setting.key.in_(["company_name", "company_logo_url", "brand_primary_color", "client_base_url"])))
     s = {row.key: row.value for row in r.scalars().all()}
     brand = (s.get("company_name") or "GoBellMe")
-    logo = (s.get("company_logo_url") or None)
+    logo = _abs_logo(s)
     name = booking.client_name or "there"
     subject = f"Booking confirmed — {booking.booking_number}"
     text = (
@@ -190,14 +199,14 @@ async def notify_guest_payment_link_email(
     r = await db.execute(
         select(Setting).where(
             Setting.key.in_([
-                "company_name", "company_logo_url", "brand_primary_color",
+                "company_name", "company_logo_url", "brand_primary_color", "client_base_url",
                 "email_guest_payment_link_subject",
             ])
         )
     )
     s = {row.key: row.value for row in r.scalars().all()}
     brand = (s.get("company_name") or "GoBellMe")
-    logo = (s.get("company_logo_url") or None)
+    logo = _abs_logo(s)
     subject_tpl = (
         s.get("email_guest_payment_link_subject")
         or "Complete your ride reservation — {booking_number}"
@@ -256,10 +265,10 @@ async def notify_client_cancellation_email(
     """Send the cancellation + refund-confirmed email."""
     if not booking.client_email:
         return {"sent": False, "disabled": False, "error": "no email on booking", "resend_id": None}
-    r = await db.execute(select(Setting).where(Setting.key.in_(["company_name", "company_logo_url", "brand_primary_color"])))
+    r = await db.execute(select(Setting).where(Setting.key.in_(["company_name", "company_logo_url", "brand_primary_color", "client_base_url"])))
     s = {row.key: row.value for row in r.scalars().all()}
     brand = (s.get("company_name") or "GoBellMe")
-    logo = (s.get("company_logo_url") or None)
+    logo = _abs_logo(s)
     name = booking.client_name or "there"
     subject = f"Booking {booking.booking_number} cancelled — refund processed"
     text = (

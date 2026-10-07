@@ -939,8 +939,8 @@ def instance_action(iid: int, action: str, tag: str = ""):
             log(ex_.sh(compose(inst, f"{action} 2>&1")).strip()[-1500:])
     elif action == "update":
         tag = tag or latest_tag()
-        if not tag:
-            raise HTTPException(400, "no release available")
+        if not tag or not q("SELECT 1 FROM releases WHERE tag=?", (tag,), one=True):
+            raise HTTPException(400, "no such release")
         title = f"Update {inst['company']} → {tag}"
         fn = job_update(iid, tag)
     elif action == "backup":
@@ -1072,20 +1072,50 @@ def build_release():
     return {"job_id": start_job("Build release from latest code", "release", job_build_release)}
 
 
+class Rollout(BaseModel):
+    tag: str = ""
+    instance_ids: list[int] | None = None   # None = every instance
+
+
 @app.post("/api/releases/rollout")
-def rollout(tag: str = ""):
-    """Update every running/degraded instance to a release, one at a time."""
-    tag = tag or latest_tag()
-    targets = [i for i in q("SELECT * FROM instances ORDER BY id") if i["image_tag"] != tag]
+def rollout(body: Rollout):
+    """Update the chosen instances (default: all) to a release, one at a time.
+    Works for rollbacks too — pick an older tag."""
+    tag = body.tag or latest_tag()
+    if not q("SELECT 1 FROM releases WHERE tag=?", (tag,), one=True):
+        raise HTTPException(400, f"unknown release {tag}")
+    rows = q("SELECT * FROM instances ORDER BY company")
+    if body.instance_ids is not None:
+        rows = [i for i in rows if i["id"] in set(body.instance_ids)]
+    targets = [i for i in rows if i["image_tag"] != tag]
+    if not targets:
+        raise HTTPException(400, f"selected instance(s) already run {tag}")
+    with _busy_lock:
+        clash = [i["slug"] for i in targets if i["id"] in _busy]
+    if clash:
+        raise HTTPException(409, f"busy: {', '.join(clash)} — wait for their running job to finish")
 
     def run(log):
-        for i in targets:
-            log(f"── {i['company']} ({i['image_tag'] or '?'} → {tag})")
+        ok, failed = [], []
+        for n, i in enumerate(targets, 1):
+            log(f"── [{n}/{len(targets)}] {i['company']} ({i['image_tag'] or '?'} → {tag})")
+            with _busy_lock:
+                _busy.add(i["id"])
             try:
                 job_update(i["id"], tag)(log)
+                ok.append(i["slug"])
             except Exception as e:  # noqa: BLE001
-                log(f"  failed: {e} — continuing with the next instance")
-    return {"job_id": start_job(f"Roll out {tag} to {len(targets)} instance(s)", "rollout", run)}
+                failed.append(i["slug"])
+                log(f"  ✖ failed: {e} — continuing with the next instance")
+            finally:
+                with _busy_lock:
+                    _busy.discard(i["id"])
+                _status_cache.clear()
+        log(f"Summary: updated {len(ok)} {ok}" + (f", FAILED {failed}" if failed else ""))
+        if failed:
+            raise CmdError(f"{len(failed)} instance(s) failed: {failed}")
+    names = ", ".join(i["slug"] for i in targets)
+    return {"job_id": start_job(f"Update {names} → {tag}", "rollout", run)}
 
 
 @app.get("/api/jobs")

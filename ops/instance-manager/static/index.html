@@ -66,13 +66,15 @@
           <option value="">All environments</option><option>production</option><option>staging</option><option>demo</option>
         </select>
         <button class="btn btn-g" @click="refresh()" :disabled="loading"><span x-text="loading ? 'Refreshing…' : 'Refresh'"></span></button>
+        <button class="btn btn-g" @click="toggleAll()" x-text="filtered().length && filtered().every(i => sel.includes(i.id)) ? 'Unselect shown' : 'Select shown'"></button>
         <button class="btn btn-p ml-auto" @click="openCreate()">+ New instance</button>
       </div>
 
       <div class="grid gap-3 lg:grid-cols-2">
         <template x-for="i in filtered()" :key="i.id">
-          <div class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col gap-3">
+          <div class="bg-white border rounded-xl p-4 flex flex-col gap-3" :class="sel.includes(i.id) ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200'">
             <div class="flex items-start gap-3">
+              <input type="checkbox" class="mt-3 w-4 h-4 accent-blue-600 shrink-0 cursor-pointer" :checked="sel.includes(i.id)" @change="toggle(i.id)" title="Select for bulk update">
               <div class="w-10 h-10 rounded-lg shrink-0 flex items-center justify-center text-white font-bold text-sm"
                 :style="`background:${i.brand_color || '#2563eb'}`" x-text="i.company.slice(0,2).toUpperCase()"></div>
               <div class="min-w-0 flex-1">
@@ -177,7 +179,7 @@
       </div>
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
         <table class="w-full text-sm">
-          <thead class="bg-slate-50 text-left text-xs text-slate-500"><tr><th class="p-3">Tag</th><th class="p-3">Commit</th><th class="p-3">Built</th><th class="p-3">Instances on it</th></tr></thead>
+          <thead class="bg-slate-50 text-left text-xs text-slate-500"><tr><th class="p-3">Tag</th><th class="p-3">Commit</th><th class="p-3">Built</th><th class="p-3">Instances on it</th><th></th></tr></thead>
           <tbody>
             <template x-for="r in data.releases" :key="r.tag">
               <tr class="border-t border-slate-100">
@@ -185,6 +187,7 @@
                 <td class="p-3" x-text="r.commit_msg"></td>
                 <td class="p-3 text-slate-500" x-text="ago(r.created_at)"></td>
                 <td class="p-3 text-slate-500" x-text="data.instances.filter(i=>i.image_tag===r.tag).map(i=>i.slug).join(', ') || '—'"></td>
+                <td class="p-3 text-right"><button class="btn btn-g" @click="selTag=r.tag; tab='instances'">Deploy to…</button></td>
               </tr>
             </template>
           </tbody>
@@ -361,6 +364,22 @@
     </div>
   </div>
 
+  <!-- ═══ Bulk update bar ═══ -->
+  <div x-show="tab==='instances' && sel.length" x-cloak class="fixed inset-x-0 bottom-0 z-30 p-3 sm:p-4" :class="jb.open ? 'mb-14' : ''">
+    <div class="max-w-4xl mx-auto bg-white border border-slate-200 shadow-2xl rounded-2xl px-4 py-3 flex flex-wrap items-center gap-2">
+      <span class="text-sm font-semibold"><span x-text="sel.length"></span> selected</span>
+      <span class="text-xs text-slate-500 truncate max-w-[16rem]" x-text="data.instances.filter(i => sel.includes(i.id)).map(i => i.slug).join(', ')"></span>
+      <div class="flex items-center gap-2 ml-auto">
+        <label class="text-xs text-slate-500">Release</label>
+        <select class="inp !w-auto mono" x-model="selTag">
+          <template x-for="r in data.releases"><option :value="r.tag" x-text="r.tag + (r.tag===data.latest_tag ? ' (latest)' : '')"></option></template>
+        </select>
+        <button class="btn btn-p" @click="bulkUpdate()">⬆ Update selected</button>
+        <button class="btn btn-g" @click="sel=[]">Clear</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══ Job drawer ═══ -->
   <div x-show="jb.open" x-cloak class="fixed inset-x-0 bottom-0 z-50 p-3 sm:p-4 pointer-events-none">
     <div class="max-w-4xl mx-auto bg-slate-950 text-slate-100 rounded-2xl shadow-2xl pointer-events-auto">
@@ -379,7 +398,7 @@
 function app() {
   return {
     tab: 'instances', loading: false, data: { servers: [], instances: [], releases: [], latest_tag: '', base_domain: '' },
-    jobs: [], backups: [], f: { q: '', state: '', server: '', env: '' },
+    jobs: [], backups: [], f: { q: '', state: '', server: '', env: '' }, sel: [], selTag: '',
     envKeys: ['STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','TWILIO_ACCOUNT_SID','TWILIO_AUTH_TOKEN','TWILIO_PHONE_NUMBER','TWILIO_MESSAGING_SERVICE_SID','GOOGLE_MAPS_API_KEY'],
     cr: { open: false }, ed: { open: false }, lg: { open: false, service: 'backend', text: '' },
     jb: { open: false, id: null, log: '', status: '', title: '', min: false },
@@ -400,6 +419,7 @@ function app() {
       if (!quiet) this.loading = true
       try {
         this.data = await this.api('/api/overview')
+        if (!this.selTag) this.selTag = this.data.latest_tag
         this.jobs = await this.api('/api/jobs')
       } catch (e) { if (!quiet) alert(e.message) }
       this.loading = false
@@ -455,7 +475,29 @@ function app() {
     async build() { try { this.watch((await this.api('/api/releases/build', { method: 'POST' })).job_id) } catch (e) { alert(e.message) } },
     async rollout() {
       if (!confirm(`Update every instance to ${this.data.latest_tag}? Each one is backed up first and restarts briefly.`)) return
-      try { this.watch((await this.api('/api/releases/rollout', { method: 'POST' })).job_id) } catch (e) { alert(e.message) }
+      try { this.watch((await this.api('/api/releases/rollout', { method: 'POST', body: JSON.stringify({ tag: this.data.latest_tag }) })).job_id) } catch (e) { alert(e.message) }
+    },
+    toggle(id) { this.sel = this.sel.includes(id) ? this.sel.filter(x => x !== id) : [...this.sel, id] },
+    toggleAll() {
+      const ids = this.filtered().map(i => i.id)
+      this.sel = ids.every(id => this.sel.includes(id)) ? this.sel.filter(id => !ids.includes(id)) : [...new Set([...this.sel, ...ids])]
+    },
+    async bulkUpdate() {
+      const tag = this.selTag || this.data.latest_tag
+      const chosen = this.data.instances.filter(i => this.sel.includes(i.id))
+      const todo = chosen.filter(i => i.image_tag !== tag)
+      if (!todo.length) return alert(`All selected instances already run ${tag}.`)
+      const older = this.data.releases.findIndex(r => r.tag === tag) > 0
+      if (!confirm(`${older ? 'ROLL BACK' : 'Update'} ${todo.length} instance(s) to ${tag}?
+
+${todo.map(i => `• ${i.company} (${i.image_tag || '?'} → ${tag})`).join('
+')}
+
+Each is backed up first and restarts briefly, one at a time.`)) return
+      try {
+        const r = await this.api('/api/releases/rollout', { method: 'POST', body: JSON.stringify({ tag, instance_ids: todo.map(i => i.id) }) })
+        this.sel = []; this.watch(r.job_id); this.refresh(true)
+      } catch (e) { alert(e.message) }
     },
 
     // ── create ──

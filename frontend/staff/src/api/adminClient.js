@@ -165,6 +165,14 @@ export const api = {
   // Settings
   getSettings: () => request('/admin/settings'),
   updateSetting: (key, value) => request('/admin/settings', { method: 'PUT', body: JSON.stringify({ key, value }) }),
+  uploadLogo: async (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch(`${BASE}/admin/settings/logo`, { method: 'POST', body: fd, headers: { Authorization: `Bearer ${getToken()}` } })
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Upload failed')
+    return res.json()
+  },
+  removeLogo: () => request('/admin/settings/logo', { method: 'DELETE' }),
 
   // Persisted in-app inbox + FCM token registration (shared /api/notifications/*)
   // NOTE: the existing getNotifications() above hits the legacy dynamic-feed

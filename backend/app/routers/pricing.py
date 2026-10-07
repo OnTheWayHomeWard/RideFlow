@@ -1,6 +1,6 @@
 import os
 import math
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -246,6 +246,23 @@ def _get_maps_key() -> str:
     if key in ("", "placeholder", "your_key_here"):
         return ""
     return key
+
+
+@router.get("/settings/logo")
+async def get_logo(v: str = "", db: AsyncSession = Depends(get_db)):
+    """The uploaded company logo (see POST /api/admin/settings/logo). Public."""
+    import base64
+    row = (await db.execute(select(Setting).where(Setting.key == "company_logo_file"))).scalar_one_or_none()
+    if not row or not isinstance(row.value, dict) or not row.value.get("data"):
+        raise HTTPException(status_code=404, detail="No logo uploaded")
+    headers = {
+        # URL carries the content hash (?v=…), so it can be cached for good.
+        "Cache-Control": "public, max-age=31536000, immutable" if v else "public, max-age=300",
+        # SVGs can carry script — never let it run on our origin.
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+        "X-Content-Type-Options": "nosniff",
+    }
+    return Response(content=base64.b64decode(row.value["data"]), media_type=row.value.get("content_type", "image/png"), headers=headers)
 
 
 @router.get("/settings/public")
