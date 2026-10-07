@@ -974,15 +974,21 @@ class EditInstance(BaseModel):
 @app.put("/api/instances/{iid}")
 def edit_instance(iid: int, body: EditInstance):
     old = instance(iid)
-    ex("""UPDATE instances SET company=?, contact_name=?, contact_email=?, contact_phone=?, environment=?, tags=?,
-          notes=?, domain_website=?, domain_client=?, domain_staff=?, updated_at=? WHERE id=?""",
-       (body.company, body.contact_name, body.contact_email, body.contact_phone, body.environment, body.tags,
-        body.notes, body.domain_website.strip().lower(), body.domain_client.strip().lower(),
-        body.domain_staff.strip().lower(), now(), iid))
+    # validate everything before saving anything
     if body.brand_color and not re.fullmatch(r"#[0-9a-fA-F]{6}", body.brand_color):
         raise HTTPException(400, "brand colour must be a hex value like #0f766e")
     if not body.company.strip():
         raise HTTPException(400, "company name is required")
+    if body.environment not in ("production", "staging", "demo"):
+        raise HTTPException(400, "environment must be production, staging or demo")
+    for d in (body.domain_website, body.domain_client, body.domain_staff):
+        if d.strip() and not re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,}", d.strip().lower()):
+            raise HTTPException(400, f"invalid domain: {d}")
+    ex("""UPDATE instances SET company=?, contact_name=?, contact_email=?, contact_phone=?, environment=?, tags=?,
+          notes=?, domain_website=?, domain_client=?, domain_staff=?, updated_at=? WHERE id=?""",
+       (body.company.strip(), body.contact_name, body.contact_email, body.contact_phone, body.environment, body.tags,
+        body.notes, body.domain_website.strip().lower(), body.domain_client.strip().lower(),
+        body.domain_staff.strip().lower(), now(), iid))
     brand_changed = (body.brand_color or "") != (old.get("brand_color") or "")
     name_changed = body.sync_name and body.company.strip() != old["company"]
     ex("UPDATE instances SET brand_color=? WHERE id=?", (body.brand_color, iid))
