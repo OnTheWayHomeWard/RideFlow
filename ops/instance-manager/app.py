@@ -957,6 +957,8 @@ def _insert_instance(req: "CreateInstance", slug: str, project: str, tag: str) -
 
 class EditInstance(BaseModel):
     company: str
+    brand_color: str = ""
+    sync_name: bool = False        # also rename the company inside the app (website, emails, SMS)
     contact_name: str = ""
     contact_email: str = ""
     contact_phone: str = ""
@@ -977,7 +979,25 @@ def edit_instance(iid: int, body: EditInstance):
        (body.company, body.contact_name, body.contact_email, body.contact_phone, body.environment, body.tags,
         body.notes, body.domain_website.strip().lower(), body.domain_client.strip().lower(),
         body.domain_staff.strip().lower(), now(), iid))
+    if body.brand_color and not re.fullmatch(r"#[0-9a-fA-F]{6}", body.brand_color):
+        raise HTTPException(400, "brand colour must be a hex value like #0f766e")
+    if not body.company.strip():
+        raise HTTPException(400, "company name is required")
+    brand_changed = (body.brand_color or "") != (old.get("brand_color") or "")
+    name_changed = body.sync_name and body.company.strip() != old["company"]
+    ex("UPDATE instances SET brand_color=? WHERE id=?", (body.brand_color, iid))
     domains_changed = any(old[f"domain_{s}"] != getattr(body, f"domain_{s}").strip().lower() for s in ("website", "client", "staff"))
+    if (brand_changed or name_changed) and not (body.apply_domains and domains_changed):
+        # push name / colour into the instance itself (instant, no restart)
+        try:
+            vals = {}
+            if name_changed:
+                vals["company_name"] = body.company.strip()
+            if brand_changed:
+                vals["brand_primary_color"] = body.brand_color
+            upsert_settings(executor_for(server(old["server_id"])), old, vals)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f"saved in the manager, but couldn't update the instance: {e}")
     if body.apply_domains and domains_changed:
         def run(log):
             inst = instance(iid)
@@ -987,7 +1007,12 @@ def edit_instance(iid: int, body: EditInstance):
                 caddy_apply(ex_, inst, log)
             else:
                 log("⚠ Caddy for this instance is managed by hand — update /etc/caddy/Caddyfile yourself")
-            upsert_settings(ex_, inst, public_urls(inst, srv))
+            extra = {}
+            if name_changed:
+                extra["company_name"] = inst["company"]
+            if brand_changed:
+                extra["brand_primary_color"] = inst["brand_color"]
+            upsert_settings(ex_, inst, {**public_urls(inst, srv), **extra})
             log("Updated the app's public links: " + ", ".join(public_urls(inst, srv).values()))
             if any(inst[f"domain_{x}"] for x in ("website", "client", "staff")):
                 log("Checking DNS + HTTPS (Caddy requests the certificate as soon as DNS points here)…")
@@ -1532,6 +1557,69 @@ def test_integration(iid: int, service: str, body: TestIntegration):
     else:
         checks = test_maps(vals)
     return {"checks": checks, "ok": all(c["ok"] is not False for c in checks)}
+
+
+# ─── Instance details page ─────────────────────────────────────────────────
+
+DETAIL_COUNTS = ["bookings", "payments", "drivers", "hotels", "cashiers", "concierges", "vehicle_rates",
+                 "common_routes", "admins", "ratings"]
+
+
+@app.get("/api/instances/{iid}/details")
+def instance_details(iid: int):
+    """Everything about one instance for the details page. Each part fails soft."""
+    inst = instance(iid)
+    srv = server(inst["server_id"])
+    out = {"instance": inst, "server": {k: srv[k] for k in ("id", "name", "host", "is_local")},
+           "public_host": srv_public_host(srv), "latest_tag": latest_tag(), "errors": {}}
+    try:
+        ex_ = executor_for(srv)
+    except Exception as e:  # noqa: BLE001
+        out["errors"]["server"] = str(e)
+        return out
+    proj = shlex.quote(inst["project"])
+
+    try:
+        rows = ex_.sh(f"docker ps -a --filter label=com.docker.compose.project={proj} --format "
+                      "'{{.Label \"com.docker.compose.service\"}}|{{.State}}|{{.Status}}|{{.Image}}|{{.Names}}'")
+        stats = {}
+        st_out = ex_.sh(f"docker stats --no-stream --format '{{{{.Name}}}}|{{{{.CPUPerc}}}}|{{{{.MemUsage}}}}' "
+                        f"$(docker ps -q --filter label=com.docker.compose.project={proj}) 2>/dev/null || true", check=False)
+        for ln in st_out.splitlines():
+            parts = ln.split("|")
+            if len(parts) == 3:
+                stats[parts[0]] = {"cpu": parts[1], "mem": parts[2].split(" / ")[0]}
+        order = ["website", "client", "staff", "backend", "db"]
+        svcs = []
+        for ln in rows.splitlines():
+            parts = ln.split("|")
+            if len(parts) == 5:
+                svcs.append({"service": parts[0], "state": parts[1], "status": parts[2], "image": parts[3],
+                             **stats.get(parts[4], {})})
+        out["containers"] = sorted(svcs, key=lambda c: order.index(c["service"]) if c["service"] in order else 9)
+    except Exception as e:  # noqa: BLE001
+        out["errors"]["containers"] = str(e)
+
+    try:
+        sql = ("SELECT json_build_object('size', pg_size_pretty(pg_database_size('rideflow')), "
+               + ", ".join(f"'{t}', (SELECT count(*) FROM {t})" for t in DETAIL_COUNTS)
+               + ", 'last_booking', (SELECT max(created_at) FROM bookings)"
+               + ", 'company_name', (SELECT value #>> '{}' FROM settings WHERE key='company_name')"
+               + ", 'brand_primary_color', (SELECT value #>> '{}' FROM settings WHERE key='brand_primary_color')"
+               + ", 'company_logo_url', (SELECT value #>> '{}' FROM settings WHERE key='company_logo_url'))")
+        _, o = ex_.run(compose(inst, "exec -T db psql -U rideflow -d rideflow -At -v ON_ERROR_STOP=1"),
+                       input_bytes=sql.encode(), binary=True)
+        out["db"] = json.loads(o.decode())
+    except Exception as e:  # noqa: BLE001
+        out["errors"]["db"] = "database not reachable (is the instance stopped?)"
+
+    if isinstance(ex_, RemoteExec):
+        ex_.close()
+    prefix = f"{inst['slug']}-s{inst['server_id']}-"
+    out["backups"] = [b for b in list_backups() if b["name"].startswith(prefix)][:10]
+    out["jobs"] = q("SELECT id, title, kind, status, created_at, finished_at FROM jobs WHERE instance_id=? "
+                    "ORDER BY id DESC LIMIT 12", (iid,))
+    return out
 
 
 @app.get("/api/backups")

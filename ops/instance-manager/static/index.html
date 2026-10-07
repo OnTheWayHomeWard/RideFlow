@@ -113,11 +113,11 @@
             :class="[sel.includes(i.id) ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200', {running:'!border-l-emerald-500',degraded:'!border-l-amber-400',stopped:'!border-l-slate-300',unreachable:'!border-l-red-500'}[i.state] || '']">
             <div class="flex items-start gap-3">
               <input type="checkbox" class="mt-3 w-4 h-4 accent-blue-600 shrink-0 cursor-pointer" :checked="sel.includes(i.id)" @change="toggle(i.id)" title="Select for bulk update">
-              <div class="w-10 h-10 rounded-lg shrink-0 flex items-center justify-center text-white font-bold text-sm"
-                :style="`background:${i.brand_color || '#2563eb'}`" x-text="i.company.slice(0,2).toUpperCase()"></div>
+              <button type="button" @click="openDetails(i)" class="w-10 h-10 rounded-lg shrink-0 flex items-center justify-center text-white font-bold text-sm hover:opacity-90"
+                :style="`background:${i.brand_color || '#2563eb'}`" x-text="i.company.slice(0,2).toUpperCase()" title="Details"></button>
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-2 flex-wrap">
-                  <h3 class="font-semibold truncate" x-text="i.company"></h3>
+                  <h3 class="font-semibold truncate cursor-pointer hover:text-blue-700" @click="openDetails(i)" x-text="i.company"></h3>
                   <span class="text-[11px] px-2 py-0.5 rounded-full font-medium" :class="stateCls(i.state)" x-text="i.busy ? 'working…' : i.state"></span>
                   <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600" x-text="i.environment"></span>
                 </div>
@@ -161,12 +161,13 @@
               <button class="btn btn-g" :disabled="i.busy" x-show="i.state!=='stopped'" @click="confirm(`Stop ${i.company}? The site will go offline.`) && act(i,'stop')">■ Stop</button>
               <button class="btn btn-g" :disabled="i.busy" @click="act(i,'restart')">↻ Restart</button>
               <button class="btn btn-g" :disabled="i.busy || !data.latest_tag || i.image_tag===data.latest_tag" @click="confirm(`Update ${i.company} to ${data.latest_tag}? A backup is taken first.`) && act(i,'update')">⬆ Update</button>
+              <button class="btn btn-p" @click="openDetails(i)">Details</button>
               <button class="btn btn-g" @click="openInteg(i)">⚙ Integrations</button>
-              <button class="btn btn-g" @click="openLogs(i)">Logs</button>
               <div class="relative" x-data="{o:false}" @click.outside="o=false">
                 <button class="btn btn-g" @click="o=!o">More ▾</button>
                 <div x-show="o" x-cloak class="absolute z-20 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg py-1 text-sm">
                   <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; openAdmins(i)">Admin users</button>
+                  <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; openLogs(i)">Logs</button>
                   <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; openEdit(i)">Edit details</button>
                   <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; act(i,'backup')">Back up database</button>
                   <button class="w-full text-left px-3 py-1.5 hover:bg-slate-50" @click="o=false; act(i,'health')">Check health &amp; HTTPS</button>
@@ -399,34 +400,234 @@
   </div>
 
   <!-- ═══ Edit modal ═══ -->
-  <div x-show="ed.open" x-cloak class="fixed inset-0 z-40 bg-slate-900/60 flex items-start justify-center overflow-y-auto p-4">
+  <div x-show="ed.open" x-cloak class="fixed inset-0 z-50 bg-slate-900/60 flex items-start justify-center overflow-y-auto p-4" @keydown.escape.window="ed.open=false">
     <form class="bg-white rounded-2xl w-full max-w-2xl my-6 shadow-2xl" @submit.prevent="saveEdit()">
-      <div class="px-6 py-4 border-b border-slate-100 flex items-center">
-        <h2 class="font-bold text-lg">Edit <span x-text="ed.slug" class="mono"></span></h2>
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-sm" :style="`background:${ed.brand_color || '#2563eb'}`" x-text="(ed.company || '?').slice(0,2).toUpperCase()"></div>
+        <div>
+          <h2 class="font-bold text-lg leading-tight">Edit instance</h2>
+          <p class="text-xs text-slate-500"><span class="mono" x-text="ed.slug"></span> · <span x-text="ed.server_name"></span></p>
+        </div>
         <button type="button" class="ml-auto text-slate-400 hover:text-slate-700 text-xl" @click="ed.open=false">×</button>
       </div>
-      <div class="p-6 grid sm:grid-cols-2 gap-3">
-        <div><label class="lbl">Company</label><input class="inp" x-model="ed.company" required></div>
-        <div><label class="lbl">Environment</label><select class="inp" x-model="ed.environment"><option>production</option><option>staging</option><option>demo</option></select></div>
-        <div><label class="lbl">Contact name</label><input class="inp" x-model="ed.contact_name"></div>
-        <div><label class="lbl">Contact email</label><input class="inp" x-model="ed.contact_email"></div>
-        <div><label class="lbl">Contact phone</label><input class="inp" x-model="ed.contact_phone"></div>
-        <div><label class="lbl">Tags</label><input class="inp" x-model="ed.tags"></div>
-        <div class="sm:col-span-2"><label class="lbl">Notes</label><textarea class="inp" rows="2" x-model="ed.notes"></textarea></div>
-        <div><label class="lbl">Website domain</label><input class="inp mono text-xs" x-model="ed.domain_website"></div>
-        <div><label class="lbl">Booking domain</label><input class="inp mono text-xs" x-model="ed.domain_client"></div>
-        <div><label class="lbl">Staff domain</label><input class="inp mono text-xs" x-model="ed.domain_staff"></div>
-        <div class="sm:col-span-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1">
-          <p><b>HTTPS is automatic:</b> Caddy gets a free Let's Encrypt certificate for each domain and renews it. Point an <b>A record</b> for each domain at <span class="mono" x-text="ed.public_host"></span> first — until then the instance stays reachable by IP.</p>
-          <p>Leave a domain empty to use <span class="mono" x-text="`http://${ed.public_host}:port`"></span> for that app.</p>
-        </div>
-        <label class="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" x-model="ed.apply_domains"> Apply domain changes on save (Caddy/HTTPS + the app's links in SMS, emails and QR codes)</label>
+      <div class="p-6 space-y-6">
+        <section>
+          <h3 class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">Company</h3>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div class="sm:col-span-2"><label class="lbl">Company name</label><input class="inp" x-model="ed.company" required>
+              <label class="flex items-center gap-2 text-xs text-slate-600 mt-1.5" x-show="(ed.company || '').trim() !== (ed._orig?.company || '')">
+                <input type="checkbox" x-model="ed.sync_name"> Also rename it inside the app (website, emails, SMS) — otherwise only the manager label changes</label></div>
+            <div><label class="lbl">Environment</label>
+              <select class="inp" x-model="ed.environment"><option>production</option><option>staging</option><option>demo</option></select></div>
+            <div><label class="lbl">Brand colour <span class="text-slate-400">(applies to the app instantly)</span></label>
+              <div class="flex gap-2">
+                <input type="color" class="h-10 w-12 border border-slate-200 rounded-lg shrink-0" :value="ed.brand_color || '#2563eb'" @input="ed.brand_color=$event.target.value">
+                <input class="inp mono" x-model="ed.brand_color" placeholder="default">
+              </div></div>
+          </div>
+        </section>
+
+        <section>
+          <h3 class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">Contact</h3>
+          <div class="grid sm:grid-cols-3 gap-3">
+            <div><label class="lbl">Name</label><input class="inp" x-model="ed.contact_name"></div>
+            <div><label class="lbl">Email</label><input class="inp" type="email" x-model="ed.contact_email"></div>
+            <div><label class="lbl">Phone</label><input class="inp" x-model="ed.contact_phone"></div>
+          </div>
+        </section>
+
+        <section>
+          <h3 class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">Tags &amp; notes</h3>
+          <div class="flex flex-wrap items-center gap-1.5 p-2 border border-slate-200 rounded-lg min-h-[2.6rem]">
+            <template x-for="t in edTags()" :key="t">
+              <span class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-blue-50 text-blue-700">
+                <span x-text="t"></span><button type="button" class="text-blue-400 hover:text-blue-800" @click="edTagRemove(t)">×</button>
+              </span>
+            </template>
+            <input class="flex-1 min-w-[8rem] text-sm outline-none px-1" x-model="ed._tag" placeholder="add tag + Enter"
+              @keydown.enter.prevent="edTagAdd()" @keydown.comma.prevent="edTagAdd()" @blur="edTagAdd()">
+          </div>
+          <textarea class="inp mt-2" rows="3" x-model="ed.notes" placeholder="Notes — contract, billing, special setup…"></textarea>
+        </section>
+
+        <section>
+          <h3 class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">Domains</h3>
+          <div class="grid sm:grid-cols-3 gap-3">
+            <template x-for="svc in ['website','client','staff']">
+              <div><label class="lbl" x-text="{website:'Website',client:'Booking app',staff:'Staff portal'}[svc]"></label>
+                <input class="inp mono text-xs" x-model="ed['domain_'+svc]" placeholder="none — uses IP">
+                <p class="text-[11px] text-slate-400 mt-1 mono" x-text="`${ed.public_host}:${ed['port_'+svc]}`"></p></div>
+            </template>
+          </div>
+          <div class="mt-3 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1">
+            <p><b>HTTPS is automatic:</b> Caddy gets a free Let's Encrypt certificate per domain and renews it. Point an <b>A record</b> for each domain at <span class="mono" x-text="ed.public_host"></span> — until then the app stays reachable by IP.</p>
+          </div>
+          <label class="flex items-center gap-2 text-sm mt-2"><input type="checkbox" x-model="ed.apply_domains"> Apply domain changes on save (Caddy/HTTPS + the app's links in SMS, emails and QR codes)</label>
+        </section>
+
+        <section>
+          <h3 class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">Technical (read-only)</h3>
+          <dl class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div class="bg-slate-50 rounded-lg p-2"><dt class="text-slate-400">Slug</dt><dd class="mono" x-text="ed.slug"></dd></div>
+            <div class="bg-slate-50 rounded-lg p-2"><dt class="text-slate-400">Compose project</dt><dd class="mono truncate" x-text="ed.project"></dd></div>
+            <div class="bg-slate-50 rounded-lg p-2"><dt class="text-slate-400">Release</dt><dd class="mono" x-text="ed.image_tag"></dd></div>
+            <div class="bg-slate-50 rounded-lg p-2"><dt class="text-slate-400">Created</dt><dd x-text="ed.created_at ? new Date(ed.created_at).toLocaleDateString() : ''"></dd></div>
+            <div class="bg-slate-50 rounded-lg p-2 col-span-2 sm:col-span-4"><dt class="text-slate-400">Folder</dt><dd class="mono truncate" x-text="ed.directory"></dd></div>
+          </dl>
+        </section>
       </div>
       <div class="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
         <button type="button" class="btn btn-g" @click="ed.open=false">Cancel</button>
-        <button class="btn btn-p">Save</button>
+        <button class="btn btn-p" :disabled="ed.busy" x-text="ed.busy ? 'Saving…' : 'Save changes'"></button>
       </div>
     </form>
+  </div>
+
+  <!-- ═══ Details panel ═══ -->
+  <div x-show="dt.open" x-cloak class="fixed inset-0 z-30 bg-slate-900/50 flex justify-end" @keydown.escape.window="dt.open=false" @click.self="dt.open=false">
+    <div class="bg-slate-50 w-full max-w-3xl h-full overflow-y-auto shadow-2xl" x-show="dt.open" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-x-8 opacity-0" x-transition:enter-end="translate-x-0 opacity-100">
+      <template x-if="dt.inst">
+      <div>
+        <!-- head -->
+        <div class="bg-white border-b border-slate-200 px-6 py-5 sticky top-0 z-10">
+          <div class="flex items-start gap-3">
+            <template x-if="dt.d?.db?.company_logo_url">
+              <img :src="dtLogo()" class="w-12 h-12 rounded-xl object-contain bg-slate-50 border border-slate-200 p-1" alt="">
+            </template>
+            <template x-if="!dt.d?.db?.company_logo_url">
+              <div class="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold" :style="`background:${dt.inst.brand_color || dt.d?.db?.brand_primary_color || '#2563eb'}`" x-text="dt.inst.company.slice(0,2).toUpperCase()"></div>
+            </template>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <h2 class="text-xl font-bold truncate" x-text="dt.inst.company"></h2>
+                <span class="text-[11px] px-2 py-0.5 rounded-full font-medium" :class="stateCls(dtState())" x-text="dtState()"></span>
+                <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600" x-text="dt.inst.environment"></span>
+              </div>
+              <p class="text-xs text-slate-500 mt-0.5"><span class="mono" x-text="dt.inst.slug"></span> · <span x-text="dt.inst.server_name"></span> · release <span class="mono" x-text="dt.inst.image_tag"></span>
+                <span x-show="dt.d?.db?.company_name && dt.d.db.company_name !== dt.inst.company">· shown in app as “<span x-text="dt.d?.db?.company_name"></span>”</span></p>
+            </div>
+            <button class="text-slate-400 hover:text-slate-700 text-2xl leading-none" @click="dt.open=false">×</button>
+          </div>
+          <div class="flex flex-wrap gap-1.5 mt-4">
+            <button class="btn btn-g" :disabled="dtBusy()" x-show="dtState()!=='running'" @click="act(dt.inst,'start')">▶ Start</button>
+            <button class="btn btn-g" :disabled="dtBusy()" x-show="dtState()!=='stopped'" @click="confirm(`Stop ${dt.inst.company}? The site will go offline.`) && act(dt.inst,'stop')">■ Stop</button>
+            <button class="btn btn-g" :disabled="dtBusy()" @click="act(dt.inst,'restart')">↻ Restart</button>
+            <button class="btn btn-g" :disabled="dtBusy() || dt.inst.image_tag===data.latest_tag" @click="confirm(`Update ${dt.inst.company} to ${data.latest_tag}? A backup is taken first.`) && act(dt.inst,'update')">⬆ Update</button>
+            <button class="btn btn-g" @click="openEdit(dt.inst)">✎ Edit</button>
+            <button class="btn btn-g" @click="openInteg(dt.inst)">⚙ Integrations</button>
+            <button class="btn btn-g" @click="openAdmins(dt.inst)">👤 Admins</button>
+            <button class="btn btn-g" @click="openLogs(dt.inst)">Logs</button>
+            <button class="btn btn-g ml-auto" @click="loadDetails()" :disabled="dt.loading" x-text="dt.loading ? 'Loading…' : 'Refresh'"></button>
+          </div>
+        </div>
+
+        <div class="p-6 space-y-5">
+          <p x-show="dt.loading && !dt.d" class="text-center text-sm text-slate-400 py-10">Loading details…</p>
+          <template x-for="(msg, k) in (dt.d?.errors || {})"><p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"><b x-text="k"></b>: <span x-text="msg"></span></p></template>
+
+          <!-- apps -->
+          <div class="bg-white border border-slate-200 rounded-xl">
+            <h3 class="px-4 py-3 border-b border-slate-100 text-sm font-semibold">Apps</h3>
+            <template x-for="svc in ['website','client','staff']">
+              <div class="px-4 py-3 border-b border-slate-100 last:border-0 flex flex-wrap items-center gap-x-4 gap-y-1">
+                <p class="w-28 text-sm font-medium" x-text="{website:'Website',client:'Booking app',staff:'Staff portal'}[svc]"></p>
+                <div class="flex-1 min-w-0 text-sm">
+                  <template x-if="dt.inst['domain_'+svc]">
+                    <div class="flex items-center gap-1.5">
+                      <span class="w-2 h-2 rounded-full shrink-0" :class="domCls(dt.inst, dt.inst['domain_'+svc])"></span>
+                      <a class="text-blue-600 hover:underline truncate" target="_blank" :href="'https://'+dt.inst['domain_'+svc]" x-text="'https://'+dt.inst['domain_'+svc]"></a>
+                    </div>
+                  </template>
+                  <p class="text-[11px] text-slate-500 ml-3.5" x-show="dt.inst['domain_'+svc]" x-text="domMsg(dt.inst, dt.inst['domain_'+svc])"></p>
+                  <a class="text-slate-600 hover:underline mono text-xs" target="_blank" :href="`http://${dt.inst.public_host}:${dt.inst['port_'+svc]}`" x-text="`http://${dt.inst.public_host}:${dt.inst['port_'+svc]}`"></a>
+                </div>
+              </div>
+            </template>
+            <div class="px-4 py-2.5 bg-slate-50 rounded-b-xl flex">
+              <button class="text-xs font-medium text-blue-600 hover:underline" @click="act(dt.inst,'health')">Check health &amp; HTTPS now</button>
+            </div>
+          </div>
+
+          <!-- stats -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3" x-show="dt.d?.db">
+            <template x-for="k in [['bookings','Rides'],['payments','Payments'],['drivers','Drivers'],['hotels','Hotels'],['vehicle_rates','Vehicle rates'],['cashiers','Cashiers'],['admins','Admins'],['ratings','Ratings']]">
+              <div class="bg-white border border-slate-200 rounded-xl p-3">
+                <p class="text-[11px] uppercase tracking-wide font-semibold text-slate-400" x-text="k[1]"></p>
+                <p class="text-2xl font-bold tabular-nums" x-text="dt.d?.db?.[k[0]] ?? '–'"></p>
+              </div>
+            </template>
+          </div>
+          <p class="text-xs text-slate-500 -mt-2" x-show="dt.d?.db">Database size <b x-text="dt.d?.db?.size"></b> · last ride booked <b x-text="dt.d?.db?.last_booking ? ago(dt.d.db.last_booking) : 'never'"></b></p>
+
+          <!-- containers -->
+          <div class="bg-white border border-slate-200 rounded-xl overflow-hidden" x-show="dt.d?.containers">
+            <h3 class="px-4 py-3 border-b border-slate-100 text-sm font-semibold">Containers</h3>
+            <table class="w-full text-sm">
+              <thead class="text-left text-[11px] uppercase tracking-wide text-slate-400"><tr><th class="px-4 py-2">Service</th><th class="px-2">Status</th><th class="px-2">CPU</th><th class="px-2">Memory</th><th class="px-4 hidden sm:table-cell">Image</th></tr></thead>
+              <tbody>
+                <template x-for="c in (dt.d?.containers || [])">
+                  <tr class="border-t border-slate-100">
+                    <td class="px-4 py-2 font-medium flex items-center gap-2"><span class="w-2 h-2 rounded-full" :class="c.state==='running' ? 'bg-emerald-500' : 'bg-red-500'"></span><span x-text="c.service"></span></td>
+                    <td class="px-2 text-slate-600 text-xs" x-text="c.status"></td>
+                    <td class="px-2 mono text-xs" x-text="c.cpu || '–'"></td>
+                    <td class="px-2 mono text-xs" x-text="c.mem || '–'"></td>
+                    <td class="px-4 mono text-[11px] text-slate-500 hidden sm:table-cell truncate" x-text="c.image"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="grid sm:grid-cols-2 gap-5">
+            <!-- info -->
+            <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-3 text-sm">
+              <h3 class="font-semibold">Company</h3>
+              <dl class="space-y-1.5 text-sm">
+                <div class="flex gap-2"><dt class="w-20 text-slate-400 shrink-0">Contact</dt><dd x-text="dt.inst.contact_name || '—'"></dd></div>
+                <div class="flex gap-2"><dt class="w-20 text-slate-400 shrink-0">Email</dt><dd class="truncate"><a class="text-blue-600 hover:underline" :href="'mailto:'+dt.inst.contact_email" x-text="dt.inst.contact_email || '—'"></a></dd></div>
+                <div class="flex gap-2"><dt class="w-20 text-slate-400 shrink-0">Phone</dt><dd x-text="dt.inst.contact_phone || '—'"></dd></div>
+                <div class="flex gap-2"><dt class="w-20 text-slate-400 shrink-0">Created</dt><dd x-text="dt.inst.created_at ? new Date(dt.inst.created_at).toLocaleString() : '—'"></dd></div>
+                <div class="flex gap-2"><dt class="w-20 text-slate-400 shrink-0">Tags</dt>
+                  <dd class="flex flex-wrap gap-1"><template x-for="t in (dt.inst.tags||'').split(',').map(x=>x.trim()).filter(Boolean)"><span class="text-[11px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700" x-text="t"></span></template></dd></div>
+              </dl>
+              <p class="text-sm text-slate-600 whitespace-pre-line bg-slate-50 rounded-lg p-2" x-show="dt.inst.notes" x-text="dt.inst.notes"></p>
+              <div class="flex flex-wrap gap-1 pt-1" x-show="integ(dt.inst)">
+                <template x-for="b in [['stripe','Stripe'],['sms','SMS'],['email','Email'],['maps','Maps']]">
+                  <span class="text-[10px] px-1.5 py-0.5 rounded-md font-medium" :class="badgeCls(integ(dt.inst)?.[b[0]])" x-text="b[1] + ' · ' + badgeTxt(b[0], integ(dt.inst)?.[b[0]])"></span>
+                </template>
+              </div>
+            </div>
+            <!-- backups -->
+            <div class="bg-white border border-slate-200 rounded-xl p-4">
+              <div class="flex items-center mb-2"><h3 class="font-semibold text-sm">Backups</h3>
+                <button class="ml-auto text-xs font-medium text-blue-600 hover:underline" @click="act(dt.inst,'backup')">Back up now</button></div>
+              <template x-for="b in (dt.d?.backups || [])">
+                <div class="flex items-center gap-2 py-1.5 border-t border-slate-100 text-xs">
+                  <span class="flex-1 truncate" x-text="ago(b.created_at) + ' · ' + (b.name.match(/-(manual|pre-update|pre-delete)\.dump$/)?.[1] || 'backup')"></span>
+                  <span class="text-slate-400" x-text="(b.size/1024).toFixed(0)+' KB'"></span>
+                  <a class="text-blue-600 hover:underline" :href="'/api/backups/'+encodeURIComponent(b.name)">Download</a>
+                </div>
+              </template>
+              <p x-show="!(dt.d?.backups || []).length" class="text-xs text-slate-400">No backups yet.</p>
+            </div>
+          </div>
+
+          <!-- activity -->
+          <div class="bg-white border border-slate-200 rounded-xl">
+            <h3 class="px-4 py-3 border-b border-slate-100 text-sm font-semibold">Recent activity</h3>
+            <template x-for="j in (dt.d?.jobs || [])">
+              <button class="w-full text-left flex items-center gap-3 px-4 py-2.5 border-b border-slate-100 last:border-0 hover:bg-slate-50 text-sm" @click="watch(j.id)">
+                <span class="text-[11px] px-2 py-0.5 rounded-full font-medium" :class="{'bg-blue-100 text-blue-700':j.status==='running','bg-emerald-100 text-emerald-700':j.status==='success','bg-red-100 text-red-700':j.status==='failed'}" x-text="j.status"></span>
+                <span class="flex-1 truncate" x-text="j.title"></span>
+                <span class="text-xs text-slate-400" x-text="ago(j.created_at)"></span>
+              </button>
+            </template>
+            <p x-show="!(dt.d?.jobs || []).length" class="px-4 py-4 text-xs text-slate-400">Nothing yet.</p>
+          </div>
+        </div>
+      </div>
+      </template>
+    </div>
   </div>
 
   <!-- ═══ Logs modal ═══ -->
@@ -715,6 +916,7 @@ function app() {
     ],
     ig: { open: false, inst: null, loading: false, err: '', data: null, form: {}, init: {}, flags: {}, initFlags: {}, tests: {}, testing: {}, busy: false, clear: [] },
     toasts: [],
+    dt: { open: false, inst: null, d: null, loading: false },
     pw: { open: false, current: '', next: '', confirm: '', err: '', ok: false, busy: false },
     cr: { open: false, custom_env: {} }, ed: { open: false }, bk: { open: false, name: '', password: '', err: '', busy: false }, lg: { open: false, service: 'backend', text: '' },
     jb: { open: false, id: null, log: '', status: '', title: '', min: false },
@@ -882,17 +1084,39 @@ function app() {
     },
 
     // ── edit / delete / logs ──
-    openEdit(i) { this.ed = { ...i, open: true, apply_domains: true } },
+    openEdit(i) { this.ed = { ...i, open: true, apply_domains: true, sync_name: false, busy: false, _tag: '', _orig: { ...i } } },
+    // ── details ──
+    openDetails(i) { this.dt = { open: true, inst: i, d: null, loading: false }; this.loadDetails() },
+    async loadDetails() {
+      if (!this.dt.inst) return
+      this.dt.loading = true
+      try { this.dt.d = await this.api(`/api/instances/${this.dt.inst.id}/details`) } catch (e) { this.toast(e.message, 'err') }
+      this.dt.loading = false
+    },
+    dtLive() { return this.data.instances.find(x => x.id === this.dt.inst?.id) || this.dt.inst },
+    dtState() { const i = this.dtLive(); return i?.busy ? 'working…' : i?.state },
+    dtBusy() { return !!this.dtLive()?.busy },
+    dtLogo() { const u = this.dt.d?.db?.company_logo_url || ''; return u.startsWith('/') ? `http://${this.dt.inst.public_host}:${this.dt.inst.port_staff}${u}` : u },
+    edTags() { return (this.ed.tags || '').split(',').map(x => x.trim()).filter(Boolean) },
+    edTagAdd() { const t = (this.ed._tag || '').trim().replace(/,/g, ''); if (t && !this.edTags().includes(t)) this.ed.tags = [...this.edTags(), t].join(', '); this.ed._tag = '' },
+    edTagRemove(t) { this.ed.tags = this.edTags().filter(x => x !== t).join(', ') },
+
     domStatus(i, dom) { try { return (JSON.parse(i.domain_status || '{}'))[dom] || null } catch { return null } },
     domCls(i, dom) { const s = this.domStatus(i, dom); return !s ? 'bg-slate-300' : s.state === 'ok' ? 'bg-emerald-500' : s.state === 'pending' ? 'bg-amber-400' : 'bg-red-500' },
     domMsg(i, dom) { const s = this.domStatus(i, dom); return s ? `${s.msg} (checked ${this.ago(s.checked_at)})` : 'Not checked yet — More → Check health & HTTPS' },
     async saveEdit() {
+      this.edTagAdd()
+      this.ed.busy = true
       try {
-        const r = await this.api('/api/instances/' + this.ed.id, { method: 'PUT', body: JSON.stringify(this.ed) })
+        const { _orig, _tag, ...body } = this.ed
+        const r = await this.api('/api/instances/' + this.ed.id, { method: 'PUT', body: JSON.stringify(body) })
         this.ed.open = false
         if (r.job_id) this.watch(r.job_id)
-        this.refresh(true)
+        else this.toast('Saved')
+        await this.refresh(true)
+        if (this.dt.open && this.dt.inst?.id === this.ed.id) { this.dt.inst = this.dtLive(); this.loadDetails() }
       } catch (e) { this.toast(e.message, 'err') }
+      this.ed.busy = false
     },
     async del(i) {
       const typed = prompt(`Delete ${i.company}? Containers, folder and Caddy site are removed (a backup is taken first).\n\nType the slug "${i.slug}" to confirm:`)
