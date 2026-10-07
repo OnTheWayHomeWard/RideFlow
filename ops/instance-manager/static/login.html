@@ -26,16 +26,19 @@
       <input name="password" type="password" autocomplete="current-password" required class="mt-1 w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
     </label>
     <p id="err" class="text-sm text-red-600 hidden"></p>
-    <button class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm">Sign in</button>
+    <button id="btn" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-lg font-semibold text-sm">Sign in</button>
   </form>
   <script>
     document.getElementById('f').addEventListener('submit', async e => {
       e.preventDefault()
+      const btn = document.getElementById('btn')
+      btn.disabled = true; btn.textContent = 'Signing in…'
       const fd = new FormData(e.target)
       const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: fd.get('username'), password: fd.get('password') }) })
-      if (r.ok) location.href = '/'
+      if (r.ok) { btn.textContent = 'Loading…'; location.href = '/' }
       else {
+        btn.disabled = false; btn.textContent = 'Sign in'
         const el = document.getElementById('err')
         el.textContent = (await r.json().catch(() => ({}))).detail || 'Sign in failed'
         el.classList.remove('hidden')
