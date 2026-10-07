@@ -414,12 +414,14 @@
                   <button class="btn btn-g" :class="a.is_active ? '!text-red-600' : ''" @click="adminActive(a)" x-text="a.is_active ? 'Disable' : 'Enable'"></button>
                 </div>
               </div>
-              <form x-show="ad.reset?.id===a.id" class="px-4 pb-4 flex flex-wrap items-end gap-2 bg-slate-50 pt-3" @submit.prevent="adminReset(a)">
+              <template x-if="ad.reset && ad.reset.id===a.id">
+              <form class="px-4 pb-4 flex flex-wrap items-end gap-2 bg-slate-50 pt-3" @submit.prevent="adminReset(a)">
                 <div class="flex-1 min-w-[14rem]"><label class="lbl">New password <span class="text-slate-400">(leave empty to generate one)</span></label>
                   <input class="inp mono" x-model="ad.reset.password" autocomplete="new-password" placeholder="auto-generate"></div>
                 <label class="flex items-center gap-2 text-xs text-slate-600 pb-2.5"><input type="checkbox" x-model="ad.reset.require_change"> Ask them to change it at next login</label>
                 <button class="btn btn-p">Set password</button>
               </form>
+              </template>
             </div>
           </template>
           <p x-show="!ad.loading && !ad.list.length" class="p-6 text-center text-sm text-slate-400">No admin users.</p>
@@ -503,7 +505,7 @@ function app() {
       ['full', 'Full copy', 'Everything, including rides and payments.'],
       ['fresh', 'Fresh / empty', 'Built-in defaults, nothing copied.'],
     ],
-    cr: { open: false }, ed: { open: false }, bk: { open: false, name: '', password: '', err: '', busy: false }, lg: { open: false, service: 'backend', text: '' },
+    cr: { open: false, custom_env: {} }, ed: { open: false }, bk: { open: false, name: '', password: '', err: '', busy: false }, lg: { open: false, service: 'backend', text: '' },
     jb: { open: false, id: null, log: '', status: '', title: '', min: false },
     srv: { name: '', host: '', port: 22, user: 'root', password: '', notes: '', install: true }, srvErr: '', srvBusy: false,
 
