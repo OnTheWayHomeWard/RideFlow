@@ -600,12 +600,8 @@ function app() {
       const todo = chosen.filter(i => i.image_tag !== tag)
       if (!todo.length) return alert(`All selected instances already run ${tag}.`)
       const older = this.data.releases.findIndex(r => r.tag === tag) > 0
-      if (!confirm(`${older ? 'ROLL BACK' : 'Update'} ${todo.length} instance(s) to ${tag}?
-
-${todo.map(i => `• ${i.company} (${i.image_tag || '?'} → ${tag})`).join('
-')}
-
-Each is backed up first and restarts briefly, one at a time.`)) return
+      const list = todo.map(i => `• ${i.company} (${i.image_tag || '?'} → ${tag})`).join('\n')
+      if (!confirm(`${older ? 'ROLL BACK' : 'Update'} ${todo.length} instance(s) to ${tag}?\n\n${list}\n\nEach is backed up first and restarts briefly, one at a time.`)) return
       try {
         const r = await this.api('/api/releases/rollout', { method: 'POST', body: JSON.stringify({ tag, instance_ids: todo.map(i => i.id) }) })
         this.sel = []; this.watch(r.job_id); this.refresh(true)
