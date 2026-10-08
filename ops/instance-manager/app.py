@@ -1195,7 +1195,7 @@ def instance_logs(iid: int, service: str = "backend", lines: int = 200):
 
 ADMIN_SCRIPT = r"""
 import sys, json, asyncio, bcrypt
-from sqlalchemy import select
+from sqlalchemy import select, text
 from app.database import async_session
 from app.models import Admin
 
@@ -1242,6 +1242,24 @@ async def main():
             if not req["active"] and a.role == "super_admin" and a.is_active and active_supers(admins) <= 1:
                 raise ValueError("can't disable the last active super admin")
             a.is_active = bool(req["active"])
+        elif op == "delete":
+            if a.role == "super_admin" and a.is_active and active_supers(admins) <= 1:
+                raise ValueError("can't delete the last active super admin")
+            # Every FK pointing at admins is an optional audit column (approved_by, refunded_by, …):
+            # clear it so drivers / payments / payouts stay intact, then delete the admin.
+            refs = (await db.execute(text(
+                "SELECT c.conrelid::regclass::text, a.attname FROM pg_constraint c "
+                "JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey) "
+                "WHERE c.contype = 'f' AND c.confrelid = 'admins'::regclass"))).all()
+            detached = {}
+            for tbl, col in refs:
+                res = await db.execute(text(f'UPDATE "{tbl}" SET "{col}" = NULL WHERE "{col}" = :id'), {"id": a.id})
+                if res.rowcount:
+                    detached[f"{tbl}.{col}"] = res.rowcount
+            info = row(a)
+            await db.delete(a)
+            await db.commit()
+            return {"deleted": info, "detached": detached}
         elif op == "set_role":
             if req["role"] != "super_admin" and a.role == "super_admin" and a.is_active and active_supers(admins) <= 1:
                 raise ValueError("can't demote the last super admin")
@@ -1322,6 +1340,16 @@ def reset_admin_password(iid: int, aid: str, body: ResetPassword):
 @app.post("/api/instances/{iid}/admins/{aid}/active")
 def set_admin_active(iid: int, aid: str, active: bool):
     return admin_op(instance(iid), {"op": "set_active", "id": aid, "active": active})
+
+
+class DeleteAdmin(BaseModel):
+    password: str     # the Instance Manager password, to confirm
+
+
+@app.post("/api/instances/{iid}/admins/{aid}/delete")
+def delete_admin(iid: int, aid: str, body: DeleteAdmin, request: Request):
+    check_password(body.password, request)
+    return admin_op(instance(iid), {"op": "delete", "id": aid})
 
 
 @app.post("/api/instances/{iid}/admins/{aid}/role")
